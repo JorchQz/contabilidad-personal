@@ -471,8 +471,17 @@ html, body {
   padding: 12px 8px;
   padding-bottom: max(12px, env(safe-area-inset-bottom));
   display: flex;
-  justify-content: space-around;
+  gap: 4px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
   z-index: 100;
+}
+
+.bottom-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .nav-item {
@@ -487,7 +496,9 @@ html, body {
   background: none;
   border: none;
   color: var(--text-muted);
-  flex: 1;
+  min-width: 72px;
+  flex-shrink: 0;
+  scroll-snap-align: center;
 }
 
 .nav-item.active {

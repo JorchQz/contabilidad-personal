@@ -787,6 +787,7 @@ async function renderApp() {
     <div id="page-cuentas" class="page"></div>
     <div id="page-deudas" class="page"></div>
     <div id="page-metas" class="page"></div>
+    <div id="page-fijos" class="page"></div>
     <div id="page-ajustes" class="page"></div>
   `;
 
