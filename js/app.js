@@ -1261,7 +1261,14 @@ async function guardarNuevaMeta() {
 }
 
 // ---- MODAL BASE ----
+let modalCloseTimeoutId = null;
+
 function openModal(title, content) {
+  if (modalCloseTimeoutId) {
+    clearTimeout(modalCloseTimeoutId);
+    modalCloseTimeoutId = null;
+  }
+
   let overlay = document.getElementById('modal-overlay');
   if (!overlay) {
     overlay = document.createElement('div');
@@ -1286,6 +1293,9 @@ function closeModal() {
   const overlay = document.getElementById('modal-overlay');
   if (overlay) {
     overlay.classList.remove('open');
-    setTimeout(() => overlay.remove(), 300);
+    modalCloseTimeoutId = setTimeout(() => {
+      overlay.remove();
+      modalCloseTimeoutId = null;
+    }, 300);
   }
 }
