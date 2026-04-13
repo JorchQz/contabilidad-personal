@@ -894,14 +894,20 @@ async function guardarGasto() {
   const descripcion = document.getElementById('rg-desc').value.trim();
   const monto = parseFloat(document.getElementById('rg-monto').value);
   const categoria_id = document.getElementById('rg-cat').value;
-  const cuenta_id = document.getElementById('rg-cuenta').value;
+  const cuenta_id = document.getElementById('rg-cuenta')?.value || null;
   const fecha = document.getElementById('rg-fecha').value;
   if (!descripcion || !monto) { showSnackbar('Completa descripción y monto', 'error'); return; }
 
-  const { error } = await db.from('gastos').insert({
+  const gastoPayload = {
     usuario_id: getUsuarioId(),
-    descripcion, monto, categoria_id, cuenta_id, fecha
-  });
+    descripcion,
+    monto,
+    categoria_id,
+    cuenta_id,
+    fecha
+  };
+
+  const { error } = await db.from('gastos').insert(gastoPayload);
 
   if (error) { showSnackbar('Error al guardar', 'error'); return; }
   closeModal();
