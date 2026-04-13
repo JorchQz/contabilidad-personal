@@ -1014,39 +1014,84 @@ async function loadDeudas() {
   const uid = getUsuarioId();
   const { data: deudas } = await db.from('deudas').select('*').eq('usuario_id', uid).eq('activa', true).order('created_at');
 
+  const getBadgeDeuda = (tipo) => {
+    const badges = { simple: '💳', variable: '📊', tabla: '📋' };
+    return badges[tipo] || '💸';
+  };
+
+  let deudaCardsHTML = '';
+  if (!deudas || deudas.length === 0) {
+    deudaCardsHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🎉</div>
+        <p>¡Sin deudas registradas!</p>
+      </div>
+    `;
+  } else {
+    for (const d of deudas) {
+      const pct = Math.round(((d.monto_inicial - d.monto_actual) / d.monto_inicial) * 100);
+      const badgeEmoji = getBadgeDeuda(d.tipo_deuda);
+
+      let botonPagoHTML = '';
+      if (d.tipo_deuda === 'tabla') {
+        const { data: proximoPago } = await db.from('pagos_programados')
+          .select('numero_pago, fecha_vencimiento, monto_esperado')
+          .eq('deuda_id', d.id)
+          .eq('pagado', false)
+          .order('fecha_vencimiento')
+          .limit(1)
+          .single();
+
+        if (proximoPago) {
+          botonPagoHTML = `
+            <div style="margin-top:12px;padding:12px;background:var(--bg-elevated);border-radius:var(--radius-sm)">
+              <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">Próximo pago</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <span style="font-weight:600">Cuota #${proximoPago.numero_pago}</span>
+                <span style="font-weight:700;color:var(--accent)">${formatMXN(proximoPago.monto_esperado)}</span>
+              </div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Vence: ${new Date(proximoPago.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-MX')}</div>
+              <button onclick="openPagarDeuda('${d.id}', '${d.acreedor}', ${d.monto_actual}, '${d.tipo_deuda}', ${d.monto_ultimo_pago || null})" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
+                Registrar pago
+              </button>
+            </div>
+          `;
+        }
+      } else {
+        botonPagoHTML = `
+          <button onclick="openPagarDeuda('${d.id}', '${d.acreedor}', ${d.monto_actual}, '${d.tipo_deuda}', ${d.monto_ultimo_pago || null})" style="margin-top:12px;background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
+            Registrar pago
+          </button>
+        `;
+      }
+
+      deudaCardsHTML += `
+        <div class="deuda-card">
+          <div class="deuda-header">
+            <span class="deuda-acreedor">${badgeEmoji} ${d.acreedor}</span>
+            <span class="deuda-badge ${d.tipo_pago}">${d.tipo_pago || d.tipo_deuda}</span>
+          </div>
+          <div class="deuda-progress">
+            <div class="deuda-progress-fill" style="width:${Math.max(pct, 2)}%"></div>
+          </div>
+          <div class="deuda-amounts">
+            <span>Pagado ${pct}%</span>
+            <span>Deuda: ${formatMXN(d.monto_actual)}</span>
+          </div>
+          ${d.monto_pago ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">Pago ${d.tipo_pago}: ${formatMXN(d.monto_pago)}</div>` : ''}
+          ${botonPagoHTML}
+        </div>
+      `;
+    }
+  }
+
   document.getElementById('page-deudas').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Mis deudas</h1>
       <button onclick="openAgregarDeuda()" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nueva</button>
     </div>
     <div class="page-body">
-      ${!deudas || deudas.length === 0 ? `
-        <div class="empty-state">
-          <div class="empty-icon">🎉</div>
-          <p>¡Sin deudas registradas!</p>
-        </div>
-      ` : deudas.map(d => {
-        const pct = Math.round(((d.monto_inicial - d.monto_actual) / d.monto_inicial) * 100);
-        return `
-          <div class="deuda-card">
-            <div class="deuda-header">
-              <span class="deuda-acreedor">💸 ${d.acreedor}</span>
-              <span class="deuda-badge ${d.tipo_pago}">${d.tipo_pago}</span>
-            </div>
-            <div class="deuda-progress">
-              <div class="deuda-progress-fill" style="width:${Math.max(pct, 2)}%"></div>
-            </div>
-            <div class="deuda-amounts">
-              <span>Pagado ${pct}%</span>
-              <span>Deuda: ${formatMXN(d.monto_actual)}</span>
-            </div>
-            ${d.monto_pago ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">Pago ${d.tipo_pago}: ${formatMXN(d.monto_pago)}</div>` : ''}
-            <button onclick="openPagarDeuda('${d.id}', '${d.acreedor}', ${d.monto_actual})" style="margin-top:12px;background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
-              Registrar pago
-            </button>
-          </div>
-        `;
-      }).join('')}
+      ${deudaCardsHTML}
     </div>
   `;
 }
@@ -1331,7 +1376,7 @@ async function guardarGasto() {
 }
 
 // Pagar Deuda
-async function openPagarDeuda(deudaId, acreedor, montoActual) {
+async function openPagarDeuda(deudaId, acreedor, montoActual, tipoDeuda, montoUltimoPago) {
   const { data: cuentas, error } = await db
     .from('cuentas')
     .select('*')
@@ -1343,11 +1388,22 @@ async function openPagarDeuda(deudaId, acreedor, montoActual) {
     return;
   }
 
+  let infoReferenciaHTML = '';
+  if (tipoDeuda === 'variable' && montoUltimoPago) {
+    infoReferenciaHTML = `
+    <div class="card" style="margin-bottom:12px;background:var(--bg-elevated)">
+      <div style="font-size:12px;color:var(--text-secondary)">Último pago</div>
+      <div style="font-size:16px;font-weight:600">${formatMXN(montoUltimoPago)}</div>
+    </div>
+    `;
+  }
+
   openModal(`Pagar: ${acreedor}`, `
     <div class="card" style="margin-bottom:16px;background:var(--red-soft);border-color:rgba(240,93,110,0.2)">
       <div style="font-size:12px;color:var(--text-secondary)">Deuda actual</div>
       <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--red)">${formatMXN(montoActual)}</div>
     </div>
+    ${infoReferenciaHTML}
     <div class="form-group">
       <label class="form-label">Monto del pago</label>
       <input class="form-input" id="pd-monto" type="number" placeholder="$0.00" min="0" max="${montoActual}" />
@@ -1362,11 +1418,11 @@ async function openPagarDeuda(deudaId, acreedor, montoActual) {
       <label class="form-label">Nota (opcional)</label>
       <input class="form-input" id="pd-nota" type="text" placeholder="Ej: Abono quincenal" />
     </div>
-    <button class="btn btn-primary" onclick="guardarPagoDeuda('${deudaId}', ${montoActual})">Registrar pago</button>
+    <button class="btn btn-primary" onclick="guardarPagoDeuda('${deudaId}', ${montoActual}, '${tipoDeuda}')">Registrar pago</button>
   `);
 }
 
-async function guardarPagoDeuda(deudaId, montoActual) {
+async function guardarPagoDeuda(deudaId, montoActual, tipoDeuda) {
   const monto = parseFloat(document.getElementById('pd-monto').value);
   const cuenta_id = document.getElementById('pd-cuenta')?.value || null;
   const nota = document.getElementById('pd-nota').value.trim();
@@ -1413,6 +1469,24 @@ async function guardarPagoDeuda(deudaId, montoActual) {
     fecha: fechaHoy
   });
 
+  if (tipoDeuda === 'tabla') {
+    const { data: proximoPago } = await db.from('pagos_programados')
+      .select('id')
+      .eq('deuda_id', deudaId)
+      .eq('pagado', false)
+      .order('fecha_vencimiento')
+      .limit(1)
+      .single();
+
+    if (proximoPago) {
+      await db.from('pagos_programados').update({
+        pagado: true,
+        fecha_pago: fechaHoy,
+        monto_pagado: monto
+      }).eq('id', proximoPago.id);
+    }
+  }
+
   await db.from('deudas').update({
     monto_actual: nuevoMonto,
     activa: nuevoMonto > 0,
@@ -1426,9 +1500,38 @@ async function guardarPagoDeuda(deudaId, montoActual) {
   await loadDashboard();
 }
 
-// Agregar Deuda nueva
+// Agregar Deuda nueva - Selector de tipo
 function openAgregarDeuda() {
   openModal('Nueva deuda', `
+    <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:16px">
+      <button onclick="selectTipoDeuda('simple')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font-body);text-align:left;transition:all 180ms ease">
+        <div style="font-size:20px;margin-bottom:6px">💳</div>
+        <div style="font-weight:600;font-size:14px">Simple</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Monto fijo, fecha fija</div>
+      </button>
+      <button onclick="selectTipoDeuda('variable')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font-body);text-align:left;transition:all 180ms ease">
+        <div style="font-size:20px;margin-bottom:6px">📊</div>
+        <div style="font-weight:600;font-size:14px">Variable</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Monto cambia cada pago</div>
+      </button>
+      <button onclick="selectTipoDeuda('tabla')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font-body);text-align:left;transition:all 180ms ease">
+        <div style="font-size:20px;margin-bottom:6px">📋</div>
+        <div style="font-weight:600;font-size:14px">Con tabla</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Pagos programados</div>
+      </button>
+    </div>
+  `);
+}
+
+let tipoDeudaSeleccionado = null;
+
+function selectTipoDeuda(tipo) {
+  tipoDeudaSeleccionado = tipo;
+  openFormularioNuevaDeuda(tipo);
+}
+
+function openFormularioNuevaDeuda(tipo) {
+  let formContent = `
     <div class="form-group">
       <label class="form-label">¿A quién le debes?</label>
       <input class="form-input" id="nd-acreedor" type="text" placeholder="Ej: Caja Popular, mamá, etc." />
@@ -1437,6 +1540,10 @@ function openAgregarDeuda() {
       <label class="form-label">Monto total</label>
       <input class="form-input" id="nd-monto" type="number" placeholder="$0.00" min="0" />
     </div>
+  `;
+
+  if (tipo === 'simple' || tipo === 'variable') {
+    formContent += `
     <div class="form-group">
       <label class="form-label">Frecuencia de pago</label>
       <select class="form-select" id="nd-freq" onchange="renderCamposFechaDeuda()">
@@ -1447,15 +1554,27 @@ function openAgregarDeuda() {
       </select>
     </div>
     <div class="form-group" id="nd-fecha-campos"></div>
+    `;
+  }
+
+  if (tipo === 'simple' || tipo === 'variable') {
+    formContent += `
     <div class="form-group">
       <label class="form-label">Pago por cuota (opcional)</label>
       <input class="form-input" id="nd-cuota" type="number" placeholder="$0.00" min="0" />
     </div>
-    <button class="btn btn-primary" onclick="guardarNuevaDeuda()">Guardar deuda</button>
-  `);
+    `;
+  }
+
+  formContent += `
+    <button class="btn btn-primary" onclick="guardarNuevaDeuda('${tipo}')">Guardar deuda</button>
+  `;
+
+  openModal('Nueva deuda', formContent);
   
-  // Renderizar campos de fecha iniciales
-  setTimeout(() => renderCamposFechaDeuda(), 100);
+  if (tipo === 'simple' || tipo === 'variable') {
+    setTimeout(() => renderCamposFechaDeuda(), 100);
+  }
 }
 
 function renderCamposFechaDeuda() {
@@ -1498,43 +1617,152 @@ function renderCamposFechaDeuda() {
   campos.innerHTML = '';
 }
 
-async function guardarNuevaDeuda() {
+async function guardarNuevaDeuda(tipo) {
   const acreedor = document.getElementById('nd-acreedor').value.trim();
   const monto = parseFloat(document.getElementById('nd-monto').value);
-  const tipo_pago = document.getElementById('nd-freq').value;
-  const monto_pago = parseFloat(document.getElementById('nd-cuota').value) || null;
+  let tipo_pago = null;
+  let monto_pago = null;
   let dia_pago = null;
   let dia_semana = null;
 
   if (!acreedor || !monto) { showSnackbar('Completa los campos requeridos', 'error'); return; }
 
-  if (tipo_pago === 'semanal') {
-    dia_semana = parseInt(document.getElementById('nd-dia-semana')?.value, 10);
-    if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
-      showSnackbar('Selecciona un día de la semana válido', 'error');
-      return;
-    }
-  } else if (tipo_pago === 'mensual') {
-    dia_pago = parseInt(document.getElementById('nd-dia-pago')?.value, 10);
-    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
-      showSnackbar('Ingresa un día del mes entre 1 y 31', 'error');
-      return;
-    }
-  } else if (tipo_pago === 'quincenal') {
-    dia_pago = parseInt(document.getElementById('nd-dia-pago')?.value, 10);
-    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
-      showSnackbar('Ingresa un día de la quincena entre 1 y 15', 'error');
-      return;
+  if (tipo === 'simple' || tipo === 'variable') {
+    tipo_pago = document.getElementById('nd-freq').value;
+    monto_pago = parseFloat(document.getElementById('nd-cuota').value) || null;
+
+    if (tipo_pago === 'semanal') {
+      dia_semana = parseInt(document.getElementById('nd-dia-semana')?.value, 10);
+      if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
+        showSnackbar('Selecciona un día de la semana válido', 'error');
+        return;
+      }
+    } else if (tipo_pago === 'mensual') {
+      dia_pago = parseInt(document.getElementById('nd-dia-pago')?.value, 10);
+      if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
+        showSnackbar('Ingresa un día del mes entre 1 y 31', 'error');
+        return;
+      }
+    } else if (tipo_pago === 'quincenal') {
+      dia_pago = parseInt(document.getElementById('nd-dia-pago')?.value, 10);
+      if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
+        showSnackbar('Ingresa un día de la quincena entre 1 y 15', 'error');
+        return;
+      }
     }
   }
 
-  await db.from('deudas').insert({
+  const { data: deudaInsertada, error } = await db.from('deudas').insert({
     usuario_id: getUsuarioId(),
-    acreedor, monto_inicial: monto, monto_actual: monto, tipo_pago, monto_pago, dia_pago, dia_semana
-  });
+    acreedor, monto_inicial: monto, monto_actual: monto, tipo_pago, monto_pago, dia_pago, dia_semana, tipo_deuda: tipo
+  }).select();
+
+  if (error) {
+    showSnackbar('Error al guardar deuda', 'error');
+    return;
+  }
 
   closeModal();
   showSnackbar('Deuda registrada ✓', 'success');
+
+  if (tipo === 'tabla' && deudaInsertada && deudaInsertada.length > 0) {
+    const deudaId = deudaInsertada[0].id;
+    setTimeout(() => openAgregarPagosProgramados(deudaId, acreedor), 500);
+  } else {
+    await loadDeudas();
+    await loadDashboard();
+  }
+}
+
+function openAgregarPagosProgramados(deudaId, acreedor) {
+  let filasHTML = `
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;max-height:400px;overflow-y:auto" id="pagos-programados-lista">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+      <input class="form-input" id="pp-numero" type="number" placeholder="Pago #" min="1" />
+      <input class="form-input" id="pp-fecha" type="date" />
+      <input class="form-input" id="pp-monto" type="number" placeholder="Monto" min="0" />
+    </div>
+    <button class="btn btn-secondary" onclick="agregarFilaPago()">+ Agregar fila</button>
+    <button class="btn btn-primary" onclick="guardarTablaPagesProgramados('${deudaId}')">Guardar tabla</button>
+  `;
+
+  openModal(`Pagos programados: ${acreedor}`, filasHTML);
+  renderFilasPagos();
+}
+
+let filasPagesProgramados = [];
+
+function agregarFilaPago() {
+  const numero = document.getElementById('pp-numero')?.value || '';
+  const fecha = document.getElementById('pp-fecha')?.value || '';
+  const monto = document.getElementById('pp-monto')?.value || '';
+
+  if (!numero || !fecha || !monto) {
+    showSnackbar('Completa todos los campos', 'error');
+    return;
+  }
+
+  filasPagesProgramados.push({
+    numero: parseInt(numero),
+    fecha_vencimiento: fecha,
+    monto_esperado: parseFloat(monto)
+  });
+
+  document.getElementById('pp-numero').value = '';
+  document.getElementById('pp-fecha').value = '';
+  document.getElementById('pp-monto').value = '';
+
+  renderFilasPagos();
+}
+
+function renderFilasPagos() {
+  const lista = document.getElementById('pagos-programados-lista');
+  if (!lista) return;
+
+  lista.innerHTML = filasPagesProgramados.map((fila, i) => `
+    <div class="item-row" style="margin-bottom:0;background:var(--bg-elevated);padding:12px;border-radius:var(--radius-sm)">
+      <div class="item-row-info">
+        <div class="item-row-name">Pago #${fila.numero}</div>
+        <div class="item-row-detail">${new Date(fila.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-MX')}</div>
+      </div>
+      <div class="item-row-amount">${formatMXN(fila.monto_esperado)}</div>
+      <button class="item-row-delete" onclick="eliminarFilaPago(${i})">✕</button>
+    </div>
+  `).join('');
+}
+
+function eliminarFilaPago(index) {
+  filasPagesProgramados.splice(index, 1);
+  renderFilasPagos();
+}
+
+async function guardarTablaPagesProgramados(deudaId) {
+  if (filasPagesProgramados.length === 0) {
+    showSnackbar('Agrega al menos un pago programado', 'error');
+    return;
+  }
+
+  const usuarioId = getUsuarioId();
+  const filasAGuardar = filasPagesProgramados.map(fila => ({
+    deuda_id: deudaId,
+    usuario_id: usuarioId,
+    numero_pago: fila.numero,
+    fecha_vencimiento: fila.fecha_vencimiento,
+    monto_esperado: fila.monto_esperado,
+    pagado: false
+  }));
+
+  const { error } = await db.from('pagos_programados').insert(filasAGuardar);
+
+  if (error) {
+    showSnackbar('Error al guardar tabla de pagos', 'error');
+    return;
+  }
+
+  closeModal();
+  filasPagesProgramados = [];
+  showSnackbar('Tabla de pagos guardada ✓', 'success');
   await loadDeudas();
   await loadDashboard();
 }
