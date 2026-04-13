@@ -1035,15 +1035,43 @@ async function guardarPagoDeuda(deudaId, montoActual) {
   const monto = parseFloat(document.getElementById('pd-monto').value);
   const cuenta_id = document.getElementById('pd-cuenta')?.value || null;
   const nota = document.getElementById('pd-nota').value.trim();
+  const usuarioId = getUsuarioId();
   if (!monto || monto <= 0) { showSnackbar('Ingresa un monto válido', 'error'); return; }
   if (monto > montoActual) { showSnackbar('El pago no puede ser mayor a la deuda', 'error'); return; }
   if (!cuenta_id) { showSnackbar('Selecciona una cuenta', 'error'); return; }
+
+  const [
+    { data: cuenta, error: errorCuenta },
+    { data: ingresosCuenta, error: errorIngresos },
+    { data: gastosCuenta, error: errorGastos },
+    { data: pagosDeudaCuenta, error: errorPagosDeuda }
+  ] = await Promise.all([
+    db.from('cuentas').select('saldo_inicial').eq('id', cuenta_id).eq('usuario_id', usuarioId).single(),
+    db.from('ingresos').select('monto').eq('usuario_id', usuarioId).eq('cuenta_id', cuenta_id),
+    db.from('gastos').select('monto').eq('usuario_id', usuarioId).eq('cuenta_id', cuenta_id),
+    db.from('pagos_deuda').select('monto').eq('usuario_id', usuarioId).eq('cuenta_id', cuenta_id)
+  ]);
+
+  if (errorCuenta || errorIngresos || errorGastos || errorPagosDeuda || !cuenta) {
+    showSnackbar('No se pudo validar el saldo de la cuenta', 'error');
+    return;
+  }
+
+  const totalIngresosCuenta = (ingresosCuenta || []).reduce((acc, mov) => acc + Number(mov.monto || 0), 0);
+  const totalGastosCuenta = (gastosCuenta || []).reduce((acc, mov) => acc + Number(mov.monto || 0), 0);
+  const totalPagosDeudaCuenta = (pagosDeudaCuenta || []).reduce((acc, mov) => acc + Number(mov.monto || 0), 0);
+  const saldoDisponibleCuenta = Number(cuenta.saldo_inicial || 0) + totalIngresosCuenta - totalGastosCuenta - totalPagosDeudaCuenta;
+
+  if (monto > saldoDisponibleCuenta) {
+    showSnackbar('Saldo insuficiente en esa cuenta', 'error');
+    return;
+  }
 
   const nuevoMonto = montoActual - monto;
 
   await db.from('pagos_deuda').insert({
     deuda_id: deudaId,
-    usuario_id: getUsuarioId(),
+    usuario_id: usuarioId,
     cuenta_id,
     monto, nota,
     fecha: new Date().toISOString().split('T')[0]
