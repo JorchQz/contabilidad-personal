@@ -796,6 +796,7 @@ async function renderApp() {
   await loadCuentas();
   await loadDeudas();
   await loadMetas();
+  await loadFijos();
   loadGastos();
   loadAjustes();
 }
@@ -1136,6 +1137,206 @@ async function loadMetas() {
       }).join('')}
     </div>
   `;
+}
+
+// ---- GASTOS FIJOS ----
+function formatearFrecuenciaGastoFijo(frecuencia, diaPago, diaSemana) {
+  const diasSemana = ['domingos', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabados'];
+
+  if (frecuencia === 'mensual') {
+    return `Mensual${diaPago ? ` · dia ${diaPago}` : ''}`;
+  }
+
+  if (frecuencia === 'quincenal') {
+    return `Quincenal${diaPago ? ` · dia ${diaPago}` : ''}`;
+  }
+
+  if (frecuencia === 'semanal') {
+    const dia = Number.isInteger(diaSemana) && diaSemana >= 0 && diaSemana <= 6 ? diasSemana[diaSemana] : null;
+    return `Semanal${dia ? ` · ${dia}` : ''}`;
+  }
+
+  return frecuencia || 'Sin frecuencia';
+}
+
+async function loadFijos() {
+  const uid = getUsuarioId();
+  const { data: fijos, error } = await db
+    .from('gastos_fijos')
+    .select('*')
+    .eq('usuario_id', uid)
+    .eq('activo', true)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    document.getElementById('page-fijos').innerHTML = `
+      <div class="page-header">
+        <h1 class="page-title">Gastos fijos 📌</h1>
+        <button onclick="openAgregarGastoFijo()" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nuevo</button>
+      </div>
+      <div class="page-body">
+        <div class="empty-state">
+          <div class="empty-icon">⚠️</div>
+          <p>No se pudieron cargar los gastos fijos.</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  document.getElementById('page-fijos').innerHTML = `
+    <div class="page-header">
+      <h1 class="page-title">Gastos fijos 📌</h1>
+      <button onclick="openAgregarGastoFijo()" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nuevo</button>
+    </div>
+    <div class="page-body">
+      ${!fijos || fijos.length === 0 ? `
+        <div class="empty-state">
+          <div class="empty-icon">📌</div>
+          <p>No tienes gastos fijos registrados.<br>Agrega uno para empezar.</p>
+        </div>
+      ` : fijos.map(g => `
+        <div class="item-row" style="margin-bottom:8px">
+          <div class="item-row-emoji">📌</div>
+          <div class="item-row-info">
+            <div class="item-row-name">${g.descripcion}</div>
+            <div class="item-row-detail">${formatearFrecuenciaGastoFijo(g.frecuencia, g.dia_pago, g.dia_semana)}</div>
+          </div>
+          <div class="item-row-amount" style="color:var(--red)">${formatMXN(g.monto)}</div>
+          <button class="item-row-delete" onclick="eliminarGastoFijo('${g.id}')">✕</button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function openAgregarGastoFijo() {
+  openModal('Nuevo gasto fijo', `
+    <div class="form-group">
+      <label class="form-label">Descripcion</label>
+      <input class="form-input" id="fgf-desc" type="text" placeholder="Ej: Internet, renta, gimnasio" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Monto</label>
+      <input class="form-input" id="fgf-monto" type="number" placeholder="$0.00" min="0" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Frecuencia</label>
+      <select class="form-select" id="fgf-freq" onchange="renderCamposFechaGastoFijoModal()">
+        <option value="semanal">Semanal</option>
+        <option value="quincenal">Quincenal</option>
+        <option value="mensual">Mensual</option>
+      </select>
+    </div>
+    <div class="form-group" id="fgf-fecha-campos"></div>
+    <button class="btn btn-primary" onclick="guardarNuevoGastoFijo()">Guardar</button>
+  `);
+
+  renderCamposFechaGastoFijoModal();
+}
+
+function renderCamposFechaGastoFijoModal() {
+  const frecuencia = document.getElementById('fgf-freq')?.value;
+  const campos = document.getElementById('fgf-fecha-campos');
+  if (!campos) return;
+
+  if (frecuencia === 'mensual') {
+    campos.innerHTML = `
+      <label class="form-label">Dia del mes que pagas</label>
+      <input class="form-input" id="fgf-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />
+    `;
+    return;
+  }
+
+  if (frecuencia === 'semanal') {
+    campos.innerHTML = `
+      <label class="form-label">Dia de la semana</label>
+      <select class="form-select" id="fgf-dia-semana">
+        <option value="0">Domingo</option>
+        <option value="1">Lunes</option>
+        <option value="2">Martes</option>
+        <option value="3">Miercoles</option>
+        <option value="4">Jueves</option>
+        <option value="5">Viernes</option>
+        <option value="6">Sabado</option>
+      </select>
+    `;
+    return;
+  }
+
+  if (frecuencia === 'quincenal') {
+    campos.innerHTML = `
+      <label class="form-label">Dia de la quincena</label>
+      <input class="form-input" id="fgf-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" />
+    `;
+    return;
+  }
+
+  campos.innerHTML = '';
+}
+
+async function guardarNuevoGastoFijo() {
+  const descripcion = document.getElementById('fgf-desc')?.value.trim();
+  const monto = parseFloat(document.getElementById('fgf-monto')?.value);
+  const frecuencia = document.getElementById('fgf-freq')?.value;
+  let dia_pago = null;
+  let dia_semana = null;
+
+  if (!descripcion || !monto) {
+    showSnackbar('Completa descripcion y monto', 'error');
+    return;
+  }
+
+  if (frecuencia === 'semanal') {
+    dia_semana = parseInt(document.getElementById('fgf-dia-semana')?.value, 10);
+    if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
+      showSnackbar('Selecciona un dia de la semana valido', 'error');
+      return;
+    }
+  } else if (frecuencia === 'mensual') {
+    dia_pago = parseInt(document.getElementById('fgf-dia-pago')?.value, 10);
+    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
+      showSnackbar('Ingresa un dia del mes entre 1 y 31', 'error');
+      return;
+    }
+  } else if (frecuencia === 'quincenal') {
+    dia_pago = parseInt(document.getElementById('fgf-dia-pago')?.value, 10);
+    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
+      showSnackbar('Ingresa un dia de la quincena entre 1 y 15', 'error');
+      return;
+    }
+  }
+
+  const { error } = await db.from('gastos_fijos').insert({
+    usuario_id: getUsuarioId(),
+    descripcion,
+    monto,
+    frecuencia,
+    dia_pago,
+    dia_semana,
+    activo: true
+  });
+
+  if (error) {
+    showSnackbar('No se pudo guardar el gasto fijo', 'error');
+    return;
+  }
+
+  closeModal();
+  showSnackbar('Gasto fijo guardado ✓', 'success');
+  await loadFijos();
+}
+
+async function eliminarGastoFijo(gastoFijoId) {
+  const { error } = await db.from('gastos_fijos').update({ activo: false }).eq('id', gastoFijoId);
+
+  if (error) {
+    showSnackbar('No se pudo eliminar el gasto fijo', 'error');
+    return;
+  }
+
+  showSnackbar('Gasto fijo eliminado', 'success');
+  await loadFijos();
 }
 
 // ---- GASTOS (historial) ----
