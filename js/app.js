@@ -917,7 +917,18 @@ async function guardarGasto() {
 }
 
 // Pagar Deuda
-function openPagarDeuda(deudaId, acreedor, montoActual) {
+async function openPagarDeuda(deudaId, acreedor, montoActual) {
+  const { data: cuentas, error } = await db
+    .from('cuentas')
+    .select('*')
+    .eq('usuario_id', getUsuarioId())
+    .eq('activa', true);
+
+  if (error) {
+    showSnackbar('No se pudieron cargar las cuentas', 'error');
+    return;
+  }
+
   openModal(`Pagar: ${acreedor}`, `
     <div class="card" style="margin-bottom:16px;background:var(--red-soft);border-color:rgba(240,93,110,0.2)">
       <div style="font-size:12px;color:var(--text-secondary)">Deuda actual</div>
@@ -926,6 +937,12 @@ function openPagarDeuda(deudaId, acreedor, montoActual) {
     <div class="form-group">
       <label class="form-label">Monto del pago</label>
       <input class="form-input" id="pd-monto" type="number" placeholder="$0.00" min="0" max="${montoActual}" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Cuenta</label>
+      <select class="form-select" id="pd-cuenta">
+        ${(cuentas || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+      </select>
     </div>
     <div class="form-group">
       <label class="form-label">Nota (opcional)</label>
@@ -937,15 +954,18 @@ function openPagarDeuda(deudaId, acreedor, montoActual) {
 
 async function guardarPagoDeuda(deudaId, montoActual) {
   const monto = parseFloat(document.getElementById('pd-monto').value);
+  const cuenta_id = document.getElementById('pd-cuenta')?.value || null;
   const nota = document.getElementById('pd-nota').value.trim();
   if (!monto || monto <= 0) { showSnackbar('Ingresa un monto válido', 'error'); return; }
   if (monto > montoActual) { showSnackbar('El pago no puede ser mayor a la deuda', 'error'); return; }
+  if (!cuenta_id) { showSnackbar('Selecciona una cuenta', 'error'); return; }
 
   const nuevoMonto = montoActual - monto;
 
   await db.from('pagos_deuda').insert({
     deuda_id: deudaId,
     usuario_id: getUsuarioId(),
+    cuenta_id,
     monto, nota,
     fecha: new Date().toISOString().split('T')[0]
   });
