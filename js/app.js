@@ -369,9 +369,10 @@ function renderStep4Body(showForm = false) {
           <input class="form-input" id="gf-desc" placeholder="¿Qué pagas? (ej: Internet Izzi)" />
         </div>
         <input class="form-input" id="gf-monto" type="number" placeholder="Monto" min="0" />
-        <select class="form-select" id="gf-freq">
+        <select class="form-select" id="gf-freq" onchange="renderCamposFechaGastoFijo()">
           ${FRECUENCIAS.map(f => `<option value="${f}">${f.charAt(0).toUpperCase() + f.slice(1)}</option>`).join('')}
         </select>
+        <div class="mini-form-full" id="gf-fecha-campos"></div>
       </div>
       <button class="btn btn-secondary" onclick="addGastoFijo()">+ Agregar</button>
     </div>
@@ -382,14 +383,81 @@ function renderStep4Body(showForm = false) {
     `}
     <p class="form-hint mt-8" style="padding: 0 4px">Puedes saltarte esto y agregar más después.</p>
   `;
+
+  if (showForm) {
+    renderCamposFechaGastoFijo();
+  }
+}
+
+function renderCamposFechaGastoFijo() {
+  const frecuencia = document.getElementById('gf-freq')?.value;
+  const campos = document.getElementById('gf-fecha-campos');
+  if (!campos) return;
+
+  if (frecuencia === 'mensual') {
+    campos.innerHTML = `
+      <label class="form-label">Día del mes que pagas</label>
+      <input class="form-input" id="gf-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />
+    `;
+    return;
+  }
+
+  if (frecuencia === 'semanal') {
+    campos.innerHTML = `
+      <label class="form-label">Día de la semana</label>
+      <select class="form-select" id="gf-dia-semana">
+        <option value="0">Domingo</option>
+        <option value="1">Lunes</option>
+        <option value="2">Martes</option>
+        <option value="3">Miércoles</option>
+        <option value="4">Jueves</option>
+        <option value="5">Viernes</option>
+        <option value="6">Sábado</option>
+      </select>
+    `;
+    return;
+  }
+
+  if (frecuencia === 'quincenal') {
+    campos.innerHTML = `
+      <label class="form-label">Día de la quincena</label>
+      <input class="form-input" id="gf-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" />
+    `;
+    return;
+  }
+
+  campos.innerHTML = '';
 }
 
 function addGastoFijo() {
   const descripcion = document.getElementById('gf-desc').value.trim();
   const monto = parseFloat(document.getElementById('gf-monto').value);
   const frecuencia = document.getElementById('gf-freq').value;
+  let dia_pago = null;
+  let dia_semana = null;
+
+  if (frecuencia === 'semanal') {
+    dia_semana = parseInt(document.getElementById('gf-dia-semana')?.value, 10);
+    if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
+      showSnackbar('Selecciona un día de la semana válido', 'error');
+      return;
+    }
+  } else if (frecuencia === 'mensual') {
+    dia_pago = parseInt(document.getElementById('gf-dia-pago')?.value, 10);
+    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
+      showSnackbar('Ingresa un día del mes entre 1 y 31', 'error');
+      return;
+    }
+  } else if (frecuencia === 'quincenal') {
+    dia_pago = parseInt(document.getElementById('gf-dia-pago')?.value, 10);
+    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
+      showSnackbar('Ingresa un día de la quincena entre 1 y 15', 'error');
+      return;
+    }
+  }
+
   if (!descripcion || !monto) { showSnackbar('Completa descripción y monto', 'error'); return; }
-  onboardingData.gastosFijos.push({ descripcion, monto, frecuencia });
+  onboardingData.gastosFijos.push({ descripcion, monto, frecuencia, dia_pago, dia_semana });
   renderStep4Body(false);
 }
 
@@ -504,7 +572,11 @@ async function finishOnboarding() {
         .single();
 
       const fijos = onboardingData.gastosFijos.map(g => ({
-        ...g,
+        descripcion: g.descripcion,
+        monto: g.monto,
+        frecuencia: g.frecuencia,
+        dia_pago: g.dia_pago ?? null,
+        dia_semana: g.dia_semana ?? null,
         usuario_id: usuario.id,
         categoria_id: catGasto?.id || null
       }));
