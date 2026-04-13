@@ -852,10 +852,11 @@ async function guardarIngreso() {
   const descripcion = document.getElementById('ri-desc').value.trim();
   const cuenta_id = document.getElementById('ri-cuenta')?.value || null;
   const fecha = document.getElementById('ri-fecha').value;
+  const usuario_id = getUsuarioId();
   if (!monto) { showSnackbar('Ingresa un monto', 'error'); return; }
 
   const { error } = await db.from('ingresos').insert({
-    usuario_id: getUsuarioId(),
+    usuario_id,
     monto, tipo, descripcion, cuenta_id, fecha
   });
 
@@ -865,18 +866,18 @@ async function guardarIngreso() {
   const { data: gastosFijos, error: gastosFijosError } = await db
     .from('gastos_fijos')
     .select('descripcion, monto, frecuencia')
-    .eq('usuario_id', getUsuarioId())
+    .eq('usuario_id', usuario_id)
     .eq('activo', true);
 
   if (gastosFijosError) {
-    showSnackbar('Ingreso registrado ✓', 'success');
-    await loadDashboard();
-    return;
+    console.error('Error consultando gastos_fijos tras guardar ingreso:', gastosFijosError);
   }
 
   const gastosAplicables = (gastosFijos || []).filter(gasto => gastoFijoAplicaPorFrecuencia(gasto.frecuencia, fecha));
   const totalComprometido = gastosAplicables.reduce((acc, gasto) => acc + Number(gasto.monto || 0), 0);
   const libre = monto - totalComprometido;
+
+  console.log('Abriendo modal de dinero comprometido', { monto, fecha, gastosAplicables, totalComprometido, libre });
 
   openModal('💰 Dinero comprometido', `
     <div class="card" style="margin-bottom:12px;background:var(--bg-elevated)">
