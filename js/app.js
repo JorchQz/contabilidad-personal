@@ -100,6 +100,183 @@ function calcularCuentasConSaldo(cuentas = [], ingresosPorCuenta = [], gastosPor
   };
 }
 
+// ---- PAGOS PENDIENTES ----
+function isSameDay(date1, date2) {
+  return date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate();
+}
+
+function isSameMonth(date1, date2) {
+  return date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth();
+}
+
+function getWeekStart(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  return new Date(d.setDate(diff));
+}
+
+function isSameWeek(date1, date2) {
+  const start1 = getWeekStart(date1);
+  const start2 = getWeekStart(date2);
+  return isSameDay(start1, start2);
+}
+
+function getQuincena(date) {
+  return date.getDate() <= 15 ? 1 : 2;
+}
+
+function isSameQuincena(date1, date2) {
+  return getQuincena(date1) === getQuincena(date2) && isSameMonth(date1, date2);
+}
+
+function getDayOfWeek(fechaStr) {
+  const date = new Date(`${fechaStr}T00:00:00`);
+  return date.getDay();
+}
+
+function getNextOccurrenceOfDayOfWeek(dayOfWeek) {
+  const today = new Date();
+  const currentDay = today.getDay();
+  let daysAhead = dayOfWeek - currentDay;
+  
+  if (daysAhead <= 0) {
+    daysAhead += 7;
+  }
+  
+  const date = new Date();
+  date.setDate(date.getDate() + daysAhead);
+  return date;
+}
+
+function getNextOccurrenceOfDayOfMonth(dayOfMonth) {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  
+  let date = new Date(year, month, dayOfMonth);
+  
+  if (date < today) {
+    date = new Date(year, month + 1, dayOfMonth);
+  }
+  
+  return date;
+}
+
+function getNextOccurrenceOfQuincena(dayOfQuincena) {
+  const today = new Date();
+  const currentDay = today.getDate();
+  const currentQuincena = currentDay <= 15 ? 1 : 2;
+  
+  let targetDay;
+  if (currentQuincena === 1) {
+    targetDay = dayOfQuincena;
+  } else {
+    targetDay = 15 + dayOfQuincena;
+  }
+  
+  if (currentDay >= targetDay) {
+    if (currentQuincena === 1) {
+      targetDay = 15 + dayOfQuincena;
+    } else {
+      targetDay = dayOfQuincena;
+      const nextDate = new Date(today);
+      nextDate.setMonth(nextDate.getMonth() + 1);
+      nextDate.setDate(targetDay);
+      return nextDate;
+    }
+  }
+  
+  const nextDate = new Date(today);
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  nextDate.setDate(Math.min(targetDay, daysInMonth));
+  return nextDate;
+}
+
+async function getPagosPendientes() {
+  const usuarioId = getUsuarioId();
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const pajitos = [];
+
+  const [
+    { data: gastosFijos, error: errGF },
+    { data: deudas, error: errD }
+  ] = await Promise.all([
+    db.from('gastos_fijos').select('*').eq('usuario_id', usuarioId).eq('activo', true),
+    db.from('deudas').select('*').eq('usuario_id', usuarioId).eq('activa', true)
+  ]);
+
+  if (!errGF && gastosFijos) {
+    for (const gf of gastosFijos) {
+      let esPendiente = false;
+      let fechaEsperada = null;
+
+      if (gf.frecuencia === 'semanal') {
+        fechaEsperada = getNextOccurrenceOfDayOfWeek(gf.dia_semana);
+        const ultimoPagoDate = gf.ultimo_pago ? new Date(`${gf.ultimo_pago}T00:00:00`) : null;
+        esPendiente = !ultimoPagoDate || !isSameWeek(ultimoPagoDate, hoy);
+      } else if (gf.frecuencia === 'mensual') {
+        fechaEsperada = getNextOccurrenceOfDayOfMonth(gf.dia_pago);
+        const ultimoPagoDate = gf.ultimo_pago ? new Date(`${gf.ultimo_pago}T00:00:00`) : null;
+        esPendiente = gf.dia_pago >= hoy.getDate() && (!ultimoPagoDate || !isSameMonth(ultimoPagoDate, hoy));
+      } else if (gf.frecuencia === 'quincenal') {
+        fechaEsperada = getNextOccurrenceOfQuincena(gf.dia_pago);
+        const ultimoPagoDate = gf.ultimo_pago ? new Date(`${gf.ultimo_pago}T00:00:00`) : null;
+        esPendiente = !ultimoPagoDate || !isSameQuincena(ultimoPagoDate, hoy);
+      }
+
+      if (esPendiente && fechaEsperada) {
+        const diasDiferencia = Math.ceil((fechaEsperada - hoy) / (1000 * 60 * 60 * 24));
+        pajitos.push({
+          nombre: gf.descripcion,
+          monto: gf.monto,
+          fecha_esperada: fechaEsperada,
+          tipo: 'fijo',
+          urgente: diasDiferencia <= 3
+        });
+      }
+    }
+  }
+
+  if (!errD && deudas) {
+    for (const d of deudas) {
+      let esPendiente = false;
+      let fechaEsperada = null;
+
+      if (d.tipo_pago === 'semanal') {
+        fechaEsperada = getNextOccurrenceOfDayOfWeek(d.dia_semana);
+        const ultimoPagoDate = d.ultimo_pago ? new Date(`${d.ultimo_pago}T00:00:00`) : null;
+        esPendiente = !ultimoPagoDate || !isSameWeek(ultimoPagoDate, hoy);
+      } else if (d.tipo_pago === 'mensual') {
+        fechaEsperada = getNextOccurrenceOfDayOfMonth(d.dia_pago);
+        const ultimoPagoDate = d.ultimo_pago ? new Date(`${d.ultimo_pago}T00:00:00`) : null;
+        esPendiente = d.dia_pago >= hoy.getDate() && (!ultimoPagoDate || !isSameMonth(ultimoPagoDate, hoy));
+      } else if (d.tipo_pago === 'quincenal') {
+        fechaEsperada = getNextOccurrenceOfQuincena(d.dia_pago);
+        const ultimoPagoDate = d.ultimo_pago ? new Date(`${d.ultimo_pago}T00:00:00`) : null;
+        esPendiente = !ultimoPagoDate || !isSameQuincena(ultimoPagoDate, hoy);
+      }
+
+      if (esPendiente && fechaEsperada) {
+        const diasDiferencia = Math.ceil((fechaEsperada - hoy) / (1000 * 60 * 60 * 24));
+        pajitos.push({
+          nombre: d.acreedor,
+          monto: d.monto_pago || d.monto_actual,
+          fecha_esperada: fechaEsperada,
+          tipo: 'deuda',
+          urgente: diasDiferencia <= 3
+        });
+      }
+    }
+  }
+
+  return pajitos.sort((a, b) => a.fecha_esperada - b.fecha_esperada);
+}
+
 // ---- INICIO ----
 window.addEventListener('DOMContentLoaded', async () => {
   await new Promise(r => setTimeout(r, 1200)); // splash
@@ -630,16 +807,17 @@ async function loadDashboard() {
     { data: ingresos },
     { data: gastos },
     { data: deudas },
-    { data: cuentas },
-    { data: alertas }
+    { data: cuentas }
   ] = await Promise.all([
     db.from('usuarios').select('nombre').eq('id', uid).single(),
     db.from('ingresos').select('monto').eq('usuario_id', uid),
     db.from('gastos').select('monto').eq('usuario_id', uid),
     db.from('deudas').select('monto_actual').eq('usuario_id', uid).eq('activa', true),
-    db.from('cuentas').select('id, nombre, tipo, saldo_inicial').eq('usuario_id', uid).eq('activa', true),
-    db.from('gastos_fijos').select('descripcion, monto, frecuencia').eq('usuario_id', uid).eq('activo', true)
+    db.from('cuentas').select('id, nombre, tipo, saldo_inicial').eq('usuario_id', uid).eq('activa', true)
   ]);
+
+  const pagosPendientes = await getPagosPendientes();
+  const pagosUrgentes = pagosPendientes.filter(p => p.urgente);
 
   const totalSaldoInicial = (cuentas || []).reduce((s, c) => s + Number(c.saldo_inicial), 0);
   const totalIngresos = (ingresos || []).reduce((s, i) => s + Number(i.monto), 0);
@@ -680,13 +858,16 @@ async function loadDashboard() {
       </div>
     </div>
 
-    ${alertas && alertas.length > 0 ? `
+    ${pagosUrgentes && pagosUrgentes.length > 0 ? `
     <div class="alert-banner">
-      <div class="alert-icon">📌</div>
+      <div class="alert-icon">⚠️</div>
       <div class="alert-text">
-        Tienes <strong>${alertas.length} gastos fijos</strong> comprometidos:
-        ${alertas.slice(0, 3).map(a => `<br>· ${a.descripcion} — ${formatMXN(a.monto)} (${a.frecuencia})`).join('')}
-        ${alertas.length > 3 ? `<br>· y ${alertas.length - 3} más...` : ''}
+        <strong>${pagosUrgentes.length} pago${pagosUrgentes.length > 1 ? 's' : ''} vence${pagosUrgentes.length > 1 ? 'n' : ''} pronto:</strong>
+        ${pagosUrgentes.slice(0, 3).map(p => {
+          const fecha = p.fecha_esperada.toLocaleDateString('es-MX', { month: 'short', day: 'numeric' });
+          return `<br>· ${p.nombre} — ${formatMXN(p.monto)} (${fecha})`;
+        }).join('')}
+        ${pagosUrgentes.length > 3 ? `<br>· y ${pagosUrgentes.length - 3} más...` : ''}
       </div>
     </div>
     ` : ''}
@@ -1021,21 +1202,12 @@ async function guardarIngreso() {
   if (error) { showSnackbar('Error al guardar', 'error'); return; }
   closeModal();
 
-  const { data: gastosFijos, error: gastosFijosError } = await db
-    .from('gastos_fijos')
-    .select('descripcion, monto, frecuencia')
-    .eq('usuario_id', usuario_id)
-    .eq('activo', true);
+  const pagosPendientes = await getPagosPendientes();
 
-  if (gastosFijosError) {
-    console.error('Error consultando gastos_fijos tras guardar ingreso:', gastosFijosError);
-  }
-
-  const gastosAplicables = (gastosFijos || []).filter(gasto => gastoFijoAplicaPorFrecuencia(gasto.frecuencia, fecha));
-  const totalComprometido = gastosAplicables.reduce((acc, gasto) => acc + Number(gasto.monto || 0), 0);
+  const totalComprometido = pagosPendientes.reduce((acc, pago) => acc + Number(pago.monto || 0), 0);
   const libre = monto - totalComprometido;
 
-  console.log('Abriendo modal de dinero comprometido', { monto, fecha, gastosAplicables, totalComprometido, libre });
+  console.log('Abriendo modal de dinero comprometido', { monto, fecha, pagosPendientes, totalComprometido, libre });
 
   openModal('💰 Dinero comprometido', `
     <div class="card" style="margin-bottom:12px;background:var(--bg-elevated)">
@@ -1044,18 +1216,18 @@ async function guardarIngreso() {
     </div>
 
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;max-height:280px;overflow:auto">
-      ${gastosAplicables.length === 0 ? `
+      ${pagosPendientes.length === 0 ? `
         <div class="card" style="margin-bottom:0">
-          <div style="font-size:14px;color:var(--text-secondary)">No hay gastos fijos comprometidos para este periodo.</div>
+          <div style="font-size:14px;color:var(--text-secondary)">No hay pagos pendientes en este momento.</div>
         </div>
-      ` : gastosAplicables.map(gasto => `
+      ` : pagosPendientes.map(pago => `
         <div class="item-row" style="margin-bottom:0">
-          <div class="item-row-emoji">📌</div>
+          <div class="item-row-emoji">${pago.tipo === 'fijo' ? '📌' : '💸'}</div>
           <div class="item-row-info">
-            <div class="item-row-name">${gasto.descripcion}</div>
-            <div class="item-row-detail">${gasto.frecuencia}</div>
+            <div class="item-row-name">${pago.nombre}</div>
+            <div class="item-row-detail">${pago.tipo === 'fijo' ? 'Gasto fijo' : 'Deuda'}${pago.urgente ? ' · ⚠️ Urgente' : ''}</div>
           </div>
-          <div class="item-row-amount">${formatMXN(gasto.monto)}</div>
+          <div class="item-row-amount">${formatMXN(pago.monto)}</div>
         </div>
       `).join('')}
     </div>
