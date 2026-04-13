@@ -1003,11 +1003,16 @@ async function guardarIngreso() {
       </div>
     </div>
 
-    <button class="btn btn-primary" onclick="closeModal()">Entendido</button>
+    <button class="btn btn-primary" onclick="onEntendidoDineroComprometido()">Entendido</button>
   `);
 
   showSnackbar('Ingreso registrado ✓', 'success');
+}
+
+async function onEntendidoDineroComprometido() {
+  closeModal();
   await loadDashboard();
+  await loadCuentas();
 }
 
 function gastoFijoAplicaPorFrecuencia(frecuencia, fechaBase) {
