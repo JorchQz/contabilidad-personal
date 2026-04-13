@@ -1231,18 +1231,21 @@ async function guardarPagoDeuda(deudaId, montoActual) {
   }
 
   const nuevoMonto = montoActual - monto;
+  const fechaHoy = new Date().toISOString().split('T')[0];
 
   await db.from('pagos_deuda').insert({
     deuda_id: deudaId,
     usuario_id: usuarioId,
     cuenta_id,
     monto, nota,
-    fecha: new Date().toISOString().split('T')[0]
+    fecha: fechaHoy
   });
 
   await db.from('deudas').update({
     monto_actual: nuevoMonto,
-    activa: nuevoMonto > 0
+    activa: nuevoMonto > 0,
+    ultimo_pago: fechaHoy,
+    monto_ultimo_pago: monto
   }).eq('id', deudaId);
 
   closeModal();
@@ -1264,19 +1267,63 @@ function openAgregarDeuda() {
     </div>
     <div class="form-group">
       <label class="form-label">Frecuencia de pago</label>
-      <select class="form-select" id="nd-freq">
+      <select class="form-select" id="nd-freq" onchange="renderCamposFechaDeuda()">
         <option value="semanal">Semanal</option>
         <option value="quincenal">Quincenal</option>
         <option value="mensual">Mensual</option>
         <option value="libre">Sin fecha fija</option>
       </select>
     </div>
+    <div class="form-group" id="nd-fecha-campos"></div>
     <div class="form-group">
       <label class="form-label">Pago por cuota (opcional)</label>
       <input class="form-input" id="nd-cuota" type="number" placeholder="$0.00" min="0" />
     </div>
     <button class="btn btn-primary" onclick="guardarNuevaDeuda()">Guardar deuda</button>
   `);
+  
+  // Renderizar campos de fecha iniciales
+  setTimeout(() => renderCamposFechaDeuda(), 100);
+}
+
+function renderCamposFechaDeuda() {
+  const frecuencia = document.getElementById('nd-freq')?.value;
+  const campos = document.getElementById('nd-fecha-campos');
+  if (!campos) return;
+
+  if (frecuencia === 'mensual') {
+    campos.innerHTML = `
+      <label class="form-label">Día del mes que pagas</label>
+      <input class="form-input" id="nd-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />
+    `;
+    return;
+  }
+
+  if (frecuencia === 'semanal') {
+    campos.innerHTML = `
+      <label class="form-label">Día de la semana</label>
+      <select class="form-select" id="nd-dia-semana">
+        <option value="0">Domingo</option>
+        <option value="1">Lunes</option>
+        <option value="2">Martes</option>
+        <option value="3">Miércoles</option>
+        <option value="4">Jueves</option>
+        <option value="5">Viernes</option>
+        <option value="6">Sábado</option>
+      </select>
+    `;
+    return;
+  }
+
+  if (frecuencia === 'quincenal') {
+    campos.innerHTML = `
+      <label class="form-label">Día de la quincena</label>
+      <input class="form-input" id="nd-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" />
+    `;
+    return;
+  }
+
+  campos.innerHTML = '';
 }
 
 async function guardarNuevaDeuda() {
@@ -1284,11 +1331,34 @@ async function guardarNuevaDeuda() {
   const monto = parseFloat(document.getElementById('nd-monto').value);
   const tipo_pago = document.getElementById('nd-freq').value;
   const monto_pago = parseFloat(document.getElementById('nd-cuota').value) || null;
+  let dia_pago = null;
+  let dia_semana = null;
+
   if (!acreedor || !monto) { showSnackbar('Completa los campos requeridos', 'error'); return; }
+
+  if (tipo_pago === 'semanal') {
+    dia_semana = parseInt(document.getElementById('nd-dia-semana')?.value, 10);
+    if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
+      showSnackbar('Selecciona un día de la semana válido', 'error');
+      return;
+    }
+  } else if (tipo_pago === 'mensual') {
+    dia_pago = parseInt(document.getElementById('nd-dia-pago')?.value, 10);
+    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
+      showSnackbar('Ingresa un día del mes entre 1 y 31', 'error');
+      return;
+    }
+  } else if (tipo_pago === 'quincenal') {
+    dia_pago = parseInt(document.getElementById('nd-dia-pago')?.value, 10);
+    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
+      showSnackbar('Ingresa un día de la quincena entre 1 y 15', 'error');
+      return;
+    }
+  }
 
   await db.from('deudas').insert({
     usuario_id: getUsuarioId(),
-    acreedor, monto_inicial: monto, monto_actual: monto, tipo_pago, monto_pago
+    acreedor, monto_inicial: monto, monto_actual: monto, tipo_pago, monto_pago, dia_pago, dia_semana
   });
 
   closeModal();
