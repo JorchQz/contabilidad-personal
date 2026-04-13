@@ -657,13 +657,13 @@ function openFabMenu() {
 
   const menu = document.createElement('div');
   menu.id = 'fab-menu';
-  menu.style.cssText = 'position:fixed;right:20px;bottom:96px;z-index:40;display:flex;flex-direction:column;gap:10px;width:min(280px,calc(100vw - 32px));opacity:0;transform:translateY(10px);transition:opacity 180ms ease,transform 180ms ease;';
+  menu.style.cssText = 'position:fixed;bottom:145px;right:calc(50% - 215px + 16px);z-index:40;display:flex;flex-direction:column;gap:10px;align-items:flex-end;opacity:0;transform:translateY(10px);transition:opacity 180ms ease,transform 180ms ease;';
   menu.innerHTML = `
-    <button onclick="closeFabMenu(); openRegistrarGasto();" style="display:flex;align-items:center;gap:10px;width:100%;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;color:var(--text-primary);font-size:15px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
+    <button onclick="closeFabMenu(); openRegistrarGasto();" style="display:flex;align-items:center;gap:10px;width:180px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text-primary);font-size:15px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
       <span style="font-size:20px;line-height:1">💸</span>
       <span>Registrar gasto</span>
     </button>
-    <button onclick="closeFabMenu(); openRegistrarIngreso();" style="display:flex;align-items:center;gap:10px;width:100%;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;color:var(--text-primary);font-size:15px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
+    <button onclick="closeFabMenu(); openRegistrarIngreso();" style="display:flex;align-items:center;gap:10px;width:180px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text-primary);font-size:15px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
       <span style="font-size:20px;line-height:1">💰</span>
       <span>Registrar ingreso</span>
     </button>
