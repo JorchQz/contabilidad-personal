@@ -48,6 +48,58 @@ function showSnackbar(msg, type = '') {
   setTimeout(() => sb.classList.remove('show'), 3000);
 }
 
+function getCuentaEmoji(tipo) {
+  const cuentaEmoji = {
+    efectivo: '💵',
+    debito: '🏦',
+    negocio: '🏪',
+    otro: '💳'
+  };
+
+  return cuentaEmoji[tipo] || '💳';
+}
+
+function calcularCuentasConSaldo(cuentas = [], ingresosPorCuenta = [], gastosPorCuenta = [], pagosDeudaPorCuenta = []) {
+  const sumasIngresosPorCuenta = ingresosPorCuenta.reduce((acc, mov) => {
+    const cuentaId = mov.cuenta_id;
+    if (!cuentaId) return acc;
+    acc[cuentaId] = (acc[cuentaId] || 0) + Number(mov.monto || 0);
+    return acc;
+  }, {});
+
+  const sumasGastosPorCuenta = gastosPorCuenta.reduce((acc, mov) => {
+    const cuentaId = mov.cuenta_id;
+    if (!cuentaId) return acc;
+    acc[cuentaId] = (acc[cuentaId] || 0) + Number(mov.monto || 0);
+    return acc;
+  }, {});
+
+  const sumasPagosDeudaPorCuenta = pagosDeudaPorCuenta.reduce((acc, mov) => {
+    const cuentaId = mov.cuenta_id;
+    if (!cuentaId) return acc;
+    acc[cuentaId] = (acc[cuentaId] || 0) + Number(mov.monto || 0);
+    return acc;
+  }, {});
+
+  const cuentasConSaldo = cuentas.map(cuenta => {
+    const ingresosCuenta = sumasIngresosPorCuenta[cuenta.id] || 0;
+    const gastosCuenta = sumasGastosPorCuenta[cuenta.id] || 0;
+    const pagosDeudaCuenta = sumasPagosDeudaPorCuenta[cuenta.id] || 0;
+    const saldoCuenta = Number(cuenta.saldo_inicial || 0) + ingresosCuenta - gastosCuenta - pagosDeudaCuenta;
+
+    return {
+      ...cuenta,
+      saldoCalculado: saldoCuenta,
+      emoji: getCuentaEmoji(cuenta.tipo)
+    };
+  });
+
+  return {
+    cuentasConSaldo,
+    totalGeneralCuentas: cuentasConSaldo.reduce((acc, cuenta) => acc + cuenta.saldoCalculado, 0)
+  };
+}
+
 // ---- INICIO ----
 window.addEventListener('DOMContentLoaded', async () => {
   await new Promise(r => setTimeout(r, 1200)); // splash
@@ -483,6 +535,7 @@ async function renderApp() {
   app.innerHTML = `
     <div id="page-dashboard" class="page active"></div>
     <div id="page-gastos" class="page"></div>
+    <div id="page-cuentas" class="page"></div>
     <div id="page-deudas" class="page"></div>
     <div id="page-metas" class="page"></div>
     <div id="page-ajustes" class="page"></div>
@@ -490,6 +543,7 @@ async function renderApp() {
 
   renderNav();
   await loadDashboard();
+  await loadCuentas();
   await loadDeudas();
   await loadMetas();
   loadGastos();
@@ -505,20 +559,14 @@ async function loadDashboard() {
     { data: gastos },
     { data: deudas },
     { data: cuentas },
-    { data: alertas },
-    { data: ingresosPorCuenta },
-    { data: gastosPorCuenta },
-    { data: pagosDeudaPorCuenta }
+    { data: alertas }
   ] = await Promise.all([
     db.from('usuarios').select('nombre').eq('id', uid).single(),
     db.from('ingresos').select('monto').eq('usuario_id', uid),
     db.from('gastos').select('monto').eq('usuario_id', uid),
     db.from('deudas').select('monto_actual').eq('usuario_id', uid).eq('activa', true),
     db.from('cuentas').select('id, nombre, tipo, saldo_inicial').eq('usuario_id', uid).eq('activa', true),
-    db.from('gastos_fijos').select('descripcion, monto, frecuencia').eq('usuario_id', uid).eq('activo', true),
-    db.from('ingresos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
-    db.from('gastos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
-    db.from('pagos_deuda').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null)
+    db.from('gastos_fijos').select('descripcion, monto, frecuencia').eq('usuario_id', uid).eq('activo', true)
   ]);
 
   const totalSaldoInicial = (cuentas || []).reduce((s, c) => s + Number(c.saldo_inicial), 0);
@@ -526,49 +574,6 @@ async function loadDashboard() {
   const totalGastos = (gastos || []).reduce((s, g) => s + Number(g.monto), 0);
   const totalDeuda = (deudas || []).reduce((s, d) => s + Number(d.monto_actual), 0);
   const disponible = totalSaldoInicial + totalIngresos - totalGastos;
-
-  const sumasIngresosPorCuenta = (ingresosPorCuenta || []).reduce((acc, mov) => {
-    const cuentaId = mov.cuenta_id;
-    if (!cuentaId) return acc;
-    acc[cuentaId] = (acc[cuentaId] || 0) + Number(mov.monto || 0);
-    return acc;
-  }, {});
-
-  const sumasGastosPorCuenta = (gastosPorCuenta || []).reduce((acc, mov) => {
-    const cuentaId = mov.cuenta_id;
-    if (!cuentaId) return acc;
-    acc[cuentaId] = (acc[cuentaId] || 0) + Number(mov.monto || 0);
-    return acc;
-  }, {});
-
-  const sumasPagosDeudaPorCuenta = (pagosDeudaPorCuenta || []).reduce((acc, mov) => {
-    const cuentaId = mov.cuenta_id;
-    if (!cuentaId) return acc;
-    acc[cuentaId] = (acc[cuentaId] || 0) + Number(mov.monto || 0);
-    return acc;
-  }, {});
-
-  const cuentaEmoji = {
-    efectivo: '💵',
-    debito: '🏦',
-    negocio: '🏪',
-    otro: '💳'
-  };
-
-  const cuentasConSaldo = (cuentas || []).map(cuenta => {
-    const ingresosCuenta = sumasIngresosPorCuenta[cuenta.id] || 0;
-    const gastosCuenta = sumasGastosPorCuenta[cuenta.id] || 0;
-    const pagosDeudaCuenta = sumasPagosDeudaPorCuenta[cuenta.id] || 0;
-    const saldoCuenta = Number(cuenta.saldo_inicial || 0) + ingresosCuenta - gastosCuenta - pagosDeudaCuenta;
-
-    return {
-      ...cuenta,
-      saldoCalculado: saldoCuenta,
-      emoji: cuentaEmoji[cuenta.tipo] || '💳'
-    };
-  });
-
-  const totalGeneralCuentas = cuentasConSaldo.reduce((acc, cuenta) => acc + cuenta.saldoCalculado, 0);
 
   const horaActual = new Date().getHours();
   const saludo = horaActual < 12 ? 'Buenos días' : horaActual < 19 ? 'Buenas tardes' : 'Buenas noches';
@@ -604,32 +609,6 @@ async function loadDashboard() {
           <span class="balance-stat-value" style="color:var(--yellow)">${formatMXN(totalDeuda)}</span>
         </div>
       </div>
-    </div>
-
-    <p class="section-title">Mis cuentas</p>
-    <div class="page-body" style="padding-top:0">
-      ${!cuentasConSaldo.length ? `
-        <div class="empty-state" style="margin-top:0">
-          <div class="empty-icon">🏦</div>
-          <p>No tienes cuentas activas.</p>
-        </div>
-      ` : `
-        ${cuentasConSaldo.map(cuenta => `
-          <div class="item-row" style="margin-bottom:8px">
-            <div class="item-row-emoji">${cuenta.emoji}</div>
-            <div class="item-row-info">
-              <div class="item-row-name">${cuenta.nombre}</div>
-            </div>
-            <div class="item-row-amount">${formatMXN(cuenta.saldoCalculado)}</div>
-          </div>
-        `).join('')}
-        <div class="card" style="margin-top:8px;background:var(--bg-elevated)">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-size:13px;color:var(--text-secondary)">Total general</span>
-            <span style="font-size:16px;font-weight:700;font-family:var(--font-display)">${formatMXN(totalGeneralCuentas)}</span>
-          </div>
-        </div>
-      `}
     </div>
 
     ${alertas && alertas.length > 0 ? `
@@ -668,6 +647,59 @@ async function loadDashboard() {
     fab.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
     document.getElementById('app').appendChild(fab);
   }
+}
+
+// ---- CUENTAS ----
+async function loadCuentas() {
+  const uid = getUsuarioId();
+  const [
+    { data: cuentas },
+    { data: ingresosPorCuenta },
+    { data: gastosPorCuenta },
+    { data: pagosDeudaPorCuenta }
+  ] = await Promise.all([
+    db.from('cuentas').select('id, nombre, tipo, saldo_inicial').eq('usuario_id', uid).eq('activa', true),
+    db.from('ingresos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
+    db.from('gastos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
+    db.from('pagos_deuda').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null)
+  ]);
+
+  const { cuentasConSaldo, totalGeneralCuentas } = calcularCuentasConSaldo(
+    cuentas || [],
+    ingresosPorCuenta || [],
+    gastosPorCuenta || [],
+    pagosDeudaPorCuenta || []
+  );
+
+  document.getElementById('page-cuentas').innerHTML = `
+    <div class="page-header">
+      <h1 class="page-title">Cuentas</h1>
+    </div>
+    <div class="page-body" style="padding-top:0">
+      ${!cuentasConSaldo.length ? `
+        <div class="empty-state" style="margin-top:0">
+          <div class="empty-icon">🏦</div>
+          <p>No tienes cuentas activas.</p>
+        </div>
+      ` : `
+        ${cuentasConSaldo.map(cuenta => `
+          <div class="item-row" style="margin-bottom:8px">
+            <div class="item-row-emoji">${cuenta.emoji}</div>
+            <div class="item-row-info">
+              <div class="item-row-name">${cuenta.nombre}</div>
+            </div>
+            <div class="item-row-amount">${formatMXN(cuenta.saldoCalculado)}</div>
+          </div>
+        `).join('')}
+        <div class="card" style="margin-top:8px;background:var(--bg-elevated)">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:13px;color:var(--text-secondary)">Total general</span>
+            <span style="font-size:16px;font-weight:700;font-family:var(--font-display)">${formatMXN(totalGeneralCuentas)}</span>
+          </div>
+        </div>
+      `}
+    </div>
+  `;
 }
 
 // ---- DEUDAS ----
