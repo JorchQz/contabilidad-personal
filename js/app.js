@@ -811,7 +811,9 @@ function resetApp() {
 // ---- MODALES ----
 
 // Registrar Ingreso
-function openRegistrarIngreso() {
+async function openRegistrarIngreso() {
+  const { data: cuentas } = await db.from('cuentas').select('*').eq('usuario_id', getUsuarioId()).eq('activa', true);
+
   openModal('Registrar ingreso', `
     <div class="form-group">
       <label class="form-label">Monto</label>
@@ -831,6 +833,12 @@ function openRegistrarIngreso() {
       <input class="form-input" id="ri-desc" type="text" placeholder="Ej: Pago semana 1" />
     </div>
     <div class="form-group">
+      <label class="form-label">Cuenta</label>
+      <select class="form-select" id="ri-cuenta">
+        ${(cuentas || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
       <label class="form-label">Fecha</label>
       <input class="form-input" id="ri-fecha" type="date" value="${new Date().toISOString().split('T')[0]}" />
     </div>
@@ -842,12 +850,13 @@ async function guardarIngreso() {
   const monto = parseFloat(document.getElementById('ri-monto').value);
   const tipo = document.getElementById('ri-tipo').value;
   const descripcion = document.getElementById('ri-desc').value.trim();
+  const cuenta_id = document.getElementById('ri-cuenta')?.value || null;
   const fecha = document.getElementById('ri-fecha').value;
   if (!monto) { showSnackbar('Ingresa un monto', 'error'); return; }
 
   const { error } = await db.from('ingresos').insert({
     usuario_id: getUsuarioId(),
-    monto, tipo, descripcion, fecha
+    monto, tipo, descripcion, cuenta_id, fecha
   });
 
   if (error) { showSnackbar('Error al guardar', 'error'); return; }
