@@ -584,9 +584,6 @@ async function loadDashboard() {
         <p class="text-secondary" style="font-size:13px">${saludo} 👋</p>
         <h1 class="page-title">${usuario?.nombre?.split(' ')[0] || 'JM Finance'}</h1>
       </div>
-      <button onclick="openRegistrarIngreso()" style="background:var(--green-soft);border:1px solid rgba(45,212,160,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--green);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-body)">
-        + Ingreso
-      </button>
     </div>
 
     <div class="balance-hero">
@@ -622,31 +619,88 @@ async function loadDashboard() {
     </div>
     ` : ''}
 
-    <p class="section-title">Acciones rápidas</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 20px;margin-bottom:24px">
-      <button class="card" style="cursor:pointer;text-align:left;border:none;width:100%" onclick="openRegistrarGasto()">
-        <div style="font-size:24px;margin-bottom:6px">💸</div>
-        <div style="font-size:14px;font-weight:600">Registrar gasto</div>
-        <div style="font-size:12px;color:var(--text-secondary)">Rápido y fácil</div>
-      </button>
-      <button class="card" style="cursor:pointer;text-align:left;border:none;width:100%" onclick="showPage('deudas')">
-        <div style="font-size:24px;margin-bottom:6px">📊</div>
-        <div style="font-size:14px;font-weight:600">Ver deudas</div>
-        <div style="font-size:12px;color:var(--text-secondary)">${deudas?.length || 0} activas</div>
-      </button>
-    </div>
   `;
 
-  // FAB para registrar gasto
+  // FAB con speed dial para registrar movimientos
   let fab = document.getElementById('fab-main');
   if (!fab) {
     fab = document.createElement('button');
     fab.id = 'fab-main';
     fab.className = 'fab';
-    fab.onclick = openRegistrarGasto;
-    fab.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
     document.getElementById('app').appendChild(fab);
   }
+
+  closeFabMenu();
+  fab.onclick = toggleFabMenu;
+  setFabMainIcon(false);
+}
+
+function setFabMainIcon(isOpen) {
+  const fab = document.getElementById('fab-main');
+  if (!fab) return;
+
+  fab.innerHTML = isOpen
+    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`
+    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+}
+
+function openFabMenu() {
+  if (document.getElementById('fab-menu')) return;
+
+  const app = document.getElementById('app');
+  if (!app) return;
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'fab-menu-backdrop';
+  backdrop.style.cssText = 'position:fixed;inset:0;z-index:39;background:transparent;';
+  backdrop.onclick = closeFabMenu;
+
+  const menu = document.createElement('div');
+  menu.id = 'fab-menu';
+  menu.style.cssText = 'position:fixed;right:20px;bottom:96px;z-index:40;display:flex;flex-direction:column;gap:10px;width:min(280px,calc(100vw - 32px));opacity:0;transform:translateY(10px);transition:opacity 180ms ease,transform 180ms ease;';
+  menu.innerHTML = `
+    <button onclick="closeFabMenu(); openRegistrarGasto();" style="display:flex;align-items:center;gap:10px;width:100%;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;color:var(--text-primary);font-size:15px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
+      <span style="font-size:20px;line-height:1">💸</span>
+      <span>Registrar gasto</span>
+    </button>
+    <button onclick="closeFabMenu(); openRegistrarIngreso();" style="display:flex;align-items:center;gap:10px;width:100%;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;color:var(--text-primary);font-size:15px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
+      <span style="font-size:20px;line-height:1">💰</span>
+      <span>Registrar ingreso</span>
+    </button>
+  `;
+
+  app.appendChild(backdrop);
+  app.appendChild(menu);
+
+  requestAnimationFrame(() => {
+    menu.style.opacity = '1';
+    menu.style.transform = 'translateY(0)';
+  });
+
+  setFabMainIcon(true);
+}
+
+function closeFabMenu() {
+  const menu = document.getElementById('fab-menu');
+  const backdrop = document.getElementById('fab-menu-backdrop');
+
+  if (menu) {
+    menu.style.opacity = '0';
+    menu.style.transform = 'translateY(10px)';
+    setTimeout(() => menu.remove(), 180);
+  }
+
+  if (backdrop) backdrop.remove();
+  setFabMainIcon(false);
+}
+
+function toggleFabMenu() {
+  if (document.getElementById('fab-menu')) {
+    closeFabMenu();
+    return;
+  }
+
+  openFabMenu();
 }
 
 // ---- CUENTAS ----
