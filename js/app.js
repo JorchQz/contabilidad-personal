@@ -852,8 +852,77 @@ async function guardarIngreso() {
 
   if (error) { showSnackbar('Error al guardar', 'error'); return; }
   closeModal();
+
+  const { data: gastosFijos, error: gastosFijosError } = await db
+    .from('gastos_fijos')
+    .select('descripcion, monto, frecuencia')
+    .eq('usuario_id', getUsuarioId())
+    .eq('activo', true);
+
+  if (gastosFijosError) {
+    showSnackbar('Ingreso registrado ✓', 'success');
+    await loadDashboard();
+    return;
+  }
+
+  const gastosAplicables = (gastosFijos || []).filter(gasto => gastoFijoAplicaPorFrecuencia(gasto.frecuencia, fecha));
+  const totalComprometido = gastosAplicables.reduce((acc, gasto) => acc + Number(gasto.monto || 0), 0);
+  const libre = monto - totalComprometido;
+
+  openModal('💰 Dinero comprometido', `
+    <div class="card" style="margin-bottom:12px;background:var(--bg-elevated)">
+      <div style="font-size:12px;color:var(--text-secondary)">Ingreso recibido</div>
+      <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--green)">${formatMXN(monto)}</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;max-height:280px;overflow:auto">
+      ${gastosAplicables.length === 0 ? `
+        <div class="card" style="margin-bottom:0">
+          <div style="font-size:14px;color:var(--text-secondary)">No hay gastos fijos comprometidos para este periodo.</div>
+        </div>
+      ` : gastosAplicables.map(gasto => `
+        <div class="item-row" style="margin-bottom:0">
+          <div class="item-row-emoji">📌</div>
+          <div class="item-row-info">
+            <div class="item-row-name">${gasto.descripcion}</div>
+            <div class="item-row-detail">${gasto.frecuencia}</div>
+          </div>
+          <div class="item-row-amount">${formatMXN(gasto.monto)}</div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="card" style="margin-bottom:16px;background:var(--bg-elevated)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:13px;color:var(--text-secondary)">Total comprometido</span>
+        <strong style="font-size:16px;color:var(--yellow)">${formatMXN(totalComprometido)}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:13px;color:var(--text-secondary)">Ingreso recibido</span>
+        <strong style="font-size:16px">${formatMXN(monto)}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border)">
+        <span style="font-size:13px;color:var(--text-secondary)">Te queda libre</span>
+        <strong style="font-size:18px;color:${libre >= 0 ? 'var(--green)' : 'var(--red)'}">${formatMXN(libre)}</strong>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" onclick="closeModal()">Entendido</button>
+  `);
+
   showSnackbar('Ingreso registrado ✓', 'success');
   await loadDashboard();
+}
+
+function gastoFijoAplicaPorFrecuencia(frecuencia, fechaBase) {
+  const fechaRef = fechaBase ? new Date(`${fechaBase}T00:00:00`) : new Date();
+  const dia = fechaRef.getDate();
+
+  if (frecuencia === 'semanal') return true;
+  if (frecuencia === 'quincenal') return dia <= 15 || dia > 15;
+  if (frecuencia === 'mensual') return true;
+
+  return false;
 }
 
 // Registrar Gasto
