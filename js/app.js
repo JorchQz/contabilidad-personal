@@ -499,18 +499,20 @@ async function renderApp() {
 // ---- DASHBOARD ----
 async function loadDashboard() {
   const uid = getUsuarioId();
-  const [{ data: usuario }, { data: ingresos }, { data: gastos }, { data: deudas }, { data: alertas }] = await Promise.all([
+  const [{ data: usuario }, { data: ingresos }, { data: gastos }, { data: deudas }, { data: cuentas }, { data: alertas }] = await Promise.all([
     db.from('usuarios').select('nombre').eq('id', uid).single(),
     db.from('ingresos').select('monto').eq('usuario_id', uid),
     db.from('gastos').select('monto').eq('usuario_id', uid),
     db.from('deudas').select('monto_actual').eq('usuario_id', uid).eq('activa', true),
+    db.from('cuentas').select('saldo_inicial').eq('usuario_id', uid).eq('activa', true),
     db.from('gastos_fijos').select('descripcion, monto, frecuencia').eq('usuario_id', uid).eq('activo', true)
   ]);
 
+  const totalSaldoInicial = (cuentas || []).reduce((s, c) => s + Number(c.saldo_inicial), 0);
   const totalIngresos = (ingresos || []).reduce((s, i) => s + Number(i.monto), 0);
   const totalGastos = (gastos || []).reduce((s, g) => s + Number(g.monto), 0);
   const totalDeuda = (deudas || []).reduce((s, d) => s + Number(d.monto_actual), 0);
-  const disponible = totalIngresos - totalGastos;
+  const disponible = totalSaldoInicial + totalIngresos - totalGastos;
 
   const horaActual = new Date().getHours();
   const saludo = horaActual < 12 ? 'Buenos días' : horaActual < 19 ? 'Buenas tardes' : 'Buenas noches';
