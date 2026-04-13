@@ -798,7 +798,7 @@ async function renderApp() {
   await loadMetas();
   await loadFijos();
   loadGastos();
-  loadAjustes();
+  await loadAjustes();
 }
 
 // ---- DASHBOARD ----
@@ -1374,19 +1374,197 @@ async function loadGastos() {
 }
 
 // ---- AJUSTES ----
-function loadAjustes() {
+function formatearFrecuenciaIngresoProgramado(frecuencia, diaPago, diaSemana) {
+  const diasSemana = ['domingos', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabados'];
+
+  if (frecuencia === 'mensual') {
+    return `Mensual${diaPago ? ` · dia ${diaPago}` : ''}`;
+  }
+
+  if (frecuencia === 'quincenal') {
+    return `Quincenal${diaPago ? ` · dia ${diaPago}` : ''}`;
+  }
+
+  if (frecuencia === 'semanal') {
+    const dia = Number.isInteger(diaSemana) && diaSemana >= 0 && diaSemana <= 6 ? diasSemana[diaSemana] : null;
+    return `Semanal${dia ? ` · ${dia}` : ''}`;
+  }
+
+  return frecuencia || 'Sin frecuencia';
+}
+
+async function loadAjustes() {
+  const uid = getUsuarioId();
+  const { data: ingresosProgramados, error } = await db
+    .from('ingresos_programados')
+    .select('*')
+    .eq('usuario_id', uid)
+    .eq('activo', true)
+    .order('created_at', { ascending: true });
+
+  const listaIngresosProgramados = error
+    ? `
+      <div class="empty-state" style="padding:20px 0">
+        <div class="empty-icon">⚠️</div>
+        <p>No se pudieron cargar tus ingresos programados.</p>
+      </div>
+    `
+    : (!ingresosProgramados || ingresosProgramados.length === 0
+      ? `
+        <div class="empty-state" style="padding:20px 0">
+          <div class="empty-icon">💼</div>
+          <p>Aun no tienes ingresos programados.</p>
+        </div>
+      `
+      : ingresosProgramados.map(i => `
+        <div class="item-row" style="margin-bottom:8px">
+          <div class="item-row-emoji">💰</div>
+          <div class="item-row-info">
+            <div class="item-row-name">${i.descripcion}</div>
+            <div class="item-row-detail">${formatearFrecuenciaIngresoProgramado(i.frecuencia, i.dia_pago, i.dia_semana)}</div>
+          </div>
+          <div class="item-row-amount" style="color:var(--green)">${formatMXN(i.monto_estimado)}</div>
+        </div>
+      `).join(''));
+
   document.getElementById('page-ajustes').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Ajustes</h1>
     </div>
     <div class="page-body">
       <div class="card" style="margin-bottom:12px">
-        <div style="font-size:14px;color:var(--text-secondary);margin-bottom:4px">Versión</div>
+        <div style="font-size:14px;color:var(--text-secondary);margin-bottom:4px">Version</div>
         <div style="font-weight:600">JM Finance v1.0</div>
       </div>
+
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px">
+          <div style="font-weight:700;font-size:16px">Mis ingresos programados</div>
+          <button onclick="openAgregarIngresoProgramado()" style="background:var(--green-soft);border:1px solid rgba(45,212,160,0.2);border-radius:var(--radius-sm);padding:8px 12px;color:var(--green);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Agregar ingreso programado</button>
+        </div>
+        ${listaIngresosProgramados}
+      </div>
+
       <button class="btn btn-danger" onclick="resetApp()">Resetear datos (desarrollo)</button>
     </div>
   `;
+}
+
+function openAgregarIngresoProgramado() {
+  openModal('Nuevo ingreso programado', `
+    <div class="form-group">
+      <label class="form-label">Descripcion</label>
+      <input class="form-input" id="ip-desc" type="text" placeholder="Ej: Salario semanal" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Monto estimado</label>
+      <input class="form-input" id="ip-monto" type="number" placeholder="$0.00" min="0" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Frecuencia</label>
+      <select class="form-select" id="ip-freq" onchange="renderCamposFechaIngresoProgramado()">
+        <option value="semanal">Semanal</option>
+        <option value="quincenal">Quincenal</option>
+        <option value="mensual">Mensual</option>
+      </select>
+    </div>
+    <div class="form-group" id="ip-fecha-campos"></div>
+    <button class="btn btn-primary" onclick="guardarIngresoProgramado()">Guardar ingreso programado</button>
+  `);
+
+  renderCamposFechaIngresoProgramado();
+}
+
+function renderCamposFechaIngresoProgramado() {
+  const frecuencia = document.getElementById('ip-freq')?.value;
+  const campos = document.getElementById('ip-fecha-campos');
+  if (!campos) return;
+
+  if (frecuencia === 'mensual') {
+    campos.innerHTML = `
+      <label class="form-label">Dia del mes</label>
+      <input class="form-input" id="ip-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />
+    `;
+    return;
+  }
+
+  if (frecuencia === 'semanal') {
+    campos.innerHTML = `
+      <label class="form-label">Dia de la semana</label>
+      <select class="form-select" id="ip-dia-semana">
+        <option value="0">Domingo</option>
+        <option value="1">Lunes</option>
+        <option value="2">Martes</option>
+        <option value="3">Miercoles</option>
+        <option value="4">Jueves</option>
+        <option value="5">Viernes</option>
+        <option value="6">Sabado</option>
+      </select>
+    `;
+    return;
+  }
+
+  if (frecuencia === 'quincenal') {
+    campos.innerHTML = `
+      <label class="form-label">Dia de la quincena</label>
+      <input class="form-input" id="ip-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" />
+    `;
+    return;
+  }
+
+  campos.innerHTML = '';
+}
+
+async function guardarIngresoProgramado() {
+  const descripcion = document.getElementById('ip-desc')?.value.trim();
+  const monto_estimado = parseFloat(document.getElementById('ip-monto')?.value);
+  const frecuencia = document.getElementById('ip-freq')?.value;
+  let dia_pago = null;
+  let dia_semana = null;
+
+  if (!descripcion || !monto_estimado) {
+    showSnackbar('Completa descripcion y monto', 'error');
+    return;
+  }
+
+  if (frecuencia === 'semanal') {
+    dia_semana = parseInt(document.getElementById('ip-dia-semana')?.value, 10);
+    if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
+      showSnackbar('Selecciona un dia de la semana valido', 'error');
+      return;
+    }
+  } else if (frecuencia === 'mensual') {
+    dia_pago = parseInt(document.getElementById('ip-dia-pago')?.value, 10);
+    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
+      showSnackbar('Ingresa un dia del mes entre 1 y 31', 'error');
+      return;
+    }
+  } else if (frecuencia === 'quincenal') {
+    dia_pago = parseInt(document.getElementById('ip-dia-pago')?.value, 10);
+    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
+      showSnackbar('Ingresa un dia de la quincena entre 1 y 15', 'error');
+      return;
+    }
+  }
+
+  const { error } = await db.from('ingresos_programados').insert({
+    usuario_id: getUsuarioId(),
+    descripcion,
+    monto_estimado,
+    frecuencia,
+    dia_semana,
+    dia_pago,
+    activo: true
+  });
+
+  if (error) {
+    showSnackbar('No se pudo guardar el ingreso programado', 'error');
+    return;
+  }
+
+  closeModal();
+  showSnackbar('Ingreso programado guardado ✓', 'success');
+  await loadAjustes();
 }
 
 function resetApp() {
