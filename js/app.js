@@ -128,6 +128,104 @@ function renderLucideIcons() {
   }
 }
 
+let dashboardExpandedPagoId = null;
+
+function ensurePagosProximosStyles() {
+  if (document.getElementById('pagos-proximos-styles')) return;
+
+  const style = document.createElement('style');
+  style.id = 'pagos-proximos-styles';
+  style.textContent = `
+    .pago-pendiente-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .pago-pendiente-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px;
+    }
+    .pago-pendiente-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .pago-pendiente-extra {
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      transition: max-height 220ms ease, opacity 220ms ease;
+      padding: 0 12px;
+    }
+    .pago-pendiente-card.expanded .pago-pendiente-extra {
+      max-height: 90px;
+      opacity: 1;
+      padding: 0 12px 12px;
+    }
+    .pago-pendiente-chevron {
+      transition: transform 220ms ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pago-pendiente-card.expanded .pago-pendiente-chevron {
+      transform: rotate(180deg);
+    }
+  `;
+
+  document.head.appendChild(style);
+}
+
+function togglePagoPendienteExpand(itemId) {
+  dashboardExpandedPagoId = dashboardExpandedPagoId === itemId ? null : itemId;
+  loadDashboard();
+}
+
+function openMarcarPagoFijo(gastoFijoId) {
+  openModal('Marcar como pagado', `
+    <p class="form-hint" style="margin-bottom:12px">Se registrará este gasto fijo como pagado hoy.</p>
+    <button class="btn btn-primary" onclick="confirmarMarcarPagoFijo('${gastoFijoId}')">Marcar como pagado</button>
+  `);
+}
+
+async function confirmarMarcarPagoFijo(gastoFijoId) {
+  const fechaHoy = new Date().toISOString().split('T')[0];
+  const { error } = await db.from('gastos_fijos').update({ ultimo_pago: fechaHoy }).eq('id', gastoFijoId);
+
+  if (error) {
+    showSnackbar('No se pudo actualizar el gasto fijo', 'error');
+    return;
+  }
+
+  closeModal();
+  dashboardExpandedPagoId = null;
+  showSnackbar('Pago registrado ✓', 'success');
+  await loadDashboard();
+  await loadFijos();
+}
+
+async function abrirPagoPendienteDeuda(deudaId) {
+  const { data: deuda, error } = await db
+    .from('deudas')
+    .select('id, acreedor, monto_actual, tipo_deuda, monto_ultimo_pago')
+    .eq('id', deudaId)
+    .maybeSingle();
+
+  if (error || !deuda) {
+    showSnackbar('No se pudo cargar la deuda', 'error');
+    return;
+  }
+
+  openPagarDeuda(deuda.id, deuda.acreedor, deuda.monto_actual, deuda.tipo_deuda, deuda.monto_ultimo_pago);
+}
+
 function calcularCuentasConSaldo(cuentas = [], ingresosPorCuenta = [], gastosPorCuenta = [], pagosDeudaPorCuenta = []) {
   const sumasIngresosPorCuenta = ingresosPorCuenta.reduce((acc, mov) => {
     const cuentaId = mov.cuenta_id;
@@ -416,6 +514,8 @@ async function getPagosPendientes() {
     }
 
     pendientes.push({
+      item_id: `fijo-${gf.id}`,
+      gasto_fijo_id: gf.id,
       nombre: gf.descripcion,
       monto: Number(gf.monto || 0),
       fecha_esperada: fechaEsperada,
@@ -440,6 +540,11 @@ async function getPagosPendientes() {
         const fechaVenc = normalizeDate(new Date(proximoPago.fecha_vencimiento + 'T00:00:00'));
         if (isDateInRange(fechaVenc, hoy, fechaLimite)) {
           pendientes.push({
+            item_id: `deuda-${d.id}`,
+            deuda_id: d.id,
+            tipo_deuda: d.tipo_deuda || 'simple',
+            monto_actual: Number(d.monto_actual || 0),
+            monto_ultimo_pago: Number(d.monto_ultimo_pago || 0),
             nombre: d.acreedor,
             monto: Number(proximoPago.monto_esperado || 0),
             fecha_esperada: fechaVenc,
@@ -471,6 +576,11 @@ async function getPagosPendientes() {
     }
 
     pendientes.push({
+      item_id: `deuda-${d.id}`,
+      deuda_id: d.id,
+      tipo_deuda: d.tipo_deuda || 'simple',
+      monto_actual: Number(d.monto_actual || 0),
+      monto_ultimo_pago: Number(d.monto_ultimo_pago || 0),
       nombre: d.acreedor,
       monto: Number(d.monto_pago || 0),
       fecha_esperada: fechaEsperada,
@@ -1020,6 +1130,8 @@ async function renderApp() {
 
 // ---- DASHBOARD ----
 async function loadDashboard() {
+  ensurePagosProximosStyles();
+
   const uid = getUsuarioId();
   const [
     { data: usuario },
@@ -1078,18 +1190,48 @@ async function loadDashboard() {
       </div>
     </div>
 
-    ${pagosPendientes && pagosPendientes.length > 0 ? `
-    <div class="alert-banner">
-      <div class="alert-icon"><i data-lucide="alert-triangle" style="width:18px;height:18px;stroke-width:1.75"></i></div>
-      <div class="alert-text">
-        ${proximaFechaCobro
-          ? `<strong>Para tu cobro del ${proximaFechaCobro.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })} aparta: ${formatMXN(totalPendientePeriodo)}</strong>`
-          : `<strong>Pagos pendientes próximos: ${formatMXN(totalPendientePeriodo)}</strong>`
-        }
-        ${pagosPendientes.map(p => `<br>· ${p.tipo === 'fijo' ? '<i data-lucide="pin" style="width:18px;height:18px;stroke-width:1.75"></i>' : '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>'} ${p.nombre} — ${formatMXN(p.monto)} (${p.fecha_esperada.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' })})`).join('')}
-      </div>
+    <div style="padding: 0 16px; margin-bottom: 8px">
+      <p class="section-title">Pagos próximos</p>
+      ${proximaFechaCobro ? `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Para tu cobro del ${proximaFechaCobro.toLocaleDateString('es-MX', { day: 'numeric', month: 'long' })}</div>` : ''}
+      ${!pagosPendientes || pagosPendientes.length === 0 ? `
+        <div class="card" style="margin-bottom:0;display:flex;align-items:flex-start;gap:10px">
+          <i data-lucide="check-circle" style="width:18px;height:18px;stroke-width:1.75"></i>
+          <div>
+            <div class="item-row-name">Todo al día</div>
+            <div class="item-row-detail">Sin pagos pendientes hasta tu próximo cobro</div>
+          </div>
+        </div>
+      ` : pagosPendientes.map(p => {
+        const expanded = dashboardExpandedPagoId === p.item_id;
+        const fechaTxt = p.fecha_esperada.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' });
+        return `
+          <div class="pago-pendiente-card ${expanded ? 'expanded' : ''}" onclick="togglePagoPendienteExpand('${p.item_id}')">
+            <div class="pago-pendiente-main">
+              <div class="pago-pendiente-left">
+                ${p.tipo === 'fijo'
+                  ? '<i data-lucide="pin" style="width:18px;height:18px;stroke-width:1.75"></i>'
+                  : '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>'
+                }
+                <div>
+                  <div class="item-row-name">${p.nombre}</div>
+                  <div class="item-row-detail">${fechaTxt}</div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+                <div class="item-row-amount">${formatMXN(p.monto)}</div>
+                <span class="pago-pendiente-chevron"><i data-lucide="chevron-down" style="width:18px;height:18px;stroke-width:1.75"></i></span>
+              </div>
+            </div>
+            <div class="pago-pendiente-extra" onclick="event.stopPropagation()">
+              ${p.tipo === 'deuda'
+                ? `<button class="btn btn-primary" onclick="abrirPagoPendienteDeuda('${p.deuda_id}')">Registrar pago</button>`
+                : `<button class="btn btn-primary" onclick="openMarcarPagoFijo('${p.gasto_fijo_id}')">Marcar como pagado</button>`
+              }
+            </div>
+          </div>
+        `;
+      }).join('')}
     </div>
-    ` : ''}
 
   `;
 
@@ -1106,9 +1248,7 @@ async function loadDashboard() {
   fab.onclick = toggleFabMenu;
   setFabMainIcon(false);
   renderLucideIcons();
-  if (window.lucide) {
-    lucide.createIcons();
-  }
+  if (window.lucide) lucide.createIcons();
 }
 
 function setFabMainIcon(isOpen) {
