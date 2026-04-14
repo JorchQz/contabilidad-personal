@@ -568,16 +568,16 @@ function renderStep2Body(showForm = false) {
 
   document.getElementById('onboarding-body').innerHTML = `
     <div class="item-list" id="cuentas-list">
-      ${onboardingData.cuentas.map((c, i) => `
-        <div class="item-row">
-          <div class="item-row-emoji">${TIPOS.find(t => t.value === c.tipo)?.emoji || '💳'}</div>
-          <div class="item-row-info">
-            <div class="item-row-name">${c.nombre}</div>
-            <div class="item-row-detail">${TIPOS.find(t => t.value === c.tipo)?.label} · Saldo inicial: ${formatMXN(c.saldo_inicial)}</div>
+        ${onboardingData.cuentas.map((c, i) => `
+          <div class="item-row">
+            <div class="item-row-emoji">${TIPOS.find(t => t.value === c.tipo)?.emoji || '💳'}</div>
+            <div class="item-row-info">
+              <div class="item-row-name">${c.nombre}</div>
+              <div class="item-row-detail">${TIPOS.find(t => t.value === c.tipo)?.label} · Saldo inicial: ${formatMXN(c.saldo_inicial)}</div>
+            </div>
+            <button class="item-row-delete" onclick="removeCuenta(${i})">✕</button>
           </div>
-          <button class="item-row-delete" onclick="removeCuenta(${i})">✕</button>
-        </div>
-      `).join('')}
+        `).join('')}
     </div>
 
     ${showForm ? `
@@ -638,17 +638,17 @@ function renderStep3Body(showForm = false) {
 
   document.getElementById('onboarding-body').innerHTML = `
     <div class="item-list" id="deudas-list">
-      ${onboardingData.deudas.map((d, i) => `
-        <div class="item-row">
-          <div class="item-row-emoji">💸</div>
-          <div class="item-row-info">
-            <div class="item-row-name">${d.acreedor}</div>
-            <div class="item-row-detail">${d.tipo_pago}${d.monto_pago ? ` · ${formatMXN(d.monto_pago)}/pago` : ''}</div>
+        ${onboardingData.deudas.map((d, i) => `
+          <div class="item-row">
+            <div class="item-row-emoji">💸</div>
+            <div class="item-row-info">
+              <div class="item-row-name">${d.acreedor}</div>
+              <div class="item-row-detail">${d.tipo_pago}${d.monto_pago ? ` · ${formatMXN(d.monto_pago)}/pago` : ''}</div>
+            </div>
+            <div class="item-row-amount">${formatMXN(d.monto_actual)}</div>
+            <button class="item-row-delete" onclick="removeDeuda(${i})">✕</button>
           </div>
-          <div class="item-row-amount">${formatMXN(d.monto_actual)}</div>
-          <button class="item-row-delete" onclick="removeDeuda(${i})">✕</button>
-        </div>
-      `).join('')}
+        `).join('')}
     </div>
 
     ${showForm ? `
@@ -710,17 +710,17 @@ function renderStep4Body(showForm = false) {
 
   document.getElementById('onboarding-body').innerHTML = `
     <div class="item-list">
-      ${onboardingData.gastosFijos.map((g, i) => `
-        <div class="item-row">
-          <div class="item-row-emoji">📌</div>
-          <div class="item-row-info">
-            <div class="item-row-name">${g.descripcion}</div>
-            <div class="item-row-detail">${g.frecuencia}</div>
+        ${onboardingData.gastosFijos.map((g, i) => `
+          <div class="item-row">
+            <div class="item-row-emoji">📌</div>
+            <div class="item-row-info">
+              <div class="item-row-name">${g.descripcion}</div>
+              <div class="item-row-detail">${g.frecuencia}</div>
+            </div>
+            <div class="item-row-amount">${formatMXN(g.monto)}</div>
+            <button class="item-row-delete" onclick="removeGastoFijo(${i})">✕</button>
           </div>
-          <div class="item-row-amount">${formatMXN(g.monto)}</div>
-          <button class="item-row-delete" onclick="removeGastoFijo(${i})">✕</button>
-        </div>
-      `).join('')}
+        `).join('')}
     </div>
 
     ${showForm ? `
@@ -1018,7 +1018,7 @@ async function loadDashboard() {
   document.getElementById('page-dashboard').innerHTML = `
     <div class="page-header">
       <div>
-        <p class="text-secondary" style="font-size:13px">${saludo} 👋</p>
+        <p class="text-secondary" style="font-size:12px">${saludo} 👋</p>
         <h1 class="page-title">${usuario?.nombre?.split(' ')[0] || 'JM Finance'}</h1>
       </div>
     </div>
@@ -1098,11 +1098,11 @@ function openFabMenu() {
   menu.id = 'fab-menu';
   menu.style.cssText = 'position:fixed;bottom:145px;right:calc(50% - 215px + 16px);z-index:40;display:flex;flex-direction:column;gap:10px;align-items:flex-end;opacity:0;transform:translateY(10px);transition:opacity 180ms ease,transform 180ms ease;';
   menu.innerHTML = `
-    <button onclick="closeFabMenu(); openRegistrarGasto();" style="display:flex;align-items:center;gap:10px;width:180px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text-primary);font-size:15px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
+    <button onclick="closeFabMenu(); openRegistrarGasto();" style="display:flex;align-items:center;gap:10px;width:180px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text-primary);font-size:14px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
       <span style="font-size:20px;line-height:1">💸</span>
       <span>Registrar gasto</span>
     </button>
-    <button onclick="closeFabMenu(); openRegistrarIngreso();" style="display:flex;align-items:center;gap:10px;width:180px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text-primary);font-size:15px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
+    <button onclick="closeFabMenu(); openRegistrarIngreso();" style="display:flex;align-items:center;gap:10px;width:180px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text-primary);font-size:14px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
       <span style="font-size:20px;line-height:1">💰</span>
       <span>Registrar ingreso</span>
     </button>
@@ -1186,8 +1186,8 @@ async function loadCuentas() {
         `).join('')}
         <div class="card" style="margin-top:8px;background:var(--bg-elevated)">
           <div style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-size:13px;color:var(--text-secondary)">Total general</span>
-            <span style="font-size:16px;font-weight:700;font-family:var(--font-display)">${formatMXN(totalGeneralCuentas)}</span>
+            <span style="font-size:12px;color:var(--text-secondary)">Total general</span>
+            <span style="font-size:15px;font-weight:700;font-family:var(--font-display)">${formatMXN(totalGeneralCuentas)}</span>
           </div>
         </div>
       `}
@@ -1237,7 +1237,7 @@ async function loadDeudas() {
                 <span style="font-weight:700;color:var(--accent)">${formatMXN(proximoPago.monto_esperado)}</span>
               </div>
               <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Vence: ${new Date(proximoPago.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-MX')}</div>
-              <button onclick="openPagarDeuda('${d.id}', '${d.acreedor}', ${d.monto_actual}, '${d.tipo_deuda}', ${d.monto_ultimo_pago || null})" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
+              <button onclick="openPagarDeuda('${d.id}', '${d.acreedor}', ${d.monto_actual}, '${d.tipo_deuda}', ${d.monto_ultimo_pago || null})" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
                 Registrar pago
               </button>
             </div>
@@ -1245,7 +1245,7 @@ async function loadDeudas() {
         }
       } else {
         botonPagoHTML = `
-          <button onclick="openPagarDeuda('${d.id}', '${d.acreedor}', ${d.monto_actual}, '${d.tipo_deuda}', ${d.monto_ultimo_pago || null})" style="margin-top:12px;background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
+          <button onclick="openPagarDeuda('${d.id}', '${d.acreedor}', ${d.monto_actual}, '${d.tipo_deuda}', ${d.monto_ultimo_pago || null})" style="margin-top:12px;background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
             Registrar pago
           </button>
         `;
@@ -1274,7 +1274,7 @@ async function loadDeudas() {
   document.getElementById('page-deudas').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Mis deudas</h1>
-      <button onclick="openAgregarDeuda()" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nueva</button>
+      <button onclick="openAgregarDeuda()" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nueva</button>
     </div>
     <div class="page-body">
       ${deudaCardsHTML}
@@ -1290,7 +1290,7 @@ async function loadMetas() {
   document.getElementById('page-metas').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Metas de ahorro</h1>
-      <button onclick="openAgregarMeta()" style="background:var(--green-soft);border:1px solid rgba(45,212,160,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--green);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nueva</button>
+      <button onclick="openAgregarMeta()" style="background:var(--green-soft);border:1px solid rgba(45,212,160,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--green);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nueva</button>
     </div>
     <div class="page-body">
       ${!metas || metas.length === 0 ? `
@@ -1305,8 +1305,8 @@ async function loadMetas() {
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
               <span style="font-size:28px">${m.emoji}</span>
               <div>
-                <div style="font-weight:600;font-size:16px">${m.nombre}</div>
-                <div style="font-size:13px;color:var(--text-secondary)">Meta: ${formatMXN(m.monto_objetivo)}</div>
+                <div style="font-weight:600;font-size:14px">${m.nombre}</div>
+                <div style="font-size:12px;color:var(--text-secondary)">Meta: ${formatMXN(m.monto_objetivo)}</div>
               </div>
             </div>
             <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:8px">
@@ -1356,7 +1356,7 @@ async function loadFijos() {
     document.getElementById('page-fijos').innerHTML = `
       <div class="page-header">
         <h1 class="page-title">Gastos fijos 📌</h1>
-        <button onclick="openAgregarGastoFijo()" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nuevo</button>
+        <button onclick="openAgregarGastoFijo()" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nuevo</button>
       </div>
       <div class="page-body">
         <div class="empty-state">
@@ -1371,7 +1371,7 @@ async function loadFijos() {
   document.getElementById('page-fijos').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Gastos fijos 📌</h1>
-      <button onclick="openAgregarGastoFijo()" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nuevo</button>
+      <button onclick="openAgregarGastoFijo()" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nuevo</button>
     </div>
     <div class="page-body">
       ${!fijos || fijos.length === 0 ? `
@@ -1626,13 +1626,13 @@ async function loadAjustes() {
       </div>
 
       <div class="card" style="margin-bottom:12px">
-        <div style="font-size:14px;color:var(--text-secondary);margin-bottom:4px">Version</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Version</div>
         <div style="font-weight:600">JM Finance v1.0</div>
       </div>
 
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px">
-          <div style="font-weight:700;font-size:16px">Mis ingresos programados</div>
+          <div style="font-weight:700;font-size:14px">Mis ingresos programados</div>
           <button onclick="openAgregarIngresoProgramado()" style="background:var(--green-soft);border:1px solid rgba(45,212,160,0.2);border-radius:var(--radius-sm);padding:8px 12px;color:var(--green);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Agregar ingreso programado</button>
         </div>
         ${listaIngresosProgramados}
@@ -1832,13 +1832,13 @@ async function guardarIngreso() {
   openModal('💰 Dinero comprometido', `
     <div class="card" style="margin-bottom:12px;background:var(--bg-elevated)">
       <div style="font-size:12px;color:var(--text-secondary)">Ingreso recibido</div>
-      <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--green)">${formatMXN(monto)}</div>
+      <div style="font-family:var(--font-display);font-size:15px;font-weight:700;color:var(--green)">${formatMXN(monto)}</div>
     </div>
 
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;max-height:280px;overflow:auto">
       ${pagosPendientes.length === 0 ? `
         <div class="card" style="margin-bottom:0">
-          <div style="font-size:14px;color:var(--text-secondary)">No hay pagos pendientes en este momento.</div>
+          <div style="font-size:12px;color:var(--text-secondary)">No hay pagos pendientes en este momento.</div>
         </div>
       ` : pagosPendientes.map(pago => `
         <div class="item-row" style="margin-bottom:0">
@@ -1854,16 +1854,16 @@ async function guardarIngreso() {
 
     <div class="card" style="margin-bottom:16px;background:var(--bg-elevated)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <span style="font-size:13px;color:var(--text-secondary)">Total comprometido</span>
-        <strong style="font-size:16px;color:var(--yellow)">${formatMXN(totalComprometido)}</strong>
+        <span style="font-size:12px;color:var(--text-secondary)">Total comprometido</span>
+        <strong style="font-size:15px;font-weight:700;color:var(--yellow)">${formatMXN(totalComprometido)}</strong>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <span style="font-size:13px;color:var(--text-secondary)">Ingreso recibido</span>
-        <strong style="font-size:16px">${formatMXN(monto)}</strong>
+        <span style="font-size:12px;color:var(--text-secondary)">Ingreso recibido</span>
+        <strong style="font-size:15px;font-weight:700">${formatMXN(monto)}</strong>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border)">
-        <span style="font-size:13px;color:var(--text-secondary)">Te queda libre</span>
-        <strong style="font-size:18px;color:${libre >= 0 ? 'var(--green)' : 'var(--red)'}">${formatMXN(libre)}</strong>
+        <span style="font-size:12px;color:var(--text-secondary)">Te queda libre</span>
+        <strong style="font-size:15px;font-weight:700;color:${libre >= 0 ? 'var(--green)' : 'var(--red)'}">${formatMXN(libre)}</strong>
       </div>
     </div>
 
@@ -1968,7 +1968,7 @@ async function openPagarDeuda(deudaId, acreedor, montoActual, tipoDeuda, montoUl
     infoReferenciaHTML = `
     <div class="card" style="margin-bottom:12px;background:var(--bg-elevated)">
       <div style="font-size:12px;color:var(--text-secondary)">Último pago</div>
-      <div style="font-size:16px;font-weight:600">${formatMXN(montoUltimoPago)}</div>
+      <div style="font-size:15px;font-weight:700">${formatMXN(montoUltimoPago)}</div>
     </div>
     `;
   }
@@ -1976,7 +1976,7 @@ async function openPagarDeuda(deudaId, acreedor, montoActual, tipoDeuda, montoUl
   openModal(`Pagar: ${acreedor}`, `
     <div class="card" style="margin-bottom:16px;background:var(--red-soft);border-color:rgba(240,93,110,0.2)">
       <div style="font-size:12px;color:var(--text-secondary)">Deuda actual</div>
-      <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--red)">${formatMXN(montoActual)}</div>
+      <div style="font-family:var(--font-display);font-size:15px;font-weight:700;color:var(--red)">${formatMXN(montoActual)}</div>
     </div>
     ${infoReferenciaHTML}
     <div class="form-group">
