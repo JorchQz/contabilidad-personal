@@ -1986,10 +1986,40 @@ async function guardarGasto() {
   const categoria_id = document.getElementById('rg-cat').value;
   const cuenta_id = document.getElementById('rg-cuenta')?.value || null;
   const fecha = document.getElementById('rg-fecha').value;
+  const usuarioId = getUsuarioId();
   if (!descripcion || !monto) { showSnackbar('Completa descripción y monto', 'error'); return; }
 
+  if (cuenta_id) {
+    const [
+      { data: cuenta, error: errorCuenta },
+      { data: ingresosCuenta, error: errorIngresos },
+      { data: gastosCuenta, error: errorGastos },
+      { data: pagosDeudaCuenta, error: errorPagosDeuda }
+    ] = await Promise.all([
+      db.from('cuentas').select('saldo_inicial').eq('id', cuenta_id).eq('usuario_id', usuarioId).single(),
+      db.from('ingresos').select('monto').eq('usuario_id', usuarioId).eq('cuenta_id', cuenta_id),
+      db.from('gastos').select('monto').eq('usuario_id', usuarioId).eq('cuenta_id', cuenta_id),
+      db.from('pagos_deuda').select('monto').eq('usuario_id', usuarioId).eq('cuenta_id', cuenta_id)
+    ]);
+
+    if (errorCuenta || errorIngresos || errorGastos || errorPagosDeuda || !cuenta) {
+      showSnackbar('No se pudo validar el saldo de la cuenta', 'error');
+      return;
+    }
+
+    const totalIngresosCuenta = (ingresosCuenta || []).reduce((acc, mov) => acc + Number(mov.monto || 0), 0);
+    const totalGastosCuenta = (gastosCuenta || []).reduce((acc, mov) => acc + Number(mov.monto || 0), 0);
+    const totalPagosDeudaCuenta = (pagosDeudaCuenta || []).reduce((acc, mov) => acc + Number(mov.monto || 0), 0);
+    const saldoDisponible = Number(cuenta.saldo_inicial || 0) + totalIngresosCuenta - totalGastosCuenta - totalPagosDeudaCuenta;
+
+    if (monto > saldoDisponible) {
+      showSnackbar('Saldo insuficiente — disponible: ' + formatMXN(saldoDisponible), 'error');
+      return;
+    }
+  }
+
   const gastoPayload = {
-    usuario_id: getUsuarioId(),
+    usuario_id: usuarioId,
     descripcion,
     monto,
     categoria_id,
