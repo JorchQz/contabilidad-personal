@@ -262,15 +262,26 @@ function getProximaFechaCobro(ingresoProgramado, fechaBase) {
   if (!ingresoProgramado) return null;
 
   if (ingresoProgramado.frecuencia === 'semanal') {
-    return getNextWeeklyDate(ingresoProgramado.dia_semana, base);
+    const diaSemana = ingresoProgramado.dia_semana;
+    const currentDay = base.getDay();
+    // Si hoy es el día de cobro, el próximo cobro es en 7 días
+    // Si no, calculamos el próximo
+    let daysAhead = diaSemana - currentDay;
+    if (daysAhead <= 0) daysAhead += 7;
+    const next = new Date(base);
+    next.setDate(base.getDate() + daysAhead);
+    return next;
   }
 
   if (ingresoProgramado.frecuencia === 'quincenal') {
     const year = base.getFullYear();
     const month = base.getMonth();
     const day = base.getDate();
-    if (day <= 1) return new Date(year, month, 1);
-    if (day <= 16) return new Date(year, month, 16);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    // Próxima quincena: día 1 o día 16
+    if (day < 1) return new Date(year, month, 1);
+    if (day < 16) return new Date(year, month, 16);
+    // Pasó el 16, próximo es día 1 del siguiente mes
     return new Date(year, month + 1, 1);
   }
 
@@ -286,7 +297,7 @@ async function getPagosPendientes() {
   const hoy = normalizeDate(new Date());
   const pendientes = [];
 
-  const { data: ingresosProgramados, error: errIngresosProgramados } = await db
+  const { data: ingresosProgramados } = await db
     .from('ingresos_programados')
     .select('*')
     .eq('usuario_id', usuarioId)
@@ -294,81 +305,109 @@ async function getPagosPendientes() {
     .order('created_at', { ascending: true })
     .limit(1);
 
-  if (errIngresosProgramados) {
-    console.error('Error consultando ingresos programados:', errIngresosProgramados);
-  }
-
   const ingresoBase = ingresosProgramados?.[0] || null;
   const proximaFechaCobro = getProximaFechaCobro(ingresoBase, hoy);
 
-  if (!proximaFechaCobro) {
-    pendientes.proxima_fecha_cobro = null;
-    pendientes.total_periodo = 0;
-    return pendientes;
-  }
+  // Si no hay ingreso programado, usamos 7 días adelante como ventana default
+  const fechaLimite = proximaFechaCobro || (() => {
+    const d = new Date(hoy);
+    d.setDate(d.getDate() + 7);
+    return d;
+  })();
 
   const [
-    { data: gastosFijos, error: errGF },
-    { data: deudas, error: errD }
+    { data: gastosFijos },
+    { data: deudas }
   ] = await Promise.all([
     db.from('gastos_fijos').select('*').eq('usuario_id', usuarioId).eq('activo', true),
     db.from('deudas').select('*').eq('usuario_id', usuarioId).eq('activa', true)
   ]);
 
-  if (!errGF && gastosFijos) {
-    for (const gf of gastosFijos) {
-      let fechaEsperada = null;
+  // Gastos fijos pendientes
+  for (const gf of (gastosFijos || [])) {
+    let fechaEsperada = null;
 
-      if (gf.frecuencia === 'semanal') {
-        fechaEsperada = getNextWeeklyDate(gf.dia_semana, hoy);
-      } else if (gf.frecuencia === 'mensual') {
-        fechaEsperada = getNextMonthlyDate(gf.dia_pago, hoy);
-      } else if (gf.frecuencia === 'quincenal') {
-        fechaEsperada = getNextQuincenalDate(gf.dia_pago, hoy);
-      }
-
-      const ultimoPagoDate = gf.ultimo_pago ? normalizeDate(`${gf.ultimo_pago}T00:00:00`) : null;
-      const pagadoEnPeriodo = ultimoPagoDate ? isDateInRange(ultimoPagoDate, hoy, proximaFechaCobro) : false;
-      const caeEnPeriodo = fechaEsperada ? isDateInRange(fechaEsperada, hoy, proximaFechaCobro) : false;
-
-      if (caeEnPeriodo && !pagadoEnPeriodo) {
-        pendientes.push({
-          nombre: gf.descripcion,
-          monto: Number(gf.monto || 0),
-          fecha_esperada: fechaEsperada,
-          tipo: 'fijo',
-          urgente: true
-        });
-      }
+    if (gf.frecuencia === 'semanal' && Number.isInteger(gf.dia_semana)) {
+      fechaEsperada = getNextWeeklyDate(gf.dia_semana, hoy);
+    } else if (gf.frecuencia === 'mensual' && gf.dia_pago) {
+      fechaEsperada = getNextMonthlyDate(gf.dia_pago, hoy);
+    } else if (gf.frecuencia === 'quincenal' && gf.dia_pago) {
+      fechaEsperada = getNextQuincenalDate(gf.dia_pago, hoy);
     }
+
+    if (!fechaEsperada) continue;
+
+    // Está dentro del período hoy → próximo cobro
+    if (!isDateInRange(fechaEsperada, hoy, fechaLimite)) continue;
+
+    // Ya se pagó en este período?
+    if (gf.ultimo_pago) {
+      const ultimoPago = normalizeDate(new Date(gf.ultimo_pago + 'T00:00:00'));
+      if (isDateInRange(ultimoPago, hoy, fechaLimite)) continue;
+    }
+
+    pendientes.push({
+      nombre: gf.descripcion,
+      monto: Number(gf.monto || 0),
+      fecha_esperada: fechaEsperada,
+      tipo: 'fijo',
+      urgente: true
+    });
   }
 
-  if (!errD && deudas) {
-    for (const d of deudas) {
-      let fechaEsperada = null;
+  // Deudas pendientes
+  for (const d of (deudas || [])) {
+    // Deudas con tabla: usar próximo pago programado
+    if (d.tipo_deuda === 'tabla') {
+      const { data: proximoPago } = await db.from('pagos_programados')
+        .select('fecha_vencimiento, monto_esperado')
+        .eq('deuda_id', d.id)
+        .eq('pagado', false)
+        .order('fecha_vencimiento')
+        .limit(1)
+        .single();
 
-      if (d.tipo_pago === 'semanal') {
-        fechaEsperada = getNextWeeklyDate(d.dia_semana, hoy);
-      } else if (d.tipo_pago === 'mensual') {
-        fechaEsperada = getNextMonthlyDate(d.dia_pago, hoy);
-      } else if (d.tipo_pago === 'quincenal') {
-        fechaEsperada = getNextQuincenalDate(d.dia_pago, hoy);
+      if (proximoPago) {
+        const fechaVenc = normalizeDate(new Date(proximoPago.fecha_vencimiento + 'T00:00:00'));
+        if (isDateInRange(fechaVenc, hoy, fechaLimite)) {
+          pendientes.push({
+            nombre: d.acreedor,
+            monto: Number(proximoPago.monto_esperado || 0),
+            fecha_esperada: fechaVenc,
+            tipo: 'deuda',
+            urgente: true
+          });
+        }
       }
-
-      const ultimoPagoDate = d.ultimo_pago ? normalizeDate(`${d.ultimo_pago}T00:00:00`) : null;
-      const pagadoEnPeriodo = ultimoPagoDate ? isDateInRange(ultimoPagoDate, hoy, proximaFechaCobro) : false;
-      const caeEnPeriodo = fechaEsperada ? isDateInRange(fechaEsperada, hoy, proximaFechaCobro) : false;
-
-      if (caeEnPeriodo && !pagadoEnPeriodo) {
-        pendientes.push({
-          nombre: d.acreedor,
-          monto: Number(d.monto_pago || d.monto_actual || 0),
-          fecha_esperada: fechaEsperada,
-          tipo: 'deuda',
-          urgente: true
-        });
-      }
+      continue;
     }
+
+    // Deudas simple/variable con frecuencia
+    let fechaEsperada = null;
+    if (d.tipo_pago === 'semanal' && Number.isInteger(d.dia_semana)) {
+      fechaEsperada = getNextWeeklyDate(d.dia_semana, hoy);
+    } else if (d.tipo_pago === 'mensual' && d.dia_pago) {
+      fechaEsperada = getNextMonthlyDate(d.dia_pago, hoy);
+    } else if (d.tipo_pago === 'quincenal' && d.dia_pago) {
+      fechaEsperada = getNextQuincenalDate(d.dia_pago, hoy);
+    }
+
+    if (!fechaEsperada) continue;
+    if (!isDateInRange(fechaEsperada, hoy, fechaLimite)) continue;
+
+    // Ya se pagó en este período?
+    if (d.ultimo_pago) {
+      const ultimoPago = normalizeDate(new Date(d.ultimo_pago + 'T00:00:00'));
+      if (isDateInRange(ultimoPago, hoy, fechaLimite)) continue;
+    }
+
+    pendientes.push({
+      nombre: d.acreedor,
+      monto: Number(d.monto_pago || 0),
+      fecha_esperada: fechaEsperada,
+      tipo: 'deuda',
+      urgente: true
+    });
   }
 
   pendientes.sort((a, b) => a.fecha_esperada - b.fecha_esperada);
@@ -961,12 +1000,15 @@ async function loadDashboard() {
       </div>
     </div>
 
-    ${pagosPendientes && pagosPendientes.length > 0 && proximaFechaCobro ? `
+    ${pagosPendientes && pagosPendientes.length > 0 ? `
     <div class="alert-banner">
       <div class="alert-icon">⚠️</div>
       <div class="alert-text">
-        <strong>Para tu próximo cobro del ${proximaFechaCobro.toLocaleDateString('es-MX')} aparta: ${formatMXN(totalPendientePeriodo)}</strong>
-        ${pagosPendientes.map(p => `<br>· ${p.nombre} — ${formatMXN(p.monto)}`).join('')}
+        ${proximaFechaCobro
+          ? `<strong>Para tu cobro del ${proximaFechaCobro.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })} aparta: ${formatMXN(totalPendientePeriodo)}</strong>`
+          : `<strong>Pagos pendientes próximos: ${formatMXN(totalPendientePeriodo)}</strong>`
+        }
+        ${pagosPendientes.map(p => `<br>· ${p.tipo === 'fijo' ? '📌' : '💸'} ${p.nombre} — ${formatMXN(p.monto)} (${p.fecha_esperada.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' })})`).join('')}
       </div>
     </div>
     ` : ''}
