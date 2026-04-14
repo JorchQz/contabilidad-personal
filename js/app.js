@@ -1305,7 +1305,7 @@ async function loadFijos() {
     .select('*')
     .eq('usuario_id', uid)
     .eq('activo', true)
-    .order('created_at', { ascending: true });
+    .order('descripcion', { ascending: true });
 
   if (error) {
     document.getElementById('page-fijos').innerHTML = `
