@@ -1086,7 +1086,7 @@ async function loadDashboard() {
           ? `<strong>Para tu cobro del ${proximaFechaCobro.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })} aparta: ${formatMXN(totalPendientePeriodo)}</strong>`
           : `<strong>Pagos pendientes próximos: ${formatMXN(totalPendientePeriodo)}</strong>`
         }
-        ${pagosPendientes.map(p => `<br>· ${p.tipo === 'fijo' ? '<i data-lucide="pin" style="width:18px;height:18px;stroke-width:1.75"></i>' : '<i data-lucide="trending-down" style="width:18px;height:18px;stroke-width:1.75"></i>'} ${p.nombre} — ${formatMXN(p.monto)} (${p.fecha_esperada.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' })})`).join('')}
+        ${pagosPendientes.map(p => `<br>· ${p.tipo === 'fijo' ? '<i data-lucide="pin" style="width:18px;height:18px;stroke-width:1.75"></i>' : '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>'} ${p.nombre} — ${formatMXN(p.monto)} (${p.fecha_esperada.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' })})`).join('')}
       </div>
     </div>
     ` : ''}
@@ -1106,6 +1106,9 @@ async function loadDashboard() {
   fab.onclick = toggleFabMenu;
   setFabMainIcon(false);
   renderLucideIcons();
+  if (window.lucide) {
+    lucide.createIcons();
+  }
 }
 
 function setFabMainIcon(isOpen) {
