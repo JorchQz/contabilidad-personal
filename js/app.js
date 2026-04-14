@@ -1181,7 +1181,7 @@ async function loadDeudas() {
           .eq('pagado', false)
           .order('fecha_vencimiento')
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (proximoPago) {
           botonPagoHTML = `
@@ -1995,7 +1995,7 @@ async function guardarPagoDeuda(deudaId, montoActual, tipoDeuda) {
       .eq('pagado', false)
       .order('fecha_vencimiento')
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (proximoPago) {
       await db.from('pagos_programados').update({
