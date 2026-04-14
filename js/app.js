@@ -30,6 +30,50 @@ const CATEGORIAS_DEFAULT = [
   { nombre: 'Extra', emoji: '⚡', tipo: 'ingreso' },
 ];
 
+// ---- TEMA ----
+const THEME_STORAGE_KEY = 'jmf_theme';
+
+function applyTheme(theme) {
+  const nextTheme = theme === 'light' ? 'light' : 'dark';
+
+  if (nextTheme === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+
+  localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+  updateThemeToggleUI();
+}
+
+function initTheme() {
+  const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+  const preferredTheme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+    ? 'light'
+    : 'dark';
+
+  applyTheme(savedTheme || preferredTheme);
+}
+
+function toggleTheme() {
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  applyTheme(isLight ? 'dark' : 'light');
+}
+
+function updateThemeToggleUI() {
+  const label = document.getElementById('theme-label');
+  const sw = document.getElementById('theme-switch');
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+
+  if (label) {
+    label.textContent = isLight ? '☀️  Modo claro' : '🌙  Modo oscuro';
+  }
+
+  if (sw) {
+    sw.classList.toggle('on', isLight);
+  }
+}
+
 // ---- HELPERS ----
 function formatMXN(amount) {
   return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0 }).format(amount);
@@ -418,6 +462,7 @@ async function getPagosPendientes() {
 
 // ---- INICIO ----
 window.addEventListener('DOMContentLoaded', async () => {
+  initTheme();
   await new Promise(r => setTimeout(r, 1200)); // splash
 
   const usuarioId = getUsuarioId();
@@ -1571,6 +1616,15 @@ async function loadAjustes() {
       <h1 class="page-title">Ajustes</h1>
     </div>
     <div class="page-body">
+      <div class="theme-toggle" onclick="toggleTheme()" style="margin-bottom:12px">
+        <div class="theme-toggle-label">
+          <span id="theme-label">🌙  Modo oscuro</span>
+        </div>
+        <div class="toggle-switch" id="theme-switch">
+          <div class="toggle-knob"></div>
+        </div>
+      </div>
+
       <div class="card" style="margin-bottom:12px">
         <div style="font-size:14px;color:var(--text-secondary);margin-bottom:4px">Version</div>
         <div style="font-weight:600">JM Finance v1.0</div>
@@ -1587,6 +1641,8 @@ async function loadAjustes() {
       <button class="btn btn-danger" onclick="resetApp()">Resetear datos (desarrollo)</button>
     </div>
   `;
+
+  updateThemeToggleUI();
 }
 
 function openAgregarIngresoProgramado() {
