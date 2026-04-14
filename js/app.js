@@ -1834,13 +1834,15 @@ async function openRegistrarIngreso() {
     </div>
     <div class="form-group">
       <label class="form-label">Tipo</label>
-      <select class="form-select" id="ri-tipo">
+      <select class="form-select" id="ri-tipo" onchange="toggleCamposPrestamo()">
         <option value="salario">Salario</option>
         <option value="beca">Beca</option>
         <option value="extra">Extra</option>
         <option value="otro">Otro</option>
+        <option value="prestamo">🤝 Préstamo recibido</option>
       </select>
     </div>
+    <div id="ri-prestamo-campos" style="display:none"></div>
     <div class="form-group">
       <label class="form-label">Descripción (opcional)</label>
       <input class="form-input" id="ri-desc" type="text" placeholder="Ej: Pago semana 1" />
@@ -1857,6 +1859,41 @@ async function openRegistrarIngreso() {
     </div>
     <button class="btn btn-primary" onclick="guardarIngreso()">Guardar ingreso</button>
   `);
+
+  toggleCamposPrestamo();
+}
+
+function toggleCamposPrestamo() {
+  const tipo = document.getElementById('ri-tipo')?.value;
+  const contenedor = document.getElementById('ri-prestamo-campos');
+  if (!contenedor) return;
+
+  if (tipo === 'prestamo') {
+    contenedor.style.display = 'block';
+    contenedor.innerHTML = `
+      <div class="form-group">
+        <label class="form-label">Prestamista</label>
+        <input class="form-input" id="ri-prestamista" type="text" placeholder="¿Quién te prestó?" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Frecuencia de pago</label>
+        <select class="form-select" id="ri-freq-prestamo">
+          <option value="semanal">Semanal</option>
+          <option value="quincenal">Quincenal</option>
+          <option value="mensual">Mensual</option>
+          <option value="libre">Libre</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Pago por cuota (opcional)</label>
+        <input class="form-input" id="ri-pago-prestamo" type="number" placeholder="Pago por cuota (opcional)" min="0" />
+      </div>
+    `;
+    return;
+  }
+
+  contenedor.style.display = 'none';
+  contenedor.innerHTML = '';
 }
 
 async function guardarIngreso() {
@@ -1866,7 +1903,11 @@ async function guardarIngreso() {
   const cuenta_id = document.getElementById('ri-cuenta')?.value || null;
   const fecha = document.getElementById('ri-fecha').value;
   const usuario_id = getUsuarioId();
+  const prestamista = document.getElementById('ri-prestamista')?.value?.trim() || '';
+  const frecuenciaPrestamo = document.getElementById('ri-freq-prestamo')?.value || 'libre';
+  const montoPagoPrestamo = parseFloat(document.getElementById('ri-pago-prestamo')?.value) || null;
   if (!monto) { showSnackbar('Ingresa un monto', 'error'); return; }
+  if (tipo === 'prestamo' && !prestamista) { showSnackbar('Escribe quién te prestó', 'error'); return; }
 
   const { error } = await db.from('ingresos').insert({
     usuario_id,
@@ -1874,6 +1915,29 @@ async function guardarIngreso() {
   });
 
   if (error) { showSnackbar('Error al guardar', 'error'); return; }
+
+  let mensajeExito = 'Ingreso registrado ✓';
+  let recargarConDeudas = false;
+
+  if (tipo === 'prestamo') {
+    const { error: errorDeuda } = await db.from('deudas').insert({
+      acreedor: prestamista,
+      monto_inicial: monto,
+      monto_actual: monto,
+      tipo_pago: frecuenciaPrestamo,
+      monto_pago: montoPagoPrestamo,
+      usuario_id,
+      tipo_deuda: 'simple'
+    });
+
+    if (errorDeuda) {
+      showSnackbar('Ingreso guardado, pero no se pudo registrar la deuda', 'error');
+    } else {
+      mensajeExito = 'Ingreso y deuda registrados ✓';
+      recargarConDeudas = true;
+    }
+  }
+
   closeModal();
 
   const pagosPendientes = await getPagosPendientes();
@@ -1926,7 +1990,12 @@ async function guardarIngreso() {
 
   renderLucideIcons();
 
-  showSnackbar('Ingreso registrado ✓', 'success');
+  showSnackbar(mensajeExito, 'success');
+
+  if (recargarConDeudas) {
+    await loadDashboard();
+    await loadDeudas();
+  }
 }
 
 async function onEntendidoDineroComprometido() {
