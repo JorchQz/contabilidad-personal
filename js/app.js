@@ -128,6 +128,16 @@ function renderLucideIcons() {
   }
 }
 
+function openActionSheet(title, actions) {
+  openModal(title, `
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${actions.map(action => `
+        <button class="btn ${action.danger ? 'btn-danger' : 'btn-secondary'}" onclick="${action.onClick}">${action.label}</button>
+      `).join('')}
+    </div>
+  `);
+}
+
 let dashboardExpandedPagoId = null;
 
 function ensurePagosProximosStyles() {
@@ -257,7 +267,8 @@ function calcularCuentasConSaldo(cuentas = [], ingresosPorCuenta = [], gastosPor
     return {
       ...cuenta,
       saldoCalculado: saldoCuenta,
-      emoji: getCuentaIcon(cuenta.tipo)
+      emoji: getCuentaIcon(cuenta.tipo),
+      tipoLabel: getCuentaTipos().find(t => t.value === cuenta.tipo)?.label || 'Otro'
     };
   });
 
@@ -1358,8 +1369,10 @@ async function loadCuentas() {
             <div class="item-row-emoji">${cuenta.emoji}</div>
             <div class="item-row-info">
               <div class="item-row-name">${cuenta.nombre}</div>
+              <div class="item-row-detail">${cuenta.tipoLabel}</div>
             </div>
             <div class="item-row-amount">${formatMXN(cuenta.saldoCalculado)}</div>
+            <button class="item-row-delete" onclick="openCuentaActions('${cuenta.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
           </div>
         `).join('')}
         <div class="card" style="margin-top:8px;background:var(--bg-elevated)">
@@ -1373,6 +1386,108 @@ async function loadCuentas() {
   `;
 
   renderLucideIcons();
+}
+
+function getCuentaTipos() {
+  return [
+    { value: 'efectivo', label: 'Efectivo' },
+    { value: 'debito', label: 'Debito / Banco' },
+    { value: 'negocio', label: 'Mercado Pago' },
+    { value: 'otro', label: 'Otro' }
+  ];
+}
+
+function openCuentaActions(cuentaId) {
+  openActionSheet('Opciones de cuenta', [
+    { label: 'Editar', onClick: `openEditarCuenta('${cuentaId}')` },
+    { label: 'Eliminar', onClick: `confirmarEliminarCuenta('${cuentaId}')`, danger: true }
+  ]);
+}
+
+async function openEditarCuenta(cuentaId) {
+  const { data: cuenta, error } = await db
+    .from('cuentas')
+    .select('id, nombre, tipo, saldo_inicial')
+    .eq('id', cuentaId)
+    .eq('usuario_id', getUsuarioId())
+    .maybeSingle();
+
+  if (error || !cuenta) {
+    showSnackbar('No se pudo cargar la cuenta', 'error');
+    return;
+  }
+
+  const opciones = getCuentaTipos();
+
+  openModal('Editar cuenta', `
+    <div class="form-group">
+      <label class="form-label">Nombre</label>
+      <input class="form-input" id="ec-nombre" type="text" value="${cuenta.nombre || ''}" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tipo</label>
+      <select class="form-select" id="ec-tipo">
+        ${opciones.map(op => `<option value="${op.value}" ${op.value === cuenta.tipo ? 'selected' : ''}>${op.label}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Saldo inicial</label>
+      <input class="form-input" id="ec-saldo" type="number" min="0" value="${Number(cuenta.saldo_inicial || 0)}" />
+    </div>
+    <button class="btn btn-primary" onclick="guardarEdicionCuenta('${cuenta.id}')">Guardar cambios</button>
+  `);
+}
+
+async function guardarEdicionCuenta(cuentaId) {
+  const nombre = document.getElementById('ec-nombre')?.value.trim();
+  const tipo = document.getElementById('ec-tipo')?.value;
+  const saldo_inicial = parseFloat(document.getElementById('ec-saldo')?.value);
+
+  if (!nombre || !tipo || Number.isNaN(saldo_inicial) || saldo_inicial < 0) {
+    showSnackbar('Completa los campos correctamente', 'error');
+    return;
+  }
+
+  const { error } = await db
+    .from('cuentas')
+    .update({ nombre, tipo, saldo_inicial })
+    .eq('id', cuentaId)
+    .eq('usuario_id', getUsuarioId());
+
+  if (error) {
+    showSnackbar('No se pudo actualizar la cuenta', 'error');
+    return;
+  }
+
+  closeModal();
+  showSnackbar('Cuenta actualizada ✓', 'success');
+  await loadCuentas();
+  await loadDashboard();
+}
+
+function confirmarEliminarCuenta(cuentaId) {
+  openModal('Eliminar cuenta', `
+    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">Los movimientos de esta cuenta se conservan en el historial.</p>
+    <button class="btn btn-danger" onclick="eliminarCuenta('${cuentaId}')">Eliminar cuenta</button>
+  `);
+}
+
+async function eliminarCuenta(cuentaId) {
+  const { error } = await db
+    .from('cuentas')
+    .update({ activa: false })
+    .eq('id', cuentaId)
+    .eq('usuario_id', getUsuarioId());
+
+  if (error) {
+    showSnackbar('No se pudo eliminar la cuenta', 'error');
+    return;
+  }
+
+  closeModal();
+  showSnackbar('Cuenta eliminada', 'success');
+  await loadCuentas();
+  await loadDashboard();
 }
 
 // ---- DEUDAS ----
@@ -1439,7 +1554,10 @@ async function loadDeudas() {
         <div class="deuda-card">
           <div class="deuda-header">
             <span class="deuda-acreedor">${badgeEmoji} ${d.acreedor}</span>
-            <span class="deuda-badge ${d.tipo_pago}">${d.tipo_pago || d.tipo_deuda}</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="deuda-badge ${d.tipo_pago}">${d.tipo_pago || d.tipo_deuda}</span>
+              <button class="item-row-delete" style="margin-left:0" onclick="openDeudaActions('${d.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+            </div>
           </div>
           <div class="deuda-progress">
             <div class="deuda-progress-fill" style="width:${Math.max(pct, 2)}%"></div>
@@ -1468,6 +1586,193 @@ async function loadDeudas() {
   renderLucideIcons();
 }
 
+function openDeudaActions(deudaId) {
+  openActionSheet('Opciones de deuda', [
+    { label: 'Editar', onClick: `openEditarDeuda('${deudaId}')` },
+    { label: 'Eliminar', onClick: `confirmarEliminarDeuda('${deudaId}')`, danger: true }
+  ]);
+}
+
+function renderCamposFechaEditarDeuda() {
+  const frecuencia = document.getElementById('ed-freq')?.value;
+  const campos = document.getElementById('ed-fecha-campos');
+  if (!campos) return;
+
+  if (frecuencia === 'mensual') {
+    campos.innerHTML = `
+      <label class="form-label">Dia del mes que pagas</label>
+      <input class="form-input" id="ed-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />
+    `;
+    return;
+  }
+
+  if (frecuencia === 'semanal') {
+    campos.innerHTML = `
+      <label class="form-label">Dia de la semana</label>
+      <select class="form-select" id="ed-dia-semana">
+        <option value="0">Domingo</option>
+        <option value="1">Lunes</option>
+        <option value="2">Martes</option>
+        <option value="3">Miercoles</option>
+        <option value="4">Jueves</option>
+        <option value="5">Viernes</option>
+        <option value="6">Sabado</option>
+      </select>
+    `;
+    return;
+  }
+
+  if (frecuencia === 'quincenal') {
+    campos.innerHTML = `
+      <label class="form-label">Dia de la quincena</label>
+      <input class="form-input" id="ed-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" />
+    `;
+    return;
+  }
+
+  campos.innerHTML = '';
+}
+
+async function openEditarDeuda(deudaId) {
+  const { data: deuda, error } = await db
+    .from('deudas')
+    .select('id, acreedor, monto_actual, tipo_pago, dia_pago, dia_semana, monto_pago')
+    .eq('id', deudaId)
+    .eq('usuario_id', getUsuarioId())
+    .maybeSingle();
+
+  if (error || !deuda) {
+    showSnackbar('No se pudo cargar la deuda', 'error');
+    return;
+  }
+
+  const frecuenciaInicial = deuda.tipo_pago || 'libre';
+
+  openModal('Editar deuda', `
+    <div class="form-group">
+      <label class="form-label">Acreedor</label>
+      <input class="form-input" id="ed-acreedor" type="text" value="${deuda.acreedor || ''}" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Monto actual</label>
+      <input class="form-input" id="ed-monto" type="number" min="0" value="${Number(deuda.monto_actual || 0)}" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Frecuencia de pago</label>
+      <select class="form-select" id="ed-freq" onchange="renderCamposFechaEditarDeuda()">
+        <option value="semanal" ${frecuenciaInicial === 'semanal' ? 'selected' : ''}>Semanal</option>
+        <option value="quincenal" ${frecuenciaInicial === 'quincenal' ? 'selected' : ''}>Quincenal</option>
+        <option value="mensual" ${frecuenciaInicial === 'mensual' ? 'selected' : ''}>Mensual</option>
+        <option value="libre" ${frecuenciaInicial === 'libre' ? 'selected' : ''}>Sin fecha fija</option>
+      </select>
+    </div>
+    <div class="form-group" id="ed-fecha-campos"></div>
+    <div class="form-group">
+      <label class="form-label">Monto por pago</label>
+      <input class="form-input" id="ed-monto-pago" type="number" min="0" value="${deuda.monto_pago ? Number(deuda.monto_pago) : ''}" placeholder="$0.00" />
+    </div>
+    <button class="btn btn-primary" onclick="guardarEdicionDeuda('${deuda.id}')">Guardar cambios</button>
+  `);
+
+  renderCamposFechaEditarDeuda();
+
+  if (frecuenciaInicial === 'semanal') {
+    const inputSemana = document.getElementById('ed-dia-semana');
+    if (inputSemana && deuda.dia_semana !== null && deuda.dia_semana !== undefined) {
+      inputSemana.value = String(deuda.dia_semana);
+    }
+  } else if (frecuenciaInicial === 'mensual' || frecuenciaInicial === 'quincenal') {
+    const inputDia = document.getElementById('ed-dia-pago');
+    if (inputDia && deuda.dia_pago) {
+      inputDia.value = String(deuda.dia_pago);
+    }
+  }
+
+  renderLucideIcons();
+}
+
+async function guardarEdicionDeuda(deudaId) {
+  const acreedor = document.getElementById('ed-acreedor')?.value.trim();
+  const monto_actual = parseFloat(document.getElementById('ed-monto')?.value);
+  const tipo_pago = document.getElementById('ed-freq')?.value || 'libre';
+  const monto_pagoValor = document.getElementById('ed-monto-pago')?.value;
+  const monto_pago = monto_pagoValor ? parseFloat(monto_pagoValor) : null;
+
+  let dia_pago = null;
+  let dia_semana = null;
+
+  if (!acreedor || Number.isNaN(monto_actual) || monto_actual < 0) {
+    showSnackbar('Completa los campos requeridos', 'error');
+    return;
+  }
+
+  if (tipo_pago === 'semanal') {
+    dia_semana = parseInt(document.getElementById('ed-dia-semana')?.value, 10);
+    if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
+      showSnackbar('Selecciona un dia de la semana valido', 'error');
+      return;
+    }
+  } else if (tipo_pago === 'mensual') {
+    dia_pago = parseInt(document.getElementById('ed-dia-pago')?.value, 10);
+    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
+      showSnackbar('Ingresa un dia del mes entre 1 y 31', 'error');
+      return;
+    }
+  } else if (tipo_pago === 'quincenal') {
+    dia_pago = parseInt(document.getElementById('ed-dia-pago')?.value, 10);
+    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
+      showSnackbar('Ingresa un dia de la quincena entre 1 y 15', 'error');
+      return;
+    }
+  }
+
+  if (monto_pago !== null && (Number.isNaN(monto_pago) || monto_pago < 0)) {
+    showSnackbar('Monto por pago invalido', 'error');
+    return;
+  }
+
+  const { error } = await db
+    .from('deudas')
+    .update({ acreedor, monto_actual, tipo_pago, dia_pago, dia_semana, monto_pago, activa: monto_actual > 0 })
+    .eq('id', deudaId)
+    .eq('usuario_id', getUsuarioId());
+
+  if (error) {
+    showSnackbar('No se pudo actualizar la deuda', 'error');
+    return;
+  }
+
+  closeModal();
+  showSnackbar('Deuda actualizada ✓', 'success');
+  await loadDeudas();
+  await loadDashboard();
+}
+
+function confirmarEliminarDeuda(deudaId) {
+  openModal('Eliminar deuda', `
+    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">¿Eliminar esta deuda?</p>
+    <button class="btn btn-danger" onclick="eliminarDeuda('${deudaId}')">Confirmar</button>
+  `);
+}
+
+async function eliminarDeuda(deudaId) {
+  const { error } = await db
+    .from('deudas')
+    .update({ activa: false })
+    .eq('id', deudaId)
+    .eq('usuario_id', getUsuarioId());
+
+  if (error) {
+    showSnackbar('No se pudo eliminar la deuda', 'error');
+    return;
+  }
+
+  closeModal();
+  showSnackbar('Deuda eliminada', 'success');
+  await loadDeudas();
+  await loadDashboard();
+}
+
 // ---- METAS ----
 async function loadMetas() {
   const uid = getUsuarioId();
@@ -1488,12 +1793,15 @@ async function loadMetas() {
         const pct = Math.min(Math.round((m.monto_actual / m.monto_objetivo) * 100), 100);
         return `
           <div class="card">
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-              <span style="font-size:28px"><i data-lucide="target" style="width:18px;height:18px;stroke-width:1.75"></i></span>
-              <div>
-                <div style="font-weight:600;font-size:14px">${m.nombre}</div>
-                <div style="font-size:12px;color:var(--text-secondary)">Meta: ${formatMXN(m.monto_objetivo)}</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+              <div style="display:flex;align-items:center;gap:12px">
+                <span style="font-size:28px">${m.emoji || '<i data-lucide="target" style="width:18px;height:18px;stroke-width:1.75"></i>'}</span>
+                <div>
+                  <div style="font-weight:600;font-size:14px">${m.nombre}</div>
+                  <div style="font-size:12px;color:var(--text-secondary)">Meta: ${formatMXN(m.monto_objetivo)}</div>
+                </div>
               </div>
+              <button class="item-row-delete" onclick="openMetaActions('${m.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
             </div>
             <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:8px">
               <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:4px;transition:width 0.6s ease"></div>
@@ -1509,6 +1817,153 @@ async function loadMetas() {
   `;
 
   renderLucideIcons();
+}
+
+function openMetaActions(metaId) {
+  openActionSheet('Opciones de meta', [
+    { label: 'Abonar', onClick: `openAbonarMeta('${metaId}')` },
+    { label: 'Editar', onClick: `openEditarMeta('${metaId}')` },
+    { label: 'Eliminar', onClick: `confirmarEliminarMeta('${metaId}')`, danger: true }
+  ]);
+}
+
+async function openAbonarMeta(metaId) {
+  const { data: meta, error } = await db
+    .from('metas_ahorro')
+    .select('id, nombre')
+    .eq('id', metaId)
+    .eq('usuario_id', getUsuarioId())
+    .maybeSingle();
+
+  if (error || !meta) {
+    showSnackbar('No se pudo cargar la meta', 'error');
+    return;
+  }
+
+  openModal(`Abonar a ${meta.nombre}`, `
+    <div class="form-group">
+      <label class="form-label">Monto del abono</label>
+      <input class="form-input" id="ma-abono" type="number" min="0" placeholder="$0.00" />
+    </div>
+    <button class="btn btn-primary" onclick="guardarAbonoMeta('${meta.id}')">Guardar abono</button>
+  `);
+}
+
+async function guardarAbonoMeta(metaId) {
+  const abono = parseFloat(document.getElementById('ma-abono')?.value);
+
+  if (!abono || abono <= 0) {
+    showSnackbar('Ingresa un monto valido', 'error');
+    return;
+  }
+
+  const { data: meta, error: errorMeta } = await db
+    .from('metas_ahorro')
+    .select('monto_actual')
+    .eq('id', metaId)
+    .eq('usuario_id', getUsuarioId())
+    .maybeSingle();
+
+  if (errorMeta || !meta) {
+    showSnackbar('No se pudo actualizar la meta', 'error');
+    return;
+  }
+
+  const nuevoMonto = Number(meta.monto_actual || 0) + abono;
+  const { error } = await db
+    .from('metas_ahorro')
+    .update({ monto_actual: nuevoMonto })
+    .eq('id', metaId)
+    .eq('usuario_id', getUsuarioId());
+
+  if (error) {
+    showSnackbar('No se pudo guardar el abono', 'error');
+    return;
+  }
+
+  closeModal();
+  showSnackbar('Abono registrado ✓', 'success');
+  await loadMetas();
+}
+
+async function openEditarMeta(metaId) {
+  const { data: meta, error } = await db
+    .from('metas_ahorro')
+    .select('id, nombre, emoji, monto_objetivo')
+    .eq('id', metaId)
+    .eq('usuario_id', getUsuarioId())
+    .maybeSingle();
+
+  if (error || !meta) {
+    showSnackbar('No se pudo cargar la meta', 'error');
+    return;
+  }
+
+  openModal('Editar meta', `
+    <div class="form-group">
+      <label class="form-label">Emoji</label>
+      <input class="form-input" id="em-emoji" type="text" value="${meta.emoji || ''}" style="max-width:80px" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Nombre</label>
+      <input class="form-input" id="em-nombre" type="text" value="${meta.nombre || ''}" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Monto objetivo</label>
+      <input class="form-input" id="em-monto" type="number" min="0" value="${Number(meta.monto_objetivo || 0)}" />
+    </div>
+    <button class="btn btn-primary" onclick="guardarEdicionMeta('${meta.id}')">Guardar cambios</button>
+  `);
+}
+
+async function guardarEdicionMeta(metaId) {
+  const emoji = document.getElementById('em-emoji')?.value.trim() || '🎯';
+  const nombre = document.getElementById('em-nombre')?.value.trim();
+  const monto_objetivo = parseFloat(document.getElementById('em-monto')?.value);
+
+  if (!nombre || Number.isNaN(monto_objetivo) || monto_objetivo <= 0) {
+    showSnackbar('Completa nombre y monto objetivo', 'error');
+    return;
+  }
+
+  const { error } = await db
+    .from('metas_ahorro')
+    .update({ emoji, nombre, monto_objetivo })
+    .eq('id', metaId)
+    .eq('usuario_id', getUsuarioId());
+
+  if (error) {
+    showSnackbar('No se pudo actualizar la meta', 'error');
+    return;
+  }
+
+  closeModal();
+  showSnackbar('Meta actualizada ✓', 'success');
+  await loadMetas();
+}
+
+function confirmarEliminarMeta(metaId) {
+  openModal('Eliminar meta', `
+    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">¿Eliminar esta meta?</p>
+    <button class="btn btn-danger" onclick="eliminarMeta('${metaId}')">Eliminar</button>
+  `);
+}
+
+async function eliminarMeta(metaId) {
+  const { error } = await db
+    .from('metas_ahorro')
+    .update({ activa: false })
+    .eq('id', metaId)
+    .eq('usuario_id', getUsuarioId());
+
+  if (error) {
+    showSnackbar('No se pudo eliminar la meta', 'error');
+    return;
+  }
+
+  closeModal();
+  showSnackbar('Meta eliminada', 'success');
+  await loadMetas();
 }
 
 // ---- GASTOS FIJOS ----
@@ -1576,13 +2031,155 @@ async function loadFijos() {
             <div class="item-row-detail">${formatearFrecuenciaGastoFijo(g.frecuencia, g.dia_pago, g.dia_semana)}</div>
           </div>
           <div class="item-row-amount" style="color:var(--red)">${formatMXN(g.monto)}</div>
-          <button class="item-row-delete" onclick="eliminarGastoFijo('${g.id}')"><i data-lucide="x" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+          <button class="item-row-delete" onclick="openEditarGastoFijo('${g.id}')"><i data-lucide="pencil" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+          <button class="item-row-delete" onclick="eliminarGastoFijo('${g.id}')"><i data-lucide="trash-2" style="width:18px;height:18px;stroke-width:1.75"></i></button>
         </div>
       `).join('')}
     </div>
   `;
 
   renderLucideIcons();
+}
+
+function renderCamposFechaEditarGastoFijo() {
+  const frecuencia = document.getElementById('egf-freq')?.value;
+  const campos = document.getElementById('egf-fecha-campos');
+  if (!campos) return;
+
+  if (frecuencia === 'mensual') {
+    campos.innerHTML = `
+      <label class="form-label">Dia del mes que pagas</label>
+      <input class="form-input" id="egf-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />
+    `;
+    return;
+  }
+
+  if (frecuencia === 'semanal') {
+    campos.innerHTML = `
+      <label class="form-label">Dia de la semana</label>
+      <select class="form-select" id="egf-dia-semana">
+        <option value="0">Domingo</option>
+        <option value="1">Lunes</option>
+        <option value="2">Martes</option>
+        <option value="3">Miercoles</option>
+        <option value="4">Jueves</option>
+        <option value="5">Viernes</option>
+        <option value="6">Sabado</option>
+      </select>
+    `;
+    return;
+  }
+
+  if (frecuencia === 'quincenal') {
+    campos.innerHTML = `
+      <label class="form-label">Dia de la quincena</label>
+      <input class="form-input" id="egf-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" />
+    `;
+    return;
+  }
+
+  campos.innerHTML = '';
+}
+
+async function openEditarGastoFijo(gastoFijoId) {
+  const { data: gasto, error } = await db
+    .from('gastos_fijos')
+    .select('id, descripcion, monto, frecuencia, dia_pago, dia_semana')
+    .eq('id', gastoFijoId)
+    .eq('usuario_id', getUsuarioId())
+    .maybeSingle();
+
+  if (error || !gasto) {
+    showSnackbar('No se pudo cargar el gasto fijo', 'error');
+    return;
+  }
+
+  openModal('Editar gasto fijo', `
+    <div class="form-group">
+      <label class="form-label">Descripcion</label>
+      <input class="form-input" id="egf-desc" type="text" value="${gasto.descripcion || ''}" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Monto</label>
+      <input class="form-input" id="egf-monto" type="number" min="0" value="${Number(gasto.monto || 0)}" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Frecuencia</label>
+      <select class="form-select" id="egf-freq" onchange="renderCamposFechaEditarGastoFijo()">
+        <option value="semanal" ${gasto.frecuencia === 'semanal' ? 'selected' : ''}>Semanal</option>
+        <option value="quincenal" ${gasto.frecuencia === 'quincenal' ? 'selected' : ''}>Quincenal</option>
+        <option value="mensual" ${gasto.frecuencia === 'mensual' ? 'selected' : ''}>Mensual</option>
+      </select>
+    </div>
+    <div class="form-group" id="egf-fecha-campos"></div>
+    <button class="btn btn-primary" onclick="guardarEdicionGastoFijo('${gasto.id}')">Guardar cambios</button>
+  `);
+
+  renderCamposFechaEditarGastoFijo();
+
+  if (gasto.frecuencia === 'semanal') {
+    const inputSemana = document.getElementById('egf-dia-semana');
+    if (inputSemana && gasto.dia_semana !== null && gasto.dia_semana !== undefined) {
+      inputSemana.value = String(gasto.dia_semana);
+    }
+  } else {
+    const inputDia = document.getElementById('egf-dia-pago');
+    if (inputDia && gasto.dia_pago) {
+      inputDia.value = String(gasto.dia_pago);
+    }
+  }
+
+  renderLucideIcons();
+}
+
+async function guardarEdicionGastoFijo(gastoFijoId) {
+  const descripcion = document.getElementById('egf-desc')?.value.trim();
+  const monto = parseFloat(document.getElementById('egf-monto')?.value);
+  const frecuencia = document.getElementById('egf-freq')?.value;
+
+  let dia_pago = null;
+  let dia_semana = null;
+
+  if (!descripcion || Number.isNaN(monto) || monto <= 0) {
+    showSnackbar('Completa descripcion y monto', 'error');
+    return;
+  }
+
+  if (frecuencia === 'semanal') {
+    dia_semana = parseInt(document.getElementById('egf-dia-semana')?.value, 10);
+    if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
+      showSnackbar('Selecciona un dia de la semana valido', 'error');
+      return;
+    }
+  } else if (frecuencia === 'mensual') {
+    dia_pago = parseInt(document.getElementById('egf-dia-pago')?.value, 10);
+    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
+      showSnackbar('Ingresa un dia del mes entre 1 y 31', 'error');
+      return;
+    }
+  } else if (frecuencia === 'quincenal') {
+    dia_pago = parseInt(document.getElementById('egf-dia-pago')?.value, 10);
+    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
+      showSnackbar('Ingresa un dia de la quincena entre 1 y 15', 'error');
+      return;
+    }
+  }
+
+  const { error } = await db
+    .from('gastos_fijos')
+    .update({ descripcion, monto, frecuencia, dia_pago, dia_semana })
+    .eq('id', gastoFijoId)
+    .eq('usuario_id', getUsuarioId());
+
+  if (error) {
+    showSnackbar('No se pudo actualizar el gasto fijo', 'error');
+    return;
+  }
+
+  closeModal();
+  showSnackbar('Gasto fijo actualizado ✓', 'success');
+  await loadFijos();
+  await loadDashboard();
 }
 
 function openAgregarGastoFijo() {
@@ -1742,12 +2339,38 @@ async function loadGastos() {
             <div class="item-row-detail">${g.categorias?.nombre || 'Sin categoría'} · ${g.fecha}</div>
           </div>
           <div class="item-row-amount">${formatMXN(g.monto)}</div>
+          <button class="item-row-delete" onclick="confirmarEliminarGasto('${g.id}')"><i data-lucide="trash-2" style="width:18px;height:18px;stroke-width:1.75"></i></button>
         </div>
       `).join('')}
     </div>
   `;
 
   renderLucideIcons();
+}
+
+function confirmarEliminarGasto(gastoId) {
+  openModal('Eliminar gasto', `
+    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">¿Eliminar este gasto del historial?</p>
+    <button class="btn btn-danger" onclick="eliminarGasto('${gastoId}')">Eliminar</button>
+  `);
+}
+
+async function eliminarGasto(gastoId) {
+  const { error } = await db
+    .from('gastos')
+    .delete()
+    .eq('id', gastoId)
+    .eq('usuario_id', getUsuarioId());
+
+  if (error) {
+    showSnackbar('No se pudo eliminar el gasto', 'error');
+    return;
+  }
+
+  closeModal();
+  showSnackbar('Gasto eliminado', 'success');
+  await loadGastos();
+  await loadDashboard();
 }
 
 // ---- AJUSTES ----
@@ -1801,6 +2424,7 @@ async function loadAjustes() {
             <div class="item-row-detail">${formatearFrecuenciaIngresoProgramado(i.frecuencia, i.dia_pago, i.dia_semana)}</div>
           </div>
           <div class="item-row-amount" style="color:var(--green)">${formatMXN(i.monto_estimado)}</div>
+          <button class="item-row-delete" onclick="eliminarIngresoProgramado('${i.id}')"><i data-lucide="trash-2" style="width:18px;height:18px;stroke-width:1.75"></i></button>
         </div>
       `).join(''));
 
@@ -1953,6 +2577,22 @@ async function guardarIngresoProgramado() {
 
   closeModal();
   showSnackbar('Ingreso programado guardado ✓', 'success');
+  await loadAjustes();
+}
+
+async function eliminarIngresoProgramado(ingresoProgramadoId) {
+  const { error } = await db
+    .from('ingresos_programados')
+    .update({ activo: false })
+    .eq('id', ingresoProgramadoId)
+    .eq('usuario_id', getUsuarioId());
+
+  if (error) {
+    showSnackbar('No se pudo eliminar el ingreso programado', 'error');
+    return;
+  }
+
+  showSnackbar('Ingreso programado eliminado', 'success');
   await loadAjustes();
 }
 
