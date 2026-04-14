@@ -92,15 +92,40 @@ function showSnackbar(msg, type = '') {
   setTimeout(() => sb.classList.remove('show'), 3000);
 }
 
-function getCuentaEmoji(tipo) {
-  const cuentaEmoji = {
-    efectivo: '💵',
-    debito: '🏦',
-    negocio: '🏪',
-    otro: '💳'
+function getCuentaIcon(tipo) {
+  const cuentaIcon = {
+    efectivo: '<i data-lucide="banknote" style="width:18px;height:18px;stroke-width:1.75"></i>',
+    debito: '<i data-lucide="building-2" style="width:18px;height:18px;stroke-width:1.75"></i>',
+    negocio: '<i data-lucide="store" style="width:18px;height:18px;stroke-width:1.75"></i>',
+    otro: '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>'
   };
 
-  return cuentaEmoji[tipo] || '💳';
+  return cuentaIcon[tipo] || '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>';
+}
+
+function getCategoriaGastoIcon(nombre) {
+  const map = {
+    Comida: 'utensils',
+    Transporte: 'car',
+    Ropa: 'shopping-bag',
+    Internet: 'wifi',
+    Salud: 'heart-pulse',
+    Familia: 'users',
+    Entretenimiento: 'tv',
+    Negocio: 'briefcase',
+    Deuda: 'trending-down',
+    Ahorro: 'piggy-bank',
+    Otros: 'package'
+  };
+
+  const iconName = map[nombre] || 'package';
+  return `<i data-lucide="${iconName}" style="width:18px;height:18px;stroke-width:1.75"></i>`;
+}
+
+function renderLucideIcons() {
+  if (window.lucide) {
+    lucide.createIcons();
+  }
 }
 
 function calcularCuentasConSaldo(cuentas = [], ingresosPorCuenta = [], gastosPorCuenta = [], pagosDeudaPorCuenta = []) {
@@ -134,7 +159,7 @@ function calcularCuentasConSaldo(cuentas = [], ingresosPorCuenta = [], gastosPor
     return {
       ...cuenta,
       saldoCalculado: saldoCuenta,
-      emoji: getCuentaEmoji(cuenta.tipo)
+      emoji: getCuentaIcon(cuenta.tipo)
     };
   });
 
@@ -409,7 +434,7 @@ async function getPagosPendientes() {
         .eq('pagado', false)
         .order('fecha_vencimiento')
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (proximoPago) {
         const fechaVenc = normalizeDate(new Date(proximoPago.fecha_vencimiento + 'T00:00:00'));
@@ -560,22 +585,22 @@ function renderStep2() {
 
 function renderStep2Body(showForm = false) {
   const TIPOS = [
-    { value: 'efectivo', label: 'Efectivo', emoji: '💵' },
-    { value: 'debito', label: 'Débito / Banco', emoji: '🏦' },
-    { value: 'negocio', label: 'Mercado Pago', emoji: '🏪' },
-    { value: 'otro', label: 'Otro', emoji: '💳' },
+    { value: 'efectivo', label: 'Efectivo', icon: '<i data-lucide="banknote" style="width:18px;height:18px;stroke-width:1.75"></i>' },
+    { value: 'debito', label: 'Débito / Banco', icon: '<i data-lucide="building-2" style="width:18px;height:18px;stroke-width:1.75"></i>' },
+    { value: 'negocio', label: 'Mercado Pago', icon: '<i data-lucide="store" style="width:18px;height:18px;stroke-width:1.75"></i>' },
+    { value: 'otro', label: 'Otro', icon: '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>' },
   ];
 
   document.getElementById('onboarding-body').innerHTML = `
     <div class="item-list" id="cuentas-list">
         ${onboardingData.cuentas.map((c, i) => `
           <div class="item-row">
-            <div class="item-row-emoji">${TIPOS.find(t => t.value === c.tipo)?.emoji || '💳'}</div>
+            <div class="item-row-emoji">${TIPOS.find(t => t.value === c.tipo)?.icon || '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>'}</div>
             <div class="item-row-info">
               <div class="item-row-name">${c.nombre}</div>
               <div class="item-row-detail">${TIPOS.find(t => t.value === c.tipo)?.label} · Saldo inicial: ${formatMXN(c.saldo_inicial)}</div>
             </div>
-            <button class="item-row-delete" onclick="removeCuenta(${i})">✕</button>
+            <button class="item-row-delete" onclick="removeCuenta(${i})"><i data-lucide="x" style="width:18px;height:18px;stroke-width:1.75"></i></button>
           </div>
         `).join('')}
     </div>
@@ -587,7 +612,7 @@ function renderStep2Body(showForm = false) {
           <input class="form-input" id="c-nombre" placeholder="Ej: Mercado Pago Negocio" />
         </div>
         <select class="form-select" id="c-tipo">
-          ${TIPOS.map(t => `<option value="${t.value}">${t.emoji} ${t.label}</option>`).join('')}
+          ${TIPOS.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
         </select>
         <input class="form-input" id="c-saldo" type="number" placeholder="Saldo actual (0)" min="0" />
       </div>
@@ -599,6 +624,8 @@ function renderStep2Body(showForm = false) {
     </button>
     `}
   `;
+
+  renderLucideIcons();
 }
 
 function addCuenta() {
@@ -640,13 +667,13 @@ function renderStep3Body(showForm = false) {
     <div class="item-list" id="deudas-list">
         ${onboardingData.deudas.map((d, i) => `
           <div class="item-row">
-            <div class="item-row-emoji">💸</div>
+            <div class="item-row-emoji"><i data-lucide="trending-down" style="width:18px;height:18px;stroke-width:1.75"></i></div>
             <div class="item-row-info">
               <div class="item-row-name">${d.acreedor}</div>
               <div class="item-row-detail">${d.tipo_pago}${d.monto_pago ? ` · ${formatMXN(d.monto_pago)}/pago` : ''}</div>
             </div>
             <div class="item-row-amount">${formatMXN(d.monto_actual)}</div>
-            <button class="item-row-delete" onclick="removeDeuda(${i})">✕</button>
+            <button class="item-row-delete" onclick="removeDeuda(${i})"><i data-lucide="x" style="width:18px;height:18px;stroke-width:1.75"></i></button>
           </div>
         `).join('')}
     </div>
@@ -674,6 +701,8 @@ function renderStep3Body(showForm = false) {
     `}
     <p class="form-hint mt-8" style="padding: 0 4px">Si no tienes deudas activas puedes continuar sin agregar ninguna.</p>
   `;
+
+  renderLucideIcons();
 }
 
 function addDeuda() {
@@ -712,13 +741,13 @@ function renderStep4Body(showForm = false) {
     <div class="item-list">
         ${onboardingData.gastosFijos.map((g, i) => `
           <div class="item-row">
-            <div class="item-row-emoji">📌</div>
+            <div class="item-row-emoji"><i data-lucide="pin" style="width:18px;height:18px;stroke-width:1.75"></i></div>
             <div class="item-row-info">
               <div class="item-row-name">${g.descripcion}</div>
               <div class="item-row-detail">${g.frecuencia}</div>
             </div>
             <div class="item-row-amount">${formatMXN(g.monto)}</div>
-            <button class="item-row-delete" onclick="removeGastoFijo(${i})">✕</button>
+            <button class="item-row-delete" onclick="removeGastoFijo(${i})"><i data-lucide="x" style="width:18px;height:18px;stroke-width:1.75"></i></button>
           </div>
         `).join('')}
     </div>
@@ -748,6 +777,8 @@ function renderStep4Body(showForm = false) {
   if (showForm) {
     renderCamposFechaGastoFijo();
   }
+
+  renderLucideIcons();
 }
 
 function renderCamposFechaGastoFijo() {
@@ -846,12 +877,12 @@ function renderStep5Body(showForm = false) {
     <div class="item-list">
       ${onboardingData.metas.map((m, i) => `
         <div class="item-row">
-          <div class="item-row-emoji">${m.emoji}</div>
+          <div class="item-row-emoji"><i data-lucide="target" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <div class="item-row-info">
             <div class="item-row-name">${m.nombre}</div>
             <div class="item-row-detail">Meta: ${formatMXN(m.monto_objetivo)}</div>
           </div>
-          <button class="item-row-delete" onclick="removeMeta(${i})">✕</button>
+          <button class="item-row-delete" onclick="removeMeta(${i})"><i data-lucide="x" style="width:18px;height:18px;stroke-width:1.75"></i></button>
         </div>
       `).join('')}
     </div>
@@ -874,6 +905,8 @@ function renderStep5Body(showForm = false) {
     `}
     <p class="form-hint mt-8" style="padding: 0 4px">También puedes empezar sin metas y definirlas después.</p>
   `;
+
+  renderLucideIcons();
 }
 
 function addMeta() {
@@ -950,7 +983,7 @@ async function finishOnboarding() {
       await db.from('metas_ahorro').insert(metas);
     }
 
-    showSnackbar('¡Todo listo! Bienvenido 🎉', 'success');
+    showSnackbar('¡Todo listo! Bienvenido', 'success');
     setTimeout(() => renderApp(), 800);
 
   } catch (err) {
@@ -1027,7 +1060,7 @@ async function loadDashboard() {
       <div class="balance-label">Disponible ahora</div>
       <div class="balance-amount">
         <span class="currency">$</span>${Math.abs(disponible).toLocaleString('es-MX')}
-        ${disponible < 0 ? '<span style="font-size:14px;color:var(--red);margin-left:8px">⚠️ Negativo</span>' : ''}
+        ${disponible < 0 ? '<span style="font-size:14px;color:var(--red);margin-left:8px"><i data-lucide="alert-triangle" style="width:18px;height:18px;stroke-width:1.75"></i> Negativo</span>' : ''}
       </div>
       <div class="balance-row">
         <div class="balance-stat">
@@ -1047,13 +1080,13 @@ async function loadDashboard() {
 
     ${pagosPendientes && pagosPendientes.length > 0 ? `
     <div class="alert-banner">
-      <div class="alert-icon">⚠️</div>
+      <div class="alert-icon"><i data-lucide="alert-triangle" style="width:18px;height:18px;stroke-width:1.75"></i></div>
       <div class="alert-text">
         ${proximaFechaCobro
           ? `<strong>Para tu cobro del ${proximaFechaCobro.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })} aparta: ${formatMXN(totalPendientePeriodo)}</strong>`
           : `<strong>Pagos pendientes próximos: ${formatMXN(totalPendientePeriodo)}</strong>`
         }
-        ${pagosPendientes.map(p => `<br>· ${p.tipo === 'fijo' ? '📌' : '💸'} ${p.nombre} — ${formatMXN(p.monto)} (${p.fecha_esperada.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' })})`).join('')}
+        ${pagosPendientes.map(p => `<br>· ${p.tipo === 'fijo' ? '<i data-lucide="pin" style="width:18px;height:18px;stroke-width:1.75"></i>' : '<i data-lucide="trending-down" style="width:18px;height:18px;stroke-width:1.75"></i>'} ${p.nombre} — ${formatMXN(p.monto)} (${p.fecha_esperada.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' })})`).join('')}
       </div>
     </div>
     ` : ''}
@@ -1072,6 +1105,7 @@ async function loadDashboard() {
   closeFabMenu();
   fab.onclick = toggleFabMenu;
   setFabMainIcon(false);
+  renderLucideIcons();
 }
 
 function setFabMainIcon(isOpen) {
@@ -1099,11 +1133,11 @@ function openFabMenu() {
   menu.style.cssText = 'position:fixed;bottom:145px;right:calc(50% - 215px + 16px);z-index:40;display:flex;flex-direction:column;gap:10px;align-items:flex-end;opacity:0;transform:translateY(10px);transition:opacity 180ms ease,transform 180ms ease;';
   menu.innerHTML = `
     <button onclick="closeFabMenu(); openRegistrarGasto();" style="display:flex;align-items:center;gap:10px;width:180px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text-primary);font-size:14px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
-      <span style="font-size:20px;line-height:1">💸</span>
+      <span style="font-size:20px;line-height:1"><i data-lucide="minus-circle" style="width:18px;height:18px;stroke-width:1.75"></i></span>
       <span>Registrar gasto</span>
     </button>
     <button onclick="closeFabMenu(); openRegistrarIngreso();" style="display:flex;align-items:center;gap:10px;width:180px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text-primary);font-size:14px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
-      <span style="font-size:20px;line-height:1">💰</span>
+      <span style="font-size:20px;line-height:1"><i data-lucide="plus-circle" style="width:18px;height:18px;stroke-width:1.75"></i></span>
       <span>Registrar ingreso</span>
     </button>
   `;
@@ -1114,6 +1148,7 @@ function openFabMenu() {
   requestAnimationFrame(() => {
     menu.style.opacity = '1';
     menu.style.transform = 'translateY(0)';
+    renderLucideIcons();
   });
 
   setFabMainIcon(true);
@@ -1171,7 +1206,7 @@ async function loadCuentas() {
     <div class="page-body" style="padding-top:0">
       ${!cuentasConSaldo.length ? `
         <div class="empty-state" style="margin-top:0">
-          <div class="empty-icon">🏦</div>
+          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <p>No tienes cuentas activas.</p>
         </div>
       ` : `
@@ -1193,6 +1228,8 @@ async function loadCuentas() {
       `}
     </div>
   `;
+
+  renderLucideIcons();
 }
 
 // ---- DEUDAS ----
@@ -1201,15 +1238,19 @@ async function loadDeudas() {
   const { data: deudas } = await db.from('deudas').select('*').eq('usuario_id', uid).eq('activa', true).order('created_at');
 
   const getBadgeDeuda = (tipo) => {
-    const badges = { simple: '💳', variable: '📊', tabla: '📋' };
-    return badges[tipo] || '💸';
+    const badges = {
+      simple: '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>',
+      variable: '<i data-lucide="chart-line" style="width:18px;height:18px;stroke-width:1.75"></i>',
+      tabla: '<i data-lucide="table" style="width:18px;height:18px;stroke-width:1.75"></i>'
+    };
+    return badges[tipo] || '<i data-lucide="trending-down" style="width:18px;height:18px;stroke-width:1.75"></i>';
   };
 
   let deudaCardsHTML = '';
   if (!deudas || deudas.length === 0) {
     deudaCardsHTML = `
       <div class="empty-state">
-        <div class="empty-icon">🎉</div>
+        <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
         <p>¡Sin deudas registradas!</p>
       </div>
     `;
@@ -1280,6 +1321,8 @@ async function loadDeudas() {
       ${deudaCardsHTML}
     </div>
   `;
+
+  renderLucideIcons();
 }
 
 // ---- METAS ----
@@ -1295,7 +1338,7 @@ async function loadMetas() {
     <div class="page-body">
       ${!metas || metas.length === 0 ? `
         <div class="empty-state">
-          <div class="empty-icon">🎯</div>
+          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <p>Aún no tienes metas de ahorro.<br>¡Crea una para empezar!</p>
         </div>
       ` : metas.map(m => {
@@ -1303,7 +1346,7 @@ async function loadMetas() {
         return `
           <div class="card">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-              <span style="font-size:28px">${m.emoji}</span>
+              <span style="font-size:28px"><i data-lucide="target" style="width:18px;height:18px;stroke-width:1.75"></i></span>
               <div>
                 <div style="font-weight:600;font-size:14px">${m.nombre}</div>
                 <div style="font-size:12px;color:var(--text-secondary)">Meta: ${formatMXN(m.monto_objetivo)}</div>
@@ -1321,6 +1364,8 @@ async function loadMetas() {
       }).join('')}
     </div>
   `;
+
+  renderLucideIcons();
 }
 
 // ---- GASTOS FIJOS ----
@@ -1355,43 +1400,46 @@ async function loadFijos() {
   if (error) {
     document.getElementById('page-fijos').innerHTML = `
       <div class="page-header">
-        <h1 class="page-title">Gastos fijos 📌</h1>
+        <h1 class="page-title">Gastos fijos</h1>
         <button onclick="openAgregarGastoFijo()" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nuevo</button>
       </div>
       <div class="page-body">
         <div class="empty-state">
-          <div class="empty-icon">⚠️</div>
+          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <p>No se pudieron cargar los gastos fijos.</p>
         </div>
       </div>
     `;
+    renderLucideIcons();
     return;
   }
 
   document.getElementById('page-fijos').innerHTML = `
     <div class="page-header">
-      <h1 class="page-title">Gastos fijos 📌</h1>
+      <h1 class="page-title">Gastos fijos</h1>
       <button onclick="openAgregarGastoFijo()" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nuevo</button>
     </div>
     <div class="page-body">
       ${!fijos || fijos.length === 0 ? `
         <div class="empty-state">
-          <div class="empty-icon">📌</div>
+          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <p>No tienes gastos fijos registrados.<br>Agrega uno para empezar.</p>
         </div>
       ` : fijos.map(g => `
         <div class="item-row" style="margin-bottom:8px">
-          <div class="item-row-emoji">📌</div>
+          <div class="item-row-emoji"><i data-lucide="pin" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <div class="item-row-info">
             <div class="item-row-name">${g.descripcion}</div>
             <div class="item-row-detail">${formatearFrecuenciaGastoFijo(g.frecuencia, g.dia_pago, g.dia_semana)}</div>
           </div>
           <div class="item-row-amount" style="color:var(--red)">${formatMXN(g.monto)}</div>
-          <button class="item-row-delete" onclick="eliminarGastoFijo('${g.id}')">✕</button>
+          <button class="item-row-delete" onclick="eliminarGastoFijo('${g.id}')"><i data-lucide="x" style="width:18px;height:18px;stroke-width:1.75"></i></button>
         </div>
       `).join('')}
     </div>
   `;
+
+  renderLucideIcons();
 }
 
 function openAgregarGastoFijo() {
@@ -1540,12 +1588,12 @@ async function loadGastos() {
     <div class="page-body">
       ${!gastos || gastos.length === 0 ? `
         <div class="empty-state">
-          <div class="empty-icon">📝</div>
+          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <p>No hay gastos registrados todavía.<br>Usa el botón + para agregar uno.</p>
         </div>
       ` : gastos.map(g => `
         <div class="item-row" style="margin-bottom:8px">
-          <div class="item-row-emoji">${g.categorias?.emoji || '📦'}</div>
+          <div class="item-row-emoji">${getCategoriaGastoIcon(g.categorias?.nombre)}</div>
           <div class="item-row-info">
             <div class="item-row-name">${g.descripcion}</div>
             <div class="item-row-detail">${g.categorias?.nombre || 'Sin categoría'} · ${g.fecha}</div>
@@ -1555,6 +1603,8 @@ async function loadGastos() {
       `).join('')}
     </div>
   `;
+
+  renderLucideIcons();
 }
 
 // ---- AJUSTES ----
@@ -1589,20 +1639,20 @@ async function loadAjustes() {
   const listaIngresosProgramados = error
     ? `
       <div class="empty-state" style="padding:20px 0">
-        <div class="empty-icon">⚠️</div>
+        <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
         <p>No se pudieron cargar tus ingresos programados.</p>
       </div>
     `
     : (!ingresosProgramados || ingresosProgramados.length === 0
       ? `
         <div class="empty-state" style="padding:20px 0">
-          <div class="empty-icon">💼</div>
+          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <p>Aun no tienes ingresos programados.</p>
         </div>
       `
       : ingresosProgramados.map(i => `
         <div class="item-row" style="margin-bottom:8px">
-          <div class="item-row-emoji">💰</div>
+          <div class="item-row-emoji"><i data-lucide="plus-circle" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <div class="item-row-info">
             <div class="item-row-name">${i.descripcion}</div>
             <div class="item-row-detail">${formatearFrecuenciaIngresoProgramado(i.frecuencia, i.dia_pago, i.dia_semana)}</div>
@@ -1643,6 +1693,7 @@ async function loadAjustes() {
   `;
 
   updateThemeToggleUI();
+  renderLucideIcons();
 }
 
 function openAgregarIngresoProgramado() {
@@ -1781,10 +1832,10 @@ async function openRegistrarIngreso() {
     <div class="form-group">
       <label class="form-label">Tipo</label>
       <select class="form-select" id="ri-tipo">
-        <option value="salario">💼 Salario</option>
-        <option value="beca">🎓 Beca</option>
-        <option value="extra">⚡ Extra</option>
-        <option value="otro">📦 Otro</option>
+        <option value="salario">Salario</option>
+        <option value="beca">Beca</option>
+        <option value="extra">Extra</option>
+        <option value="otro">Otro</option>
       </select>
     </div>
     <div class="form-group">
@@ -1829,7 +1880,7 @@ async function guardarIngreso() {
 
   console.log('Abriendo modal de dinero comprometido', { monto, fecha, pagosPendientes, totalComprometido, libre });
 
-  openModal('💰 Dinero comprometido', `
+  openModal('Dinero comprometido', `
     <div class="card" style="margin-bottom:12px;background:var(--bg-elevated)">
       <div style="font-size:12px;color:var(--text-secondary)">Ingreso recibido</div>
       <div style="font-family:var(--font-display);font-size:15px;font-weight:700;color:var(--green)">${formatMXN(monto)}</div>
@@ -1842,10 +1893,10 @@ async function guardarIngreso() {
         </div>
       ` : pagosPendientes.map(pago => `
         <div class="item-row" style="margin-bottom:0">
-          <div class="item-row-emoji">${pago.tipo === 'fijo' ? '📌' : '💸'}</div>
+          <div class="item-row-emoji">${pago.tipo === 'fijo' ? '<i data-lucide="pin" style="width:18px;height:18px;stroke-width:1.75"></i>' : '<i data-lucide="trending-down" style="width:18px;height:18px;stroke-width:1.75"></i>'}</div>
           <div class="item-row-info">
             <div class="item-row-name">${pago.nombre}</div>
-            <div class="item-row-detail">${pago.tipo === 'fijo' ? 'Gasto fijo' : 'Deuda'}${pago.urgente ? ' · ⚠️ Urgente' : ''}</div>
+            <div class="item-row-detail">${pago.tipo === 'fijo' ? 'Gasto fijo' : 'Deuda'}${pago.urgente ? ' · <i data-lucide="alert-triangle" style="width:18px;height:18px;stroke-width:1.75"></i> Urgente' : ''}</div>
           </div>
           <div class="item-row-amount">${formatMXN(pago.monto)}</div>
         </div>
@@ -1869,6 +1920,8 @@ async function guardarIngreso() {
 
     <button class="btn btn-primary" onclick="onEntendidoDineroComprometido()">Entendido</button>
   `);
+
+  renderLucideIcons();
 
   showSnackbar('Ingreso registrado ✓', 'success');
 }
@@ -1907,7 +1960,7 @@ async function openRegistrarGasto() {
     <div class="form-group">
       <label class="form-label">Categoría</label>
       <select class="form-select" id="rg-cat">
-        ${(categorias || []).map(c => `<option value="${c.id}">${c.emoji} ${c.nombre}</option>`).join('')}
+        ${(categorias || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
@@ -2070,7 +2123,7 @@ async function guardarPagoDeuda(deudaId, montoActual, tipoDeuda) {
   }).eq('id', deudaId);
 
   closeModal();
-  showSnackbar(nuevoMonto === 0 ? '🎉 ¡Deuda saldada!' : 'Pago registrado ✓', 'success');
+  showSnackbar(nuevoMonto === 0 ? 'Deuda saldada' : 'Pago registrado ✓', 'success');
   await loadDeudas();
   await loadDashboard();
 }
@@ -2080,22 +2133,24 @@ function openAgregarDeuda() {
   openModal('Nueva deuda', `
     <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:16px">
       <button onclick="selectTipoDeuda('simple')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font-body);text-align:left;transition:all 180ms ease">
-        <div style="font-size:20px;margin-bottom:6px">💳</div>
+        <div style="font-size:20px;margin-bottom:6px"><i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i></div>
         <div style="font-weight:600;font-size:14px">Simple</div>
         <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Monto fijo, fecha fija</div>
       </button>
       <button onclick="selectTipoDeuda('variable')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font-body);text-align:left;transition:all 180ms ease">
-        <div style="font-size:20px;margin-bottom:6px">📊</div>
+        <div style="font-size:20px;margin-bottom:6px"><i data-lucide="chart-line" style="width:18px;height:18px;stroke-width:1.75"></i></div>
         <div style="font-weight:600;font-size:14px">Variable</div>
         <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Monto cambia cada pago</div>
       </button>
       <button onclick="selectTipoDeuda('tabla')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font-body);text-align:left;transition:all 180ms ease">
-        <div style="font-size:20px;margin-bottom:6px">📋</div>
+        <div style="font-size:20px;margin-bottom:6px"><i data-lucide="table" style="width:18px;height:18px;stroke-width:1.75"></i></div>
         <div style="font-weight:600;font-size:14px">Con tabla</div>
         <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Pagos programados</div>
       </button>
     </div>
   `);
+
+  renderLucideIcons();
 }
 
 let tipoDeudaSeleccionado = null;
@@ -2302,9 +2357,11 @@ function renderFilasPagos() {
         <div class="item-row-detail">${new Date(fila.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-MX')}</div>
       </div>
       <div class="item-row-amount">${formatMXN(fila.monto_esperado)}</div>
-      <button class="item-row-delete" onclick="eliminarFilaPago(${i})">✕</button>
+      <button class="item-row-delete" onclick="eliminarFilaPago(${i})"><i data-lucide="x" style="width:18px;height:18px;stroke-width:1.75"></i></button>
     </div>
   `).join('');
+
+  renderLucideIcons();
 }
 
 function eliminarFilaPago(index) {
@@ -2402,6 +2459,8 @@ function openModal(title, content) {
       ${content}
     </div>
   `;
+
+  renderLucideIcons();
 
   requestAnimationFrame(() => overlay.classList.add('open'));
 }
