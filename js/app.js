@@ -322,6 +322,39 @@ async function getSaldoDisponibleTotal(usuarioId) {
   };
 }
 
+async function getSaldoCuentaEspecifica(usuarioId, cuentaId) {
+  const [
+    { data: cuenta, error: errorCuenta },
+    { data: ingresos, error: errorIngresos },
+    { data: gastos, error: errorGastos },
+    { data: pagosDeuda, error: errorPagosDeuda },
+    { data: traspasosSalida, error: errorTraspasosSalida },
+    { data: traspasosEntrada, error: errorTraspasosEntrada }
+  ] = await Promise.all([
+    db.from('cuentas').select('saldo_inicial').eq('id', cuentaId).eq('usuario_id', usuarioId).eq('activa', true).maybeSingle(),
+    db.from('ingresos').select('monto').eq('usuario_id', usuarioId).eq('cuenta_id', cuentaId),
+    db.from('gastos').select('monto').eq('usuario_id', usuarioId).eq('cuenta_id', cuentaId),
+    db.from('pagos_deuda').select('monto').eq('usuario_id', usuarioId).eq('cuenta_id', cuentaId),
+    db.from('transferencias').select('monto').eq('usuario_id', usuarioId).eq('cuenta_origen_id', cuentaId),
+    db.from('transferencias').select('monto').eq('usuario_id', usuarioId).eq('cuenta_destino_id', cuentaId)
+  ]);
+
+  if (errorCuenta || errorIngresos || errorGastos || errorPagosDeuda || errorTraspasosSalida || errorTraspasosEntrada || !cuenta) {
+    return { error: true, saldoDisponible: null };
+  }
+
+  const totalIngresos = (ingresos || []).reduce((acc, movimiento) => acc + Number(movimiento.monto || 0), 0);
+  const totalGastos = (gastos || []).reduce((acc, movimiento) => acc + Number(movimiento.monto || 0), 0);
+  const totalPagosDeuda = (pagosDeuda || []).reduce((acc, movimiento) => acc + Number(movimiento.monto || 0), 0);
+  const totalTraspasosSalida = (traspasosSalida || []).reduce((acc, movimiento) => acc + Number(movimiento.monto || 0), 0);
+  const totalTraspasosEntrada = (traspasosEntrada || []).reduce((acc, movimiento) => acc + Number(movimiento.monto || 0), 0);
+
+  return {
+    error: false,
+    saldoDisponible: Number(cuenta.saldo_inicial || 0) + totalIngresos - totalGastos - totalPagosDeuda - totalTraspasosSalida + totalTraspasosEntrada
+  };
+}
+
 // ---- PAGOS PENDIENTES ----
 function isSameDay(date1, date2) {
   return date1.getFullYear() === date2.getFullYear() &&
@@ -1851,7 +1884,15 @@ async function eliminarDeuda(deudaId) {
 // ---- METAS ----
 async function loadMetas() {
   const uid = getUsuarioId();
-  const { data: metas } = await db.from('metas_ahorro').select('*').eq('usuario_id', uid).eq('activa', true);
+  const [
+    { data: metas },
+    { data: cuentas }
+  ] = await Promise.all([
+    db.from('metas_ahorro').select('*').eq('usuario_id', uid).eq('activa', true),
+    db.from('cuentas').select('id, nombre').eq('usuario_id', uid).eq('activa', true)
+  ]);
+
+  const cuentasPorId = Object.fromEntries((cuentas || []).map(cuenta => [cuenta.id, cuenta.nombre]));
 
   document.getElementById('page-metas').innerHTML = `
     <div class="page-header">
@@ -1873,6 +1914,7 @@ async function loadMetas() {
                 <span style="font-size:28px">${m.emoji || '<i data-lucide="target" style="width:18px;height:18px;stroke-width:1.75"></i>'}</span>
                 <div>
                   <div style="font-weight:600;font-size:14px">${m.nombre}</div>
+                  <div style="font-size:12px;color:var(--text-muted)">${m.cuenta_id ? (cuentasPorId[m.cuenta_id] || 'Cuenta eliminada') : 'Sin cuenta vinculada'}</div>
                   <div style="font-size:12px;color:var(--text-secondary)">Meta: ${formatMXN(m.monto_objetivo)}</div>
                 </div>
               </div>
@@ -1909,13 +1951,18 @@ function openMenuMeta(metaId) {
 async function openAbonarMeta(metaId) {
   const { data: meta, error } = await db
     .from('metas_ahorro')
-    .select('id, nombre')
+    .select('id, nombre, cuenta_id')
     .eq('id', metaId)
     .eq('usuario_id', getUsuarioId())
     .maybeSingle();
 
   if (error || !meta) {
     showSnackbar('No se pudo cargar la meta', 'error');
+    return;
+  }
+
+  if (!meta.cuenta_id) {
+    showSnackbar('Configura una cuenta para esta meta primero', 'error');
     return;
   }
 
@@ -1939,7 +1986,7 @@ async function guardarAbonoMeta(metaId) {
   const usuarioId = getUsuarioId();
   const { data: meta, error: errorMeta } = await db
     .from('metas_ahorro')
-    .select('monto_actual, nombre')
+    .select('monto_actual, nombre, cuenta_id')
     .eq('id', metaId)
     .eq('usuario_id', usuarioId)
     .maybeSingle();
@@ -1949,10 +1996,15 @@ async function guardarAbonoMeta(metaId) {
     return;
   }
 
-  const { error: errorSaldo, saldoDisponible } = await getSaldoDisponibleTotal(usuarioId);
+  if (!meta.cuenta_id) {
+    showSnackbar('Configura una cuenta para esta meta primero', 'error');
+    return;
+  }
+
+  const { error: errorSaldo, saldoDisponible } = await getSaldoCuentaEspecifica(usuarioId, meta.cuenta_id);
 
   if (errorSaldo) {
-    showSnackbar('No se pudo validar el saldo disponible', 'error');
+    showSnackbar('No se pudo validar el saldo disponible de la cuenta', 'error');
     return;
   }
 
@@ -1978,7 +2030,7 @@ async function guardarAbonoMeta(metaId) {
     monto: abono,
     usuario_id: usuarioId,
     fecha: new Date().toISOString().split('T')[0],
-    cuenta_id: null
+    cuenta_id: meta.cuenta_id
   });
 
   if (errorGasto) {
@@ -1993,20 +2045,29 @@ async function guardarAbonoMeta(metaId) {
   showSnackbar('Abono registrado ✓', 'success');
   await loadMetas();
   await loadDashboard();
+  await loadCuentas();
 }
 
 async function openEditarMeta(metaId) {
-  const { data: meta, error } = await db
-    .from('metas_ahorro')
-    .select('id, nombre, emoji, monto_objetivo')
-    .eq('id', metaId)
-    .eq('usuario_id', getUsuarioId())
-    .maybeSingle();
+  const [
+    { data: meta, error },
+    { data: cuentas }
+  ] = await Promise.all([
+    db
+      .from('metas_ahorro')
+      .select('id, nombre, emoji, monto_objetivo, cuenta_id')
+      .eq('id', metaId)
+      .eq('usuario_id', getUsuarioId())
+      .maybeSingle(),
+    db.from('cuentas').select('id, nombre').eq('usuario_id', getUsuarioId()).eq('activa', true)
+  ]);
 
   if (error || !meta) {
     showSnackbar('No se pudo cargar la meta', 'error');
     return;
   }
+
+  const cuentasOptions = (cuentas || []).map(cuenta => `<option value="${cuenta.id}" ${cuenta.id === meta.cuenta_id ? 'selected' : ''}>${cuenta.nombre}</option>`).join('');
 
   openModal('Editar meta', `
     <div class="form-group">
@@ -2021,6 +2082,12 @@ async function openEditarMeta(metaId) {
       <label class="form-label">Monto objetivo</label>
       <input class="form-input" id="em-monto" type="number" min="0" value="${Number(meta.monto_objetivo || 0)}" />
     </div>
+    <div class="form-group">
+      <label class="form-label">¿En qué cuenta ahorrarás?</label>
+      <select class="form-select" id="meta-cuenta-id">
+        ${cuentasOptions}
+      </select>
+    </div>
     <button class="btn btn-primary" onclick="guardarEdicionMeta('${meta.id}')">Guardar cambios</button>
   `);
 }
@@ -2029,6 +2096,7 @@ async function guardarEdicionMeta(metaId) {
   const emoji = document.getElementById('em-emoji')?.value.trim() || '🎯';
   const nombre = document.getElementById('em-nombre')?.value.trim();
   const monto_objetivo = parseFloat(document.getElementById('em-monto')?.value);
+  const cuenta_id = document.getElementById('meta-cuenta-id')?.value || null;
 
   if (!nombre || Number.isNaN(monto_objetivo) || monto_objetivo <= 0) {
     showSnackbar('Completa nombre y monto objetivo', 'error');
@@ -2037,7 +2105,7 @@ async function guardarEdicionMeta(metaId) {
 
   const { error } = await db
     .from('metas_ahorro')
-    .update({ emoji, nombre, monto_objetivo })
+    .update({ emoji, nombre, monto_objetivo, cuenta_id })
     .eq('id', metaId)
     .eq('usuario_id', getUsuarioId());
 
@@ -3767,32 +3835,43 @@ async function guardarTablaPagesProgramados(deudaId) {
 
 // Agregar Meta
 function openAgregarMeta() {
-  openModal('Nueva meta de ahorro', `
-    <div class="form-group">
-      <label class="form-label">Emoji</label>
-      <input class="form-input" id="nm-emoji" type="text" placeholder="🎯" style="max-width:80px" />
-    </div>
-    <div class="form-group">
-      <label class="form-label">Nombre de la meta</label>
-      <input class="form-input" id="nm-nombre" type="text" placeholder="Ej: Capital para cachuchas" />
-    </div>
-    <div class="form-group">
-      <label class="form-label">¿Cuánto necesitas?</label>
-      <input class="form-input" id="nm-monto" type="number" placeholder="$0.00" min="0" />
-    </div>
-    <button class="btn btn-primary" onclick="guardarNuevaMeta()">Guardar meta</button>
-  `);
+  db.from('cuentas').select('id, nombre').eq('usuario_id', getUsuarioId()).eq('activa', true).then(({ data: cuentas }) => {
+    const cuentasOptions = (cuentas || []).map(cuenta => `<option value="${cuenta.id}">${cuenta.nombre}</option>`).join('');
+
+    openModal('Nueva meta de ahorro', `
+      <div class="form-group">
+        <label class="form-label">Emoji</label>
+        <input class="form-input" id="nm-emoji" type="text" placeholder="🎯" style="max-width:80px" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nombre de la meta</label>
+        <input class="form-input" id="nm-nombre" type="text" placeholder="Ej: Capital para cachuchas" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">¿Cuánto necesitas?</label>
+        <input class="form-input" id="nm-monto" type="number" placeholder="$0.00" min="0" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">¿En qué cuenta ahorrarás?</label>
+        <select class="form-select" id="meta-cuenta-id">
+          ${cuentasOptions}
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="guardarNuevaMeta()">Guardar meta</button>
+    `);
+  });
 }
 
 async function guardarNuevaMeta() {
   const emoji = document.getElementById('nm-emoji').value.trim() || '🎯';
   const nombre = document.getElementById('nm-nombre').value.trim();
   const monto_objetivo = parseFloat(document.getElementById('nm-monto').value);
+  const cuenta_id = document.getElementById('meta-cuenta-id')?.value || null;
   if (!nombre || !monto_objetivo) { showSnackbar('Completa nombre y monto', 'error'); return; }
 
   await db.from('metas_ahorro').insert({
     usuario_id: getUsuarioId(),
-    emoji, nombre, monto_objetivo
+    emoji, nombre, monto_objetivo, cuenta_id
   });
 
   closeModal();
