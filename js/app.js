@@ -2031,14 +2031,20 @@ async function loadFijos() {
             <div class="item-row-detail">${formatearFrecuenciaGastoFijo(g.frecuencia, g.dia_pago, g.dia_semana)}</div>
           </div>
           <div class="item-row-amount" style="color:var(--red)">${formatMXN(g.monto)}</div>
-          <button class="item-row-delete" onclick="openEditarGastoFijo('${g.id}')"><i data-lucide="pencil" style="width:18px;height:18px;stroke-width:1.75"></i></button>
-          <button class="item-row-delete" onclick="eliminarGastoFijo('${g.id}')"><i data-lucide="trash-2" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+          <button class="item-row-delete" onclick="openGastoFijoActions('${g.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
         </div>
       `).join('')}
     </div>
   `;
 
   renderLucideIcons();
+}
+
+function openGastoFijoActions(gastoFijoId) {
+  openActionSheet('Opciones de gasto fijo', [
+    { label: 'Editar', onClick: `openEditarGastoFijo('${gastoFijoId}')` },
+    { label: 'Eliminar', onClick: `confirmarEliminarGastoFijo('${gastoFijoId}')`, danger: true }
+  ]);
 }
 
 function renderCamposFechaEditarGastoFijo() {
@@ -2309,6 +2315,13 @@ async function eliminarGastoFijo(gastoFijoId) {
 
   showSnackbar('Gasto fijo eliminado', 'success');
   await loadFijos();
+}
+
+function confirmarEliminarGastoFijo(gastoFijoId) {
+  openModal('Eliminar gasto fijo', `
+    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">¿Eliminar este gasto fijo?</p>
+    <button class="btn btn-danger" onclick="eliminarGastoFijo('${gastoFijoId}')">Eliminar</button>
+  `);
 }
 
 // ---- GASTOS (historial) ----
