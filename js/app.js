@@ -2805,6 +2805,122 @@ async function eliminarIngreso(ingresoId) {
   await loadCuentas();
 }
 
+async function openRegistrarTraspaso() {
+  const { data: cuentas, error } = await db
+    .from('cuentas')
+    .select('id, nombre')
+    .eq('usuario_id', getUsuarioId())
+    .eq('activa', true)
+    .order('nombre', { ascending: true });
+
+  if (error || !cuentas || cuentas.length < 2) {
+    showSnackbar('Necesitas al menos dos cuentas activas para traspasar', 'error');
+    return;
+  }
+
+  openModal('Registrar traspaso', `
+    <div class="form-group">
+      <label class="form-label">De qué cuenta</label>
+      <select class="form-select" id="tr-origen">
+        ${cuentas.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">A qué cuenta</label>
+      <select class="form-select" id="tr-destino">
+        ${cuentas.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Monto</label>
+      <input class="form-input" id="tr-monto" type="number" min="0" placeholder="$0.00" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Fecha</label>
+      <input class="form-input" id="tr-fecha" type="date" value="${new Date().toISOString().split('T')[0]}" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Nota opcional</label>
+      <input class="form-input" id="tr-nota" type="text" placeholder="Opcional" />
+    </div>
+    <button class="btn btn-primary" onclick="guardarTraspaso()">Registrar traspaso</button>
+  `);
+}
+
+async function guardarTraspaso() {
+  const usuarioId = getUsuarioId();
+  const cuenta_origen_id = document.getElementById('tr-origen')?.value;
+  const cuenta_destino_id = document.getElementById('tr-destino')?.value;
+  const monto = parseFloat(document.getElementById('tr-monto')?.value);
+  const fecha = document.getElementById('tr-fecha')?.value;
+  const descripcion = document.getElementById('tr-nota')?.value.trim() || '';
+
+  if (!cuenta_origen_id || !cuenta_destino_id || !monto || monto <= 0 || !fecha) {
+    showSnackbar('Completa origen, destino, monto y fecha', 'error');
+    return;
+  }
+
+  if (cuenta_origen_id === cuenta_destino_id) {
+    showSnackbar('Elige cuentas distintas para el traspaso', 'error');
+    return;
+  }
+
+  const [
+    { data: cuentaOrigen, error: errorCuentaOrigen },
+    { data: ingresosOrigen, error: errorIngresos },
+    { data: gastosOrigen, error: errorGastos },
+    { data: pagosDeudaOrigen, error: errorPagosDeuda },
+    { data: traspasosSalidaOrigen, error: errorTraspasosSalida },
+    { data: traspasosEntradaOrigen, error: errorTraspasosEntrada }
+  ] = await Promise.all([
+    db.from('cuentas').select('id, saldo_inicial').eq('id', cuenta_origen_id).eq('usuario_id', usuarioId).single(),
+    db.from('ingresos').select('cuenta_id, monto').eq('usuario_id', usuarioId).eq('cuenta_id', cuenta_origen_id),
+    db.from('gastos').select('cuenta_id, monto').eq('usuario_id', usuarioId).eq('cuenta_id', cuenta_origen_id),
+    db.from('pagos_deuda').select('cuenta_id, monto').eq('usuario_id', usuarioId).eq('cuenta_id', cuenta_origen_id),
+    db.from('transferencias').select('cuenta_origen_id, monto').eq('usuario_id', usuarioId).eq('cuenta_origen_id', cuenta_origen_id),
+    db.from('transferencias').select('cuenta_destino_id, monto').eq('usuario_id', usuarioId).eq('cuenta_destino_id', cuenta_origen_id)
+  ]);
+
+  if (errorCuentaOrigen || errorIngresos || errorGastos || errorPagosDeuda || errorTraspasosSalida || errorTraspasosEntrada || !cuentaOrigen) {
+    showSnackbar('No se pudo validar el saldo de la cuenta origen', 'error');
+    return;
+  }
+
+  const { cuentasConSaldo } = calcularCuentasConSaldo(
+    [cuentaOrigen],
+    ingresosOrigen || [],
+    gastosOrigen || [],
+    pagosDeudaOrigen || [],
+    traspasosSalidaOrigen || [],
+    traspasosEntradaOrigen || []
+  );
+  const saldoOrigen = Number(cuentasConSaldo?.[0]?.saldoCalculado || 0);
+
+  if (monto > saldoOrigen) {
+    showSnackbar('Saldo insuficiente — disponible: ' + formatMXN(saldoOrigen), 'error');
+    return;
+  }
+
+  const { error } = await db.from('transferencias').insert({
+    usuario_id: usuarioId,
+    cuenta_origen_id,
+    cuenta_destino_id,
+    monto,
+    descripcion,
+    fecha
+  });
+
+  if (error) {
+    showSnackbar('No se pudo registrar el traspaso', 'error');
+    return;
+  }
+
+  showSnackbar('Traspaso registrado ✓', 'success');
+  closeModal();
+  await loadDashboard();
+  await loadCuentas();
+}
+
 // ---- AJUSTES ----
 function formatearFrecuenciaIngresoProgramado(frecuencia, diaPago, diaSemana) {
   const diasSemana = ['domingos', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabados'];
