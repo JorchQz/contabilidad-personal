@@ -1284,7 +1284,10 @@ async function loadDashboard() {
   }
 
   closeFabMenu();
-  fab.onclick = toggleFabMenu;
+  if (!fab.dataset.listenerSet) {
+    fab.onclick = toggleFabMenu;
+    fab.dataset.listenerSet = 'true';
+  }
   setFabMainIcon(false);
   renderLucideIcons();
   if (window.lucide) lucide.createIcons();
@@ -1400,7 +1403,7 @@ async function loadCuentas() {
               <div class="item-row-detail">${cuenta.tipoLabel}</div>
             </div>
             <div class="item-row-amount">${formatMXN(cuenta.saldoCalculado)}</div>
-            <button class="item-row-delete" onclick="openCuentaActions('${cuenta.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+            <button class="item-row-delete" onclick="openMenuCuenta('${cuenta.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
           </div>
         `).join('')}
         <div class="card" style="margin-top:8px;background:var(--bg-elevated)">
@@ -1430,6 +1433,10 @@ function openCuentaActions(cuentaId) {
     { label: 'Editar', onClick: `openEditarCuenta('${cuentaId}')` },
     { label: 'Eliminar', onClick: `confirmarEliminarCuenta('${cuentaId}')`, danger: true }
   ]);
+}
+
+function openMenuCuenta(cuentaId) {
+  openCuentaActions(cuentaId);
 }
 
 async function openEditarCuenta(cuentaId) {
@@ -1584,7 +1591,7 @@ async function loadDeudas() {
             <span class="deuda-acreedor">${badgeEmoji} ${d.acreedor}</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="deuda-badge ${d.tipo_pago}">${d.tipo_pago || d.tipo_deuda}</span>
-              <button class="item-row-delete" style="margin-left:0" onclick="openDeudaActions('${d.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+              <button class="item-row-delete" style="margin-left:0" onclick="openMenuDeuda('${d.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
             </div>
           </div>
           <div class="deuda-progress">
@@ -1619,6 +1626,10 @@ function openDeudaActions(deudaId) {
     { label: 'Editar', onClick: `openEditarDeuda('${deudaId}')` },
     { label: 'Eliminar', onClick: `confirmarEliminarDeuda('${deudaId}')`, danger: true }
   ]);
+}
+
+function openMenuDeuda(deudaId) {
+  openDeudaActions(deudaId);
 }
 
 function renderCamposFechaEditarDeuda() {
@@ -1829,7 +1840,7 @@ async function loadMetas() {
                   <div style="font-size:12px;color:var(--text-secondary)">Meta: ${formatMXN(m.monto_objetivo)}</div>
                 </div>
               </div>
-              <button class="item-row-delete" onclick="openMetaActions('${m.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+              <button class="item-row-delete" onclick="openMenuMeta('${m.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
             </div>
             <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:8px">
               <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:4px;transition:width 0.6s ease"></div>
@@ -1853,6 +1864,10 @@ function openMetaActions(metaId) {
     { label: 'Editar', onClick: `openEditarMeta('${metaId}')` },
     { label: 'Eliminar', onClick: `confirmarEliminarMeta('${metaId}')`, danger: true }
   ]);
+}
+
+function openMenuMeta(metaId) {
+  openMetaActions(metaId);
 }
 
 async function openAbonarMeta(metaId) {
@@ -2089,7 +2104,7 @@ async function loadFijos() {
             <div class="item-row-detail">${formatearFrecuenciaGastoFijo(g.frecuencia, g.dia_pago, g.dia_semana)}</div>
           </div>
           <div class="item-row-amount" style="color:var(--red)">${formatMXN(g.monto)}</div>
-          <button class="item-row-delete" onclick="openGastoFijoActions('${g.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+          <button class="item-row-delete" onclick="openMenuGastoFijo('${g.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
         </div>
       `).join('')}
     </div>
@@ -2103,6 +2118,10 @@ function openGastoFijoActions(gastoFijoId) {
     { label: 'Editar', onClick: `openEditarGastoFijo('${gastoFijoId}')` },
     { label: 'Eliminar', onClick: `confirmarEliminarGastoFijo('${gastoFijoId}')`, danger: true }
   ]);
+}
+
+function openMenuGastoFijo(gastoFijoId) {
+  openGastoFijoActions(gastoFijoId);
 }
 
 function renderCamposFechaEditarGastoFijo() {
