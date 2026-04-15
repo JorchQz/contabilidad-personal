@@ -1477,7 +1477,7 @@ function getCuentaTipos() {
 function openCuentaActions(cuentaId) {
   openActionSheet('Opciones de cuenta', [
     { label: 'Editar', onClick: `openEditarCuenta('${cuentaId}')` },
-    { label: 'Eliminar', onClick: `confirmarEliminarCuenta('${cuentaId}')`, danger: true }
+    { label: 'Eliminar', onClick: `eliminarCuenta('${cuentaId}')`, danger: true }
   ]);
 }
 
@@ -1546,14 +1546,9 @@ async function guardarEdicionCuenta(cuentaId) {
   await loadDashboard();
 }
 
-function confirmarEliminarCuenta(cuentaId) {
-  openModal('Eliminar cuenta', `
-    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">Los movimientos de esta cuenta se conservan en el historial.</p>
-    <button class="btn btn-danger" onclick="eliminarCuenta('${cuentaId}')">Eliminar cuenta</button>
-  `);
-}
-
 async function eliminarCuenta(cuentaId) {
+  if (!window.confirm('¿Eliminar esta cuenta?\n\nLos movimientos de esta cuenta se conservan en el historial.')) return;
+
   const { error } = await db
     .from('cuentas')
     .update({ activa: false })
@@ -1670,7 +1665,7 @@ async function loadDeudas() {
 function openDeudaActions(deudaId) {
   openActionSheet('Opciones de deuda', [
     { label: 'Editar', onClick: `openEditarDeuda('${deudaId}')` },
-    { label: 'Eliminar', onClick: `confirmarEliminarDeuda('${deudaId}')`, danger: true }
+    { label: 'Eliminar', onClick: `eliminarDeuda('${deudaId}')`, danger: true }
   ]);
 }
 
@@ -1833,14 +1828,9 @@ async function guardarEdicionDeuda(deudaId) {
   await loadDashboard();
 }
 
-function confirmarEliminarDeuda(deudaId) {
-  openModal('Eliminar deuda', `
-    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">¿Eliminar esta deuda?</p>
-    <button class="btn btn-danger" onclick="eliminarDeuda('${deudaId}')">Confirmar</button>
-  `);
-}
-
 async function eliminarDeuda(deudaId) {
+  if (!window.confirm('¿Eliminar esta deuda?')) return;
+
   const { error } = await db
     .from('deudas')
     .update({ activa: false })
@@ -1908,7 +1898,7 @@ function openMetaActions(metaId) {
   openActionSheet('Opciones de meta', [
     { label: 'Abonar', onClick: `openAbonarMeta('${metaId}')` },
     { label: 'Editar', onClick: `openEditarMeta('${metaId}')` },
-    { label: 'Eliminar', onClick: `confirmarEliminarMeta('${metaId}')`, danger: true }
+    { label: 'Eliminar', onClick: `eliminarMeta('${metaId}')`, danger: true }
   ]);
 }
 
@@ -2061,14 +2051,9 @@ async function guardarEdicionMeta(metaId) {
   await loadMetas();
 }
 
-function confirmarEliminarMeta(metaId) {
-  openModal('Eliminar meta', `
-    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">¿Eliminar esta meta?</p>
-    <button class="btn btn-danger" onclick="eliminarMeta('${metaId}')">Eliminar</button>
-  `);
-}
-
 async function eliminarMeta(metaId) {
+  if (!window.confirm('¿Eliminar esta meta?')) return;
+
   const { error } = await db
     .from('metas_ahorro')
     .update({ activa: false })
@@ -2162,7 +2147,7 @@ async function loadFijos() {
 function openGastoFijoActions(gastoFijoId) {
   openActionSheet('Opciones de gasto fijo', [
     { label: 'Editar', onClick: `openEditarGastoFijo('${gastoFijoId}')` },
-    { label: 'Eliminar', onClick: `confirmarEliminarGastoFijo('${gastoFijoId}')`, danger: true }
+    { label: 'Eliminar', onClick: `eliminarGastoFijo('${gastoFijoId}')`, danger: true }
   ]);
 }
 
@@ -2429,6 +2414,8 @@ async function guardarNuevoGastoFijo() {
 }
 
 async function eliminarGastoFijo(gastoFijoId) {
+  if (!window.confirm('¿Eliminar este gasto fijo?')) return;
+
   const { error } = await db.from('gastos_fijos').update({ activo: false }).eq('id', gastoFijoId);
 
   if (error) {
@@ -2438,13 +2425,6 @@ async function eliminarGastoFijo(gastoFijoId) {
 
   showSnackbar('Gasto fijo eliminado', 'success');
   await loadFijos();
-}
-
-function confirmarEliminarGastoFijo(gastoFijoId) {
-  openModal('Eliminar gasto fijo', `
-    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">¿Eliminar este gasto fijo?</p>
-    <button class="btn btn-danger" onclick="eliminarGastoFijo('${gastoFijoId}')">Eliminar</button>
-  `);
 }
 
 // ---- GASTOS (historial) ----
@@ -2475,7 +2455,7 @@ async function loadGastos() {
             <div class="item-row-detail">${g.categorias?.nombre || 'Sin categoría'} · ${g.fecha}</div>
           </div>
           <div class="item-row-amount">${formatMXN(g.monto)}</div>
-          <button class="item-row-delete" onclick="confirmarEliminarGasto('${g.id}')"><i data-lucide="trash-2" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+          <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="eliminarGasto('${g.id}')"><i data-lucide="trash-2" style="width:16px;height:16px;pointer-events:none"></i></button>
         </div>
       `).join('')}
     </div>
@@ -2484,14 +2464,9 @@ async function loadGastos() {
   renderLucideIcons();
 }
 
-function confirmarEliminarGasto(gastoId) {
-  openModal('Eliminar gasto', `
-    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">¿Eliminar este gasto del historial?</p>
-    <button class="btn btn-danger" onclick="eliminarGasto('${gastoId}')">Eliminar</button>
-  `);
-}
-
 async function eliminarGasto(gastoId) {
+  if (!window.confirm('¿Eliminar este gasto del historial?')) return;
+
   const { error } = await db
     .from('gastos')
     .delete()
@@ -2775,18 +2750,13 @@ async function guardarEdicionIngresoProgramado(ingresoProgramadoId) {
 
 function openMenuIngresoHistorial(ingresoId) {
   openActionSheet('Opciones del ingreso', [
-    { label: 'Eliminar', onClick: `confirmarEliminarIngreso('${ingresoId}')`, danger: true }
+    { label: 'Eliminar', onClick: `eliminarIngreso('${ingresoId}')`, danger: true }
   ]);
 }
 
-function confirmarEliminarIngreso(ingresoId) {
-  openModal('Eliminar ingreso', `
-    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">¿Eliminar este ingreso del historial?</p>
-    <button class="btn btn-danger" onclick="eliminarIngreso('${ingresoId}')">Eliminar</button>
-  `);
-}
-
 async function eliminarIngreso(ingresoId) {
+  if (!window.confirm('¿Eliminar este ingreso del historial?')) return;
+
   const { error } = await db
     .from('ingresos')
     .delete()
@@ -3087,6 +3057,8 @@ async function guardarIngresoProgramado() {
 }
 
 async function eliminarIngresoProgramado(ingresoProgramadoId) {
+  if (!window.confirm('¿Eliminar este ingreso programado?')) return;
+
   const { error } = await db
     .from('ingresos_programados')
     .update({ activo: false })
