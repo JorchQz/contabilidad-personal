@@ -3,6 +3,8 @@
 // ---- ESTADO DEL ONBOARDING ----
 let onboardingData = {
   nombre: '',
+  tiposIngreso: [],
+  categorias: [],
   cuentas: [],
   deudas: [],
   gastosFijos: [],
@@ -10,25 +12,7 @@ let onboardingData = {
 };
 
 let currentStep = 1;
-const TOTAL_STEPS = 5;
-
-// ---- CATEGORÍAS DEFAULT ----
-const CATEGORIAS_DEFAULT = [
-  { nombre: 'Comida', emoji: '🥑', tipo: 'gasto' },
-  { nombre: 'Transporte', emoji: '🚗', tipo: 'gasto' },
-  { nombre: 'Ropa', emoji: '👗', tipo: 'gasto' },
-  { nombre: 'Internet', emoji: '📶', tipo: 'gasto' },
-  { nombre: 'Salud', emoji: '💊', tipo: 'gasto' },
-  { nombre: 'Familia', emoji: '❤️', tipo: 'gasto' },
-  { nombre: 'Entretenimiento', emoji: '🎬', tipo: 'gasto' },
-  { nombre: 'Negocio', emoji: '🧢', tipo: 'gasto' },
-  { nombre: 'Deuda', emoji: '💸', tipo: 'gasto' },
-  { nombre: 'Ahorro', emoji: '🏦', tipo: 'gasto' },
-  { nombre: 'Otros', emoji: '📦', tipo: 'gasto' },
-  { nombre: 'Salario', emoji: '💼', tipo: 'ingreso' },
-  { nombre: 'Beca', emoji: '🎓', tipo: 'ingreso' },
-  { nombre: 'Extra', emoji: '⚡', tipo: 'ingreso' },
-];
+const TOTAL_STEPS = 7;
 
 // ---- TEMA ----
 const THEME_STORAGE_KEY = 'jmf_theme';
@@ -783,10 +767,12 @@ function renderStep(step) {
 
   const steps = {
     1: renderStep1,
-    2: renderStep2,
-    3: renderStep3,
+    2: renderStep2nuevo,
+    3: renderStep3nuevo,
     4: renderStep4,
-    5: renderStep5
+    5: renderStep5,
+    6: renderStep6,
+    7: renderStep7
   };
 
   steps[step]?.();
@@ -833,17 +819,271 @@ function nextStep1() {
   renderStep(2);
 }
 
-// STEP 2: Cuentas
-function renderStep2() {
-  setHeader(`¿Dónde tienes tu dinero, ${onboardingData.nombre.split(' ')[0]}?`, 'Registra tus cuentas activas — efectivo, débito, lo que uses.');
-  renderStep2Body();
+// ---- ICONOS PARA SELECTOR PERSONALIZADO ----
+const ICONOS_PICKER = [
+  'briefcase','home','zap','wifi','utensils','car','heart-pulse',
+  'graduation-cap','shopping-bag','tv','users','credit-card',
+  'piggy-bank','music','coffee','dog','baby','dumbbell','shirt','package'
+];
+
+// STEP 2: Tipos de ingreso
+function renderStep2nuevo() {
+  const TIPOS_INGRESO = [
+    { nombre: 'Salario / Nómina',        icono: 'briefcase' },
+    { nombre: 'Honorarios / Freelance',  icono: 'laptop' },
+    { nombre: 'Negocio propio',          icono: 'store' },
+    { nombre: 'Horas extra',             icono: 'clock' },
+    { nombre: 'Renta de inmueble',       icono: 'building-2' },
+    { nombre: 'Beca / Apoyo gobierno',   icono: 'graduation-cap' },
+    { nombre: 'Pensión / Retiro',        icono: 'landmark' },
+    { nombre: 'Mesada / Apoyo familiar', icono: 'users' },
+  ];
+
+  setHeader('¿Cómo recibes dinero?', 'Selecciona todas las que apliquen.');
+
+  function render(showCustomForm = false, selectedIcono = '') {
+    document.getElementById('onboarding-body').innerHTML = `
+      <div class="category-grid">
+        ${TIPOS_INGRESO.map(t => {
+          const sel = onboardingData.tiposIngreso.some(x => x.nombre === t.nombre && x.icono === t.icono);
+          return `
+            <div class="category-item${sel ? ' selected' : ''}" onclick="toggleTipoIngreso('${t.nombre}','${t.icono}')">
+              <i data-lucide="${t.icono}" class="cat-icon"></i>
+              <span class="cat-name">${t.nombre}</span>
+            </div>`;
+        }).join('')}
+        ${onboardingData.tiposIngreso.filter(x => !TIPOS_INGRESO.some(t => t.nombre === x.nombre)).map((x, i) => `
+          <div class="category-item selected" onclick="toggleTipoIngreso('${x.nombre}','${x.icono}','custom')">
+            <i data-lucide="${x.icono}" class="cat-icon"></i>
+            <span class="cat-name">${x.nombre}</span>
+          </div>`).join('')}
+      </div>
+
+      ${showCustomForm ? `
+      <div class="mini-form" style="margin-top:12px">
+        <input class="form-input" id="ti-nombre" placeholder="Nombre del ingreso" style="margin-bottom:8px" />
+        <div class="icon-picker-grid" id="ti-icon-picker">
+          ${ICONOS_PICKER.map(ic => `
+            <div class="icon-picker-item${selectedIcono === ic ? ' selected' : ''}" onclick="selectIconoTipoIngreso('${ic}')">
+              <i data-lucide="${ic}"></i>
+            </div>`).join('')}
+        </div>
+        <input type="hidden" id="ti-icono" value="${selectedIcono || 'briefcase'}" />
+        <button class="btn btn-secondary" style="margin-top:4px" onclick="addTipoIngresoCustom()">+ Agregar</button>
+      </div>
+      ` : `
+      <button class="btn-add-item" style="margin-top:12px" onclick="renderStep2CustomForm()">
+        <span>+</span> Agregar personalizado
+      </button>
+      `}
+    `;
+    lucide.createIcons();
+  }
+
+  window._renderStep2Body = render;
+  render();
+
   setFooter(`
-    <button class="btn btn-primary" onclick="nextStep2()">Continuar →</button>
+    <button class="btn btn-primary" onclick="nextStep2nuevo()">Continuar →</button>
     <button class="btn btn-ghost mt-8" onclick="renderStep(1)">← Atrás</button>
   `);
 }
 
-function renderStep2Body(showForm = false) {
+window.toggleTipoIngreso = function(nombre, icono, tipo) {
+  const idx = onboardingData.tiposIngreso.findIndex(x => x.nombre === nombre && x.icono === icono);
+  if (idx >= 0) {
+    onboardingData.tiposIngreso.splice(idx, 1);
+  } else {
+    onboardingData.tiposIngreso.push({ nombre, icono });
+  }
+  if (window._renderStep2Body) window._renderStep2Body();
+};
+
+window.renderStep2CustomForm = function() {
+  if (window._renderStep2Body) window._renderStep2Body(true, 'briefcase');
+};
+
+window.selectIconoTipoIngreso = function(icono) {
+  if (window._renderStep2Body) window._renderStep2Body(true, icono);
+};
+
+window.addTipoIngresoCustom = function() {
+  const nombre = document.getElementById('ti-nombre')?.value.trim();
+  const icono  = document.getElementById('ti-icono')?.value || 'briefcase';
+  if (!nombre) { showSnackbar('Escribe el nombre del ingreso', 'error'); return; }
+  onboardingData.tiposIngreso.push({ nombre, icono });
+  if (window._renderStep2Body) window._renderStep2Body();
+};
+
+function nextStep2nuevo() {
+  if (onboardingData.tiposIngreso.length < 1) {
+    showSnackbar('Selecciona al menos un tipo de ingreso', 'error');
+    return;
+  }
+  renderStep(3);
+}
+
+// STEP 3: Categorías de gasto
+function renderStep3nuevo() {
+  const GRUPOS = [
+    { titulo: 'Hogar', items: [
+      { nombre: 'Renta',             icono: 'home' },
+      { nombre: 'Luz / CFE',         icono: 'zap' },
+      { nombre: 'Agua',              icono: 'droplets' },
+      { nombre: 'Gas',               icono: 'flame' },
+      { nombre: 'Internet',          icono: 'wifi' },
+      { nombre: 'Teléfono celular',  icono: 'smartphone' },
+    ]},
+    { titulo: 'Alimentación', items: [
+      { nombre: 'Despensa',          icono: 'shopping-cart' },
+      { nombre: 'Restaurantes',      icono: 'utensils' },
+      { nombre: 'Antojitos / snacks',icono: 'coffee' },
+      { nombre: 'Delivery / pedidos',icono: 'package' },
+    ]},
+    { titulo: 'Transporte', items: [
+      { nombre: 'Gasolina',          icono: 'fuel' },
+      { nombre: 'Transporte público',icono: 'bus' },
+      { nombre: 'Uber / Didi',       icono: 'car' },
+      { nombre: 'Mantenimiento auto',icono: 'wrench' },
+    ]},
+    { titulo: 'Salud', items: [
+      { nombre: 'Médico / consultas',icono: 'stethoscope' },
+      { nombre: 'Medicamentos',      icono: 'pill' },
+      { nombre: 'Gimnasio',          icono: 'dumbbell' },
+      { nombre: 'Seguro médico',     icono: 'shield' },
+    ]},
+    { titulo: 'Educación', items: [
+      { nombre: 'Colegiatura',       icono: 'graduation-cap' },
+      { nombre: 'Libros / cursos',   icono: 'book-open' },
+      { nombre: 'Útiles escolares',  icono: 'pencil' },
+    ]},
+    { titulo: 'Ropa y personal', items: [
+      { nombre: 'Ropa',              icono: 'shirt' },
+      { nombre: 'Calzado',           icono: 'footprints' },
+      { nombre: 'Corte de pelo',     icono: 'scissors' },
+      { nombre: 'Cosméticos / higiene', icono: 'sparkles' },
+    ]},
+    { titulo: 'Entretenimiento', items: [
+      { nombre: 'Streaming',         icono: 'tv' },
+      { nombre: 'Cine / teatro',     icono: 'clapperboard' },
+      { nombre: 'Salidas / fiestas', icono: 'music' },
+      { nombre: 'Videojuegos',       icono: 'gamepad-2' },
+    ]},
+    { titulo: 'Familia y otros', items: [
+      { nombre: 'Hijos',             icono: 'baby' },
+      { nombre: 'Padres / familia',  icono: 'users' },
+      { nombre: 'Mascotas',          icono: 'dog' },
+      { nombre: 'Regalos',           icono: 'gift' },
+      { nombre: 'Otros',             icono: 'package' },
+    ]},
+  ];
+
+  setHeader('¿En qué sueles gastar?', 'Elige las categorías que uses. Puedes agregar propias.');
+
+  function render(showCustomForm = false, selectedIcono = '') {
+    const allItems = GRUPOS.flatMap(g => g.items);
+
+    document.getElementById('onboarding-body').innerHTML = `
+      ${GRUPOS.map(g => `
+        <div class="category-group-title">${g.titulo}</div>
+        <div class="category-grid">
+          ${g.items.map(item => {
+            const sel = onboardingData.categorias.some(x => x.nombre === item.nombre && x.icono === item.icono);
+            return `
+              <div class="category-item${sel ? ' selected' : ''}" onclick="toggleCategoria('${item.nombre}','${item.icono}')">
+                <i data-lucide="${item.icono}" class="cat-icon"></i>
+                <span class="cat-name">${item.nombre}</span>
+              </div>`;
+          }).join('')}
+        </div>
+      `).join('')}
+
+      ${onboardingData.categorias.filter(x => !allItems.some(t => t.nombre === x.nombre)).length > 0 ? `
+        <div class="category-group-title">Personalizadas</div>
+        <div class="category-grid">
+          ${onboardingData.categorias.filter(x => !allItems.some(t => t.nombre === x.nombre)).map(x => `
+            <div class="category-item selected" onclick="toggleCategoria('${x.nombre}','${x.icono}')">
+              <i data-lucide="${x.icono}" class="cat-icon"></i>
+              <span class="cat-name">${x.nombre}</span>
+            </div>`).join('')}
+        </div>
+      ` : ''}
+
+      ${showCustomForm ? `
+      <div class="mini-form" style="margin-top:12px">
+        <input class="form-input" id="cat-nombre" placeholder="Nombre de la categoría" style="margin-bottom:8px" />
+        <div class="icon-picker-grid" id="cat-icon-picker">
+          ${ICONOS_PICKER.map(ic => `
+            <div class="icon-picker-item${selectedIcono === ic ? ' selected' : ''}" onclick="selectIconoCategoria('${ic}')">
+              <i data-lucide="${ic}"></i>
+            </div>`).join('')}
+        </div>
+        <input type="hidden" id="cat-icono" value="${selectedIcono || 'package'}" />
+        <button class="btn btn-secondary" style="margin-top:4px" onclick="addCategoriaCustom()">+ Agregar</button>
+      </div>
+      ` : `
+      <button class="btn-add-item" style="margin-top:12px" onclick="renderStep3CustomForm()">
+        <span>+</span> Agregar categoría propia
+      </button>
+      `}
+    `;
+    lucide.createIcons();
+  }
+
+  window._renderStep3Body = render;
+  render();
+
+  setFooter(`
+    <button class="btn btn-primary" onclick="nextStep3nuevo()">Continuar →</button>
+    <button class="btn btn-ghost mt-8" onclick="renderStep(2)">← Atrás</button>
+  `);
+}
+
+window.toggleCategoria = function(nombre, icono) {
+  const idx = onboardingData.categorias.findIndex(x => x.nombre === nombre && x.icono === icono);
+  if (idx >= 0) {
+    onboardingData.categorias.splice(idx, 1);
+  } else {
+    onboardingData.categorias.push({ nombre, icono, tipo: 'gasto' });
+  }
+  if (window._renderStep3Body) window._renderStep3Body();
+};
+
+window.renderStep3CustomForm = function() {
+  if (window._renderStep3Body) window._renderStep3Body(true, 'package');
+};
+
+window.selectIconoCategoria = function(icono) {
+  if (window._renderStep3Body) window._renderStep3Body(true, icono);
+};
+
+window.addCategoriaCustom = function() {
+  const nombre = document.getElementById('cat-nombre')?.value.trim();
+  const icono  = document.getElementById('cat-icono')?.value || 'package';
+  if (!nombre) { showSnackbar('Escribe el nombre de la categoría', 'error'); return; }
+  onboardingData.categorias.push({ nombre, icono, tipo: 'gasto' });
+  if (window._renderStep3Body) window._renderStep3Body();
+};
+
+function nextStep3nuevo() {
+  if (onboardingData.categorias.length < 3) {
+    showSnackbar('Selecciona al menos 3 categorías de gasto', 'error');
+    return;
+  }
+  renderStep(4);
+}
+
+// STEP 4: Cuentas
+function renderStep4() {
+  setHeader(`¿Dónde tienes tu dinero, ${onboardingData.nombre.split(' ')[0]}?`, 'Registra tus cuentas activas — efectivo, débito, lo que uses.');
+  renderStep4Body();
+  setFooter(`
+    <button class="btn btn-primary" onclick="nextStep4()">Continuar →</button>
+    <button class="btn btn-ghost mt-8" onclick="renderStep(3)">← Atrás</button>
+  `);
+}
+
+function renderStep4Body(showForm = false) {
   const TIPOS = [
     { value: 'efectivo', label: 'Efectivo', icon: '<i data-lucide="banknote" style="width:18px;height:18px;stroke-width:1.75"></i>' },
     { value: 'debito', label: 'Débito / Banco', icon: '<i data-lucide="building-2" style="width:18px;height:18px;stroke-width:1.75"></i>' },
@@ -879,7 +1119,7 @@ function renderStep2Body(showForm = false) {
       <button class="btn btn-secondary" onclick="addCuenta()">+ Agregar</button>
     </div>
     ` : `
-    <button class="btn-add-item" onclick="renderStep2Body(true)">
+    <button class="btn-add-item" onclick="renderStep4Body(true)">
       <span>+</span> Agregar cuenta
     </button>
     `}
@@ -894,33 +1134,33 @@ function addCuenta() {
   const saldo = parseFloat(document.getElementById('c-saldo').value) || 0;
   if (!nombre) { showSnackbar('Escribe el nombre de la cuenta', 'error'); return; }
   onboardingData.cuentas.push({ nombre, tipo, saldo_inicial: saldo });
-  renderStep2Body(false);
+  renderStep4Body(false);
 }
 
 function removeCuenta(i) {
   onboardingData.cuentas.splice(i, 1);
-  renderStep2Body(false);
+  renderStep4Body(false);
 }
 
-function nextStep2() {
+function nextStep4() {
   if (onboardingData.cuentas.length === 0) {
     showSnackbar('Agrega al menos una cuenta', 'error');
     return;
   }
-  renderStep(3);
+  renderStep(5);
 }
 
-// STEP 3: Deudas
-function renderStep3() {
+// STEP 5: Deudas
+function renderStep5() {
   setHeader('¿Qué debes actualmente?', 'Registra tus deudas para tener el panorama completo y hacer un plan de pago.');
-  renderStep3Body();
+  renderStep5Body();
   setFooter(`
-    <button class="btn btn-primary" onclick="nextStep3()">Continuar →</button>
-    <button class="btn btn-ghost mt-8" onclick="renderStep(2)">← Atrás</button>
+    <button class="btn btn-primary" onclick="nextStep5()">Continuar →</button>
+    <button class="btn btn-ghost mt-8" onclick="renderStep(4)">← Atrás</button>
   `);
 }
 
-function renderStep3Body(showForm = false) {
+function renderStep5Body(showForm = false) {
   const FRECUENCIAS = ['semanal', 'quincenal', 'mensual', 'libre'];
 
   document.getElementById('onboarding-body').innerHTML = `
@@ -955,7 +1195,7 @@ function renderStep3Body(showForm = false) {
       <button class="btn btn-secondary" onclick="addDeuda()">+ Agregar</button>
     </div>
     ` : `
-    <button class="btn-add-item" onclick="renderStep3Body(true)">
+    <button class="btn-add-item" onclick="renderStep5Body(true)">
       <span>+</span> Agregar deuda
     </button>
     `}
@@ -972,29 +1212,29 @@ function addDeuda() {
   const monto_pago = parseFloat(document.getElementById('d-pago').value) || null;
   if (!acreedor || !monto) { showSnackbar('Completa acreedor y monto', 'error'); return; }
   onboardingData.deudas.push({ acreedor, monto_inicial: monto, monto_actual: monto, tipo_pago, monto_pago });
-  renderStep3Body(false);
+  renderStep5Body(false);
 }
 
 function removeDeuda(i) {
   onboardingData.deudas.splice(i, 1);
-  renderStep3Body(false);
+  renderStep5Body(false);
 }
 
-function nextStep3() {
-  renderStep(4);
+function nextStep5() {
+  renderStep(6);
 }
 
-// STEP 4: Gastos fijos
-function renderStep4() {
+// STEP 6: Gastos fijos
+function renderStep6() {
   setHeader('Tus gastos fijos 📅', 'Registra los pagos que tienes cada semana, quincena o mes. Te avisaremos cuando cobres.');
-  renderStep4Body();
+  renderStep6Body();
   setFooter(`
-    <button class="btn btn-primary" onclick="nextStep4()">Continuar →</button>
-    <button class="btn btn-ghost mt-8" onclick="renderStep(3)">← Atrás</button>
+    <button class="btn btn-primary" onclick="nextStep6()">Continuar →</button>
+    <button class="btn btn-ghost mt-8" onclick="renderStep(5)">← Atrás</button>
   `);
 }
 
-function renderStep4Body(showForm = false) {
+function renderStep6Body(showForm = false) {
   const FRECUENCIAS = ['semanal', 'quincenal', 'mensual'];
 
   document.getElementById('onboarding-body').innerHTML = `
@@ -1027,7 +1267,7 @@ function renderStep4Body(showForm = false) {
       <button class="btn btn-secondary" onclick="addGastoFijo()">+ Agregar</button>
     </div>
     ` : `
-    <button class="btn-add-item" onclick="renderStep4Body(true)">
+    <button class="btn-add-item" onclick="renderStep6Body(true)">
       <span>+</span> Agregar gasto fijo
     </button>
     `}
@@ -1110,29 +1350,29 @@ function addGastoFijo() {
 
   if (!descripcion || !monto) { showSnackbar('Completa descripción y monto', 'error'); return; }
   onboardingData.gastosFijos.push({ descripcion, monto, frecuencia, dia_pago, dia_semana });
-  renderStep4Body(false);
+  renderStep6Body(false);
 }
 
 function removeGastoFijo(i) {
   onboardingData.gastosFijos.splice(i, 1);
-  renderStep4Body(false);
+  renderStep6Body(false);
 }
 
-function nextStep4() {
-  renderStep(5);
+function nextStep6() {
+  renderStep(7);
 }
 
-// STEP 5: Metas
-function renderStep5() {
+// STEP 7: Metas
+function renderStep7() {
   setHeader('¿Para qué quieres ahorrar? 🎯', 'Define tus metas. Las iremos completando juntos poco a poco.');
-  renderStep5Body();
+  renderStep7Body();
   setFooter(`
     <button class="btn btn-success" id="btn-finish" onclick="finishOnboarding()">¡Listo, empecemos! 🚀</button>
-    <button class="btn btn-ghost mt-8" onclick="renderStep(4)">← Atrás</button>
+    <button class="btn btn-ghost mt-8" onclick="renderStep(6)">← Atrás</button>
   `);
 }
 
-function renderStep5Body(showForm = false) {
+function renderStep7Body(showForm = false) {
   document.getElementById('onboarding-body').innerHTML = `
     <div class="item-list">
       ${onboardingData.metas.map((m, i) => `
@@ -1159,7 +1399,7 @@ function renderStep5Body(showForm = false) {
       <button class="btn btn-secondary" onclick="addMeta()">+ Agregar</button>
     </div>
     ` : `
-    <button class="btn-add-item" onclick="renderStep5Body(true)">
+    <button class="btn-add-item" onclick="renderStep7Body(true)">
       <span>+</span> Agregar meta
     </button>
     `}
@@ -1175,12 +1415,12 @@ function addMeta() {
   const monto_objetivo = parseFloat(document.getElementById('m-monto').value);
   if (!nombre || !monto_objetivo) { showSnackbar('Completa nombre y monto', 'error'); return; }
   onboardingData.metas.push({ emoji, nombre, monto_objetivo });
-  renderStep5Body(false);
+  renderStep7Body(false);
 }
 
 function removeMeta(i) {
   onboardingData.metas.splice(i, 1);
-  renderStep5Body(false);
+  renderStep7Body(false);
 }
 
 // ---- GUARDAR ONBOARDING EN SUPABASE ----
@@ -1200,31 +1440,44 @@ async function finishOnboarding() {
     if (errUsuario) throw errUsuario;
     setUsuarioId(usuario.id);
 
-    // 2. Categorías default
-    const cats = CATEGORIAS_DEFAULT.map(c => ({ ...c, usuario_id: usuario.id, es_default: true }));
-    await db.from('categorias').insert(cats);
+    // 2. Insertar tipos de ingreso como categorías
+    if (onboardingData.tiposIngreso.length > 0) {
+      const cats_ingreso = onboardingData.tiposIngreso.map(t => ({
+        nombre: t.nombre,
+        emoji: t.icono,
+        tipo: 'ingreso',
+        usuario_id: usuario.id,
+        es_default: false
+      }));
+      await db.from('categorias').insert(cats_ingreso);
+    }
 
-    // 3. Cuentas
+    // 3. Insertar categorías de gasto
+    if (onboardingData.categorias.length > 0) {
+      const cats_gasto = onboardingData.categorias.map(c => ({
+        nombre: c.nombre,
+        emoji: c.icono,
+        tipo: 'gasto',
+        usuario_id: usuario.id,
+        es_default: false
+      }));
+      await db.from('categorias').insert(cats_gasto);
+    }
+
+    // 4. Cuentas
     if (onboardingData.cuentas.length > 0) {
       const cuentas = onboardingData.cuentas.map(c => ({ ...c, usuario_id: usuario.id }));
       await db.from('cuentas').insert(cuentas);
     }
 
-    // 4. Deudas
+    // 5. Deudas
     if (onboardingData.deudas.length > 0) {
       const deudas = onboardingData.deudas.map(d => ({ ...d, usuario_id: usuario.id }));
       await db.from('deudas').insert(deudas);
     }
 
-    // 5. Gastos fijos
+    // 6. Gastos fijos
     if (onboardingData.gastosFijos.length > 0) {
-      const { data: catGasto } = await db
-        .from('categorias')
-        .select('id')
-        .eq('usuario_id', usuario.id)
-        .eq('nombre', 'Otros')
-        .single();
-
       const fijos = onboardingData.gastosFijos.map(g => ({
         descripcion: g.descripcion,
         monto: g.monto,
@@ -1232,12 +1485,12 @@ async function finishOnboarding() {
         dia_pago: g.dia_pago ?? null,
         dia_semana: g.dia_semana ?? null,
         usuario_id: usuario.id,
-        categoria_id: catGasto?.id || null
+        categoria_id: null
       }));
       await db.from('gastos_fijos').insert(fijos);
     }
 
-    // 6. Metas
+    // 7. Metas
     if (onboardingData.metas.length > 0) {
       const metas = onboardingData.metas.map(m => ({ ...m, usuario_id: usuario.id }));
       await db.from('metas_ahorro').insert(metas);
