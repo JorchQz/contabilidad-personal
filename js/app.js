@@ -761,22 +761,6 @@ async function getPagosPendientes() {
   return pendientes;
 }
 
-// ---- INICIO ----
-window.addEventListener('DOMContentLoaded', async () => {
-  initTheme();
-  await new Promise(r => setTimeout(r, 1200)); // splash
-
-  const usuarioId = getUsuarioId();
-  if (usuarioId) {
-    const { data } = await db.from('usuarios').select('onboarding_completo').eq('id', usuarioId).single();
-    if (data?.onboarding_completo) {
-      renderApp();
-      return;
-    }
-  }
-  renderOnboarding();
-});
-
 // ---- ONBOARDING ----
 function renderOnboarding() {
   const app = document.getElementById('app');
@@ -1268,33 +1252,6 @@ async function finishOnboarding() {
     btn.textContent = '¡Listo, empecemos! 🚀';
     btn.disabled = false;
   }
-}
-
-// ---- RENDER APP PRINCIPAL ----
-async function renderApp() {
-  const app = document.getElementById('app');
-
-  app.innerHTML = `
-    <div id="page-dashboard" class="page active"></div>
-    <div id="page-gastos" class="page"></div>
-    <div id="page-ingresos" class="page"></div>
-    <div id="page-cuentas" class="page"></div>
-    <div id="page-deudas" class="page"></div>
-    <div id="page-metas" class="page"></div>
-    <div id="page-fijos" class="page"></div>
-    <div id="page-ajustes" class="page"></div>
-  `;
-
-  renderNav();
-  await loadDashboard();
-  await loadCuentas();
-  await loadDeudas();
-  await loadMetas();
-  await loadFijos();
-  loadGastos();
-  await loadIngresos();
-  await loadAjustes();
-  if (typeof updateFab === 'function') updateFab('dashboard');
 }
 
 // ---- DASHBOARD ----
@@ -2042,6 +1999,7 @@ function renderMetaAbonoHint() {
 
   const meta = (window.__metasAbonoCache || []).find(item => item.id === select.value);
   hint.textContent = meta?.cuenta_id ? 'Se abonará usando la cuenta vinculada a esta meta.' : 'Configura una cuenta para esta meta primero';
+}
 
 async function guardarAbonoMeta(metaId) {
   const abono = parseFloat(document.getElementById('ma-abono')?.value);
@@ -3997,6 +3955,33 @@ async function guardarNuevaMeta() {
   await loadMetas();
 }
 
+// ---- RENDER APP PRINCIPAL ----
+async function renderApp() {
+  const app = document.getElementById('app');
+
+  app.innerHTML = `
+    <div id="page-dashboard" class="page active"></div>
+    <div id="page-gastos" class="page"></div>
+    <div id="page-ingresos" class="page"></div>
+    <div id="page-cuentas" class="page"></div>
+    <div id="page-deudas" class="page"></div>
+    <div id="page-metas" class="page"></div>
+    <div id="page-fijos" class="page"></div>
+    <div id="page-ajustes" class="page"></div>
+  `;
+
+  renderNav();
+  await loadDashboard();
+  await loadCuentas();
+  await loadDeudas();
+  await loadMetas();
+  await loadFijos();
+  loadGastos();
+  await loadIngresos();
+  await loadAjustes();
+  if (typeof updateFab === 'function') updateFab('dashboard');
+}
+
 // ---- MODAL BASE ----
 let modalCloseTimeoutId = null;
 
@@ -4039,5 +4024,19 @@ function closeModal() {
   }
 }
 
-}
+// ---- INICIO ----
+window.addEventListener('DOMContentLoaded', async () => {
+  initTheme();
+  await new Promise(r => setTimeout(r, 1200)); // splash
+
+  const usuarioId = getUsuarioId();
+  if (usuarioId) {
+    const { data } = await db.from('usuarios').select('onboarding_completo').eq('id', usuarioId).single();
+    if (data?.onboarding_completo) {
+      renderApp();
+      return;
+    }
+  }
+  renderOnboarding();
+});
 
