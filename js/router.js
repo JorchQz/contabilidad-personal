@@ -24,6 +24,8 @@ function showPage(pageId) {
     lucide.createIcons();
   }
 
+  if (typeof updateFab === 'function') updateFab(pageId);
+
   window.scrollTo(0, 0);
 }
 

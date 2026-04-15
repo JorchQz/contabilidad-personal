@@ -141,6 +141,81 @@ function openActionSheet(title, actions) {
   `);
 }
 
+const fabConfig = {
+  dashboard: [
+    { icon: 'minus-circle', label: 'Gasto', action: 'openRegistrarGasto()' },
+    { icon: 'plus-circle', label: 'Ingreso', action: 'openRegistrarIngreso()' },
+    { icon: 'arrow-left-right', label: 'Traspaso', action: 'openRegistrarTraspaso()' }
+  ],
+  gastos: [
+    { icon: 'minus-circle', label: 'Nuevo gasto', action: 'openRegistrarGasto()' }
+  ],
+  ingresos: [
+    { icon: 'plus-circle', label: 'Nuevo ingreso', action: 'openRegistrarIngreso()' }
+  ],
+  deudas: [
+    { icon: 'trending-down', label: 'Nueva deuda', action: 'openAgregarDeuda()' }
+  ],
+  metas: [
+    { icon: 'piggy-bank', label: 'Nueva meta', action: 'openAgregarMeta()' },
+    { icon: 'plus-circle', label: 'Abonar', action: 'openAbonarMeta()' }
+  ],
+  fijos: [
+    { icon: 'pin', label: 'Nuevo fijo', action: 'openAgregarGastoFijo()' }
+  ],
+  cuentas: [
+    { icon: 'wallet', label: 'Nueva cuenta', action: 'openAgregarCuenta()' },
+    { icon: 'arrow-left-right', label: 'Traspaso', action: 'openRegistrarTraspaso()' }
+  ],
+  ajustes: null
+};
+
+let currentFabItems = [];
+
+function runFabAction(action) {
+  const functionName = action.replace(/\(\)$/, '');
+  if (typeof window[functionName] === 'function') {
+    window[functionName]();
+  }
+}
+
+function updateFab(pageId) {
+  let fab = document.getElementById('fab-main');
+  if (!fab) {
+    fab = document.createElement('button');
+    fab.id = 'fab-main';
+    fab.className = 'fab';
+    document.getElementById('app').appendChild(fab);
+  }
+
+  const items = fabConfig[pageId];
+  closeFabMenu();
+  fab.dataset.listenerSet = '';
+
+  if (items === null) {
+    fab.style.display = 'none';
+    currentFabItems = [];
+    renderLucideIcons();
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
+  currentFabItems = items || [];
+  fab.style.display = 'flex';
+
+  if (currentFabItems.length === 1) {
+    const item = currentFabItems[0];
+    fab.innerHTML = `<i data-lucide="${item.icon}" style="width:22px;height:22px;pointer-events:none"></i>`;
+    fab.onclick = () => runFabAction(item.action);
+  } else {
+    fab.onclick = toggleFabMenu;
+    setFabMainIcon(false);
+  }
+
+  renderLucideIcons();
+  if (window.lucide) lucide.createIcons();
+}
+
 let dashboardExpandedPagoId = null;
 
 function ensurePagosProximosStyles() {
@@ -1219,6 +1294,7 @@ async function renderApp() {
   loadGastos();
   await loadIngresos();
   await loadAjustes();
+  if (typeof updateFab === 'function') updateFab('dashboard');
 }
 
 // ---- DASHBOARD ----
@@ -1346,21 +1422,6 @@ async function loadDashboard() {
 
   `;
 
-  // FAB con speed dial para registrar movimientos
-  let fab = document.getElementById('fab-main');
-  if (!fab) {
-    fab = document.createElement('button');
-    fab.id = 'fab-main';
-    fab.className = 'fab';
-    document.getElementById('app').appendChild(fab);
-  }
-
-  closeFabMenu();
-  if (!fab.dataset.listenerSet) {
-    fab.onclick = toggleFabMenu;
-    fab.dataset.listenerSet = 'true';
-  }
-  setFabMainIcon(false);
   renderLucideIcons();
   if (window.lucide) lucide.createIcons();
 }
@@ -1376,6 +1437,7 @@ function setFabMainIcon(isOpen) {
 
 function openFabMenu() {
   if (document.getElementById('fab-menu')) return;
+  if (!currentFabItems || currentFabItems.length < 2) return;
 
   const app = document.getElementById('app');
   if (!app) return;
@@ -1388,20 +1450,12 @@ function openFabMenu() {
   const menu = document.createElement('div');
   menu.id = 'fab-menu';
   menu.style.cssText = 'position:fixed;bottom:145px;right:calc(50% - 215px + 16px);z-index:40;display:flex;flex-direction:column;gap:10px;align-items:flex-end;opacity:0;transform:translateY(10px);transition:opacity 180ms ease,transform 180ms ease;';
-  menu.innerHTML = `
-    <button onclick="closeFabMenu(); openRegistrarGasto();" style="display:flex;align-items:center;gap:10px;width:180px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text-primary);font-size:14px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
-      <span style="font-size:20px;line-height:1"><i data-lucide="minus-circle" style="width:18px;height:18px;stroke-width:1.75"></i></span>
-      <span>Registrar gasto</span>
+  menu.innerHTML = currentFabItems.map(item => `
+    <button onclick="closeFabMenu(); ${item.action}" style="display:flex;align-items:center;gap:10px;width:180px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text-primary);font-size:14px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
+      <span style="font-size:20px;line-height:1"><i data-lucide="${item.icon}" style="width:18px;height:18px;stroke-width:1.75;pointer-events:none"></i></span>
+      <span>${item.label}</span>
     </button>
-    <button onclick="closeFabMenu(); openRegistrarIngreso();" style="display:flex;align-items:center;gap:10px;width:180px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text-primary);font-size:14px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
-      <span style="font-size:20px;line-height:1"><i data-lucide="plus-circle" style="width:18px;height:18px;stroke-width:1.75"></i></span>
-      <span>Registrar ingreso</span>
-    </button>
-    <button onclick="closeFabMenu(); openRegistrarTraspaso();" style="display:flex;align-items:center;gap:10px;width:180px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text-primary);font-size:14px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
-      <span style="font-size:20px;line-height:1"><i data-lucide="arrow-left-right" style="width:18px;height:18px;stroke-width:1.75"></i></span>
-      <span>Traspaso</span>
-    </button>
-  `;
+  `).join('');
 
   app.appendChild(backdrop);
   app.appendChild(menu);
@@ -1688,7 +1742,6 @@ async function loadDeudas() {
   document.getElementById('page-deudas').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Mis deudas</h1>
-      <button onclick="openAgregarDeuda()" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nueva</button>
     </div>
     <div class="page-body">
       ${deudaCardsHTML}
@@ -1900,7 +1953,6 @@ async function loadMetas() {
   document.getElementById('page-metas').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Metas de ahorro</h1>
-      <button onclick="openAgregarMeta()" style="background:var(--green-soft);border:1px solid rgba(45,212,160,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--green);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nueva</button>
     </div>
     <div class="page-body">
       ${!metas || metas.length === 0 ? `
@@ -1951,32 +2003,45 @@ function openMenuMeta(metaId) {
   openMetaActions(metaId);
 }
 
-async function openAbonarMeta(metaId) {
-  const { data: meta, error } = await db
+async function openAbonarMeta(metaId = null) {
+  const { data: metas, error } = await db
     .from('metas_ahorro')
     .select('id, nombre, cuenta_id')
-    .eq('id', metaId)
     .eq('usuario_id', getUsuarioId())
-    .maybeSingle();
+    .eq('activa', true)
+    .order('nombre', { ascending: true });
 
-  if (error || !meta) {
-    showSnackbar('No se pudo cargar la meta', 'error');
+  if (error || !metas || metas.length === 0) {
+    showSnackbar('No se pudieron cargar las metas', 'error');
     return;
   }
 
-  if (!meta.cuenta_id) {
-    showSnackbar('Configura una cuenta para esta meta primero', 'error');
-    return;
-  }
-
-  openModal(`Abonar a ${meta.nombre}`, `
+  openModal('Abonar a meta', `
+    <div class="form-group">
+      <label class="form-label">Meta</label>
+      <select class="form-select" id="ma-meta-id" onchange="renderMetaAbonoHint()">
+        ${metas.map(meta => `<option value="${meta.id}" ${metaId && meta.id === metaId ? 'selected' : ''}>${meta.nombre}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group" id="ma-meta-hint" style="font-size:12px;color:var(--text-muted)"></div>
     <div class="form-group">
       <label class="form-label">Monto del abono</label>
       <input class="form-input" id="ma-abono" type="number" min="0" placeholder="$0.00" />
     </div>
-    <button class="btn btn-primary" onclick="guardarAbonoMeta('${meta.id}')">Guardar abono</button>
+    <button class="btn btn-primary" onclick="guardarAbonoMeta(document.getElementById('ma-meta-id').value)">Guardar abono</button>
   `);
+
+  window.__metasAbonoCache = metas;
+  renderMetaAbonoHint();
 }
+
+function renderMetaAbonoHint() {
+  const select = document.getElementById('ma-meta-id');
+  const hint = document.getElementById('ma-meta-hint');
+  if (!select || !hint) return;
+
+  const meta = (window.__metasAbonoCache || []).find(item => item.id === select.value);
+  hint.textContent = meta?.cuenta_id ? 'Se abonará usando la cuenta vinculada a esta meta.' : 'Configura una cuenta para esta meta primero';
 
 async function guardarAbonoMeta(metaId) {
   const abono = parseFloat(document.getElementById('ma-abono')?.value);
@@ -2174,7 +2239,6 @@ async function loadFijos() {
     document.getElementById('page-fijos').innerHTML = `
       <div class="page-header">
         <h1 class="page-title">Gastos fijos</h1>
-        <button onclick="openAgregarGastoFijo()" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nuevo</button>
       </div>
       <div class="page-body">
         <div class="empty-state">
@@ -2190,7 +2254,6 @@ async function loadFijos() {
   document.getElementById('page-fijos').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Gastos fijos</h1>
-      <button onclick="openAgregarGastoFijo()" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nuevo</button>
     </div>
     <div class="page-body">
       ${!fijos || fijos.length === 0 ? `
@@ -2966,6 +3029,58 @@ async function guardarTraspaso() {
   closeModal();
   await loadDashboard();
   await loadCuentas();
+}
+
+async function openAgregarCuenta() {
+  openModal('Nueva cuenta', `
+    <div class="form-group">
+      <label class="form-label">Nombre de la cuenta</label>
+      <input class="form-input" id="nc-nombre" type="text" placeholder="Ej: Efectivo, banco, negocio" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tipo</label>
+      <select class="form-select" id="nc-tipo">
+        <option value="efectivo">Efectivo</option>
+        <option value="debito">Debito</option>
+        <option value="negocio">Negocio</option>
+        <option value="otro">Otro</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Saldo inicial</label>
+      <input class="form-input" id="nc-saldo" type="number" min="0" placeholder="$0.00" />
+    </div>
+    <button class="btn btn-primary" onclick="guardarNuevaCuenta()">Guardar cuenta</button>
+  `);
+}
+
+async function guardarNuevaCuenta() {
+  const nombre = document.getElementById('nc-nombre')?.value.trim();
+  const tipo = document.getElementById('nc-tipo')?.value;
+  const saldo_inicial = parseFloat(document.getElementById('nc-saldo')?.value) || 0;
+
+  if (!nombre) {
+    showSnackbar('Escribe el nombre de la cuenta', 'error');
+    return;
+  }
+
+  const { error } = await db.from('cuentas').insert({
+    usuario_id: getUsuarioId(),
+    nombre,
+    tipo,
+    saldo_inicial,
+    activa: true
+  });
+
+  if (error) {
+    showSnackbar('No se pudo guardar la cuenta', 'error');
+    return;
+  }
+
+  closeModal();
+  showSnackbar('Cuenta guardada ✓', 'success');
+  await loadCuentas();
+  await loadDashboard();
 }
 
 // ---- AJUSTES ----
@@ -3923,3 +4038,6 @@ function closeModal() {
     }, 300);
   }
 }
+
+}
+
