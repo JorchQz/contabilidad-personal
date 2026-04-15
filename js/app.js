@@ -236,7 +236,7 @@ async function abrirPagoPendienteDeuda(deudaId) {
   openPagarDeuda(deuda.id, deuda.acreedor, deuda.monto_actual, deuda.tipo_deuda, deuda.monto_ultimo_pago);
 }
 
-function calcularCuentasConSaldo(cuentas = [], ingresosPorCuenta = [], gastosPorCuenta = [], pagosDeudaPorCuenta = []) {
+function calcularCuentasConSaldo(cuentas = [], ingresosPorCuenta = [], gastosPorCuenta = [], pagosDeudaPorCuenta = [], traspasosSalida = [], traspasosEntrada = []) {
   const sumasIngresosPorCuenta = ingresosPorCuenta.reduce((acc, mov) => {
     const cuentaId = mov.cuenta_id;
     if (!cuentaId) return acc;
@@ -258,11 +258,27 @@ function calcularCuentasConSaldo(cuentas = [], ingresosPorCuenta = [], gastosPor
     return acc;
   }, {});
 
+  const sumasTraspasosSalidaPorCuenta = traspasosSalida.reduce((acc, mov) => {
+    const cuentaId = mov.cuenta_origen_id;
+    if (!cuentaId) return acc;
+    acc[cuentaId] = (acc[cuentaId] || 0) + Number(mov.monto || 0);
+    return acc;
+  }, {});
+
+  const sumasTraspasosEntradaPorCuenta = traspasosEntrada.reduce((acc, mov) => {
+    const cuentaId = mov.cuenta_destino_id;
+    if (!cuentaId) return acc;
+    acc[cuentaId] = (acc[cuentaId] || 0) + Number(mov.monto || 0);
+    return acc;
+  }, {});
+
   const cuentasConSaldo = cuentas.map(cuenta => {
     const ingresosCuenta = sumasIngresosPorCuenta[cuenta.id] || 0;
     const gastosCuenta = sumasGastosPorCuenta[cuenta.id] || 0;
     const pagosDeudaCuenta = sumasPagosDeudaPorCuenta[cuenta.id] || 0;
-    const saldoCuenta = Number(cuenta.saldo_inicial || 0) + ingresosCuenta - gastosCuenta - pagosDeudaCuenta;
+    const traspasosSalidaCuenta = sumasTraspasosSalidaPorCuenta[cuenta.id] || 0;
+    const traspasosEntradaCuenta = sumasTraspasosEntradaPorCuenta[cuenta.id] || 0;
+    const saldoCuenta = Number(cuenta.saldo_inicial || 0) + ingresosCuenta - gastosCuenta - pagosDeudaCuenta - traspasosSalidaCuenta + traspasosEntradaCuenta;
 
     return {
       ...cuenta,
@@ -1177,24 +1193,42 @@ async function loadDashboard() {
     { data: ingresos },
     { data: gastos },
     { data: deudas },
-    { data: cuentas }
+    { data: cuentas },
+    { data: ingresosPorCuenta },
+    { data: gastosPorCuenta },
+    { data: pagosDeudaPorCuenta },
+    { data: traspasosSalida },
+    { data: traspasosEntrada }
   ] = await Promise.all([
     db.from('usuarios').select('nombre').eq('id', uid).single(),
     db.from('ingresos').select('monto').eq('usuario_id', uid),
     db.from('gastos').select('monto').eq('usuario_id', uid),
     db.from('deudas').select('monto_actual').eq('usuario_id', uid).eq('activa', true),
-    db.from('cuentas').select('id, nombre, tipo, saldo_inicial').eq('usuario_id', uid).eq('activa', true)
+    db.from('cuentas').select('id, nombre, tipo, saldo_inicial').eq('usuario_id', uid).eq('activa', true),
+    db.from('ingresos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
+    db.from('gastos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
+    db.from('pagos_deuda').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
+    db.from('transferencias').select('cuenta_origen_id, monto').eq('usuario_id', uid).not('cuenta_origen_id', 'is', null),
+    db.from('transferencias').select('cuenta_destino_id, monto').eq('usuario_id', uid).not('cuenta_destino_id', 'is', null)
   ]);
 
   const pagosPendientes = await getPagosPendientes();
   const proximaFechaCobro = pagosPendientes.proxima_fecha_cobro;
   const totalPendientePeriodo = pagosPendientes.total_periodo || 0;
 
-  const totalSaldoInicial = (cuentas || []).reduce((s, c) => s + Number(c.saldo_inicial), 0);
+  const { totalGeneralCuentas } = calcularCuentasConSaldo(
+    cuentas || [],
+    ingresosPorCuenta || [],
+    gastosPorCuenta || [],
+    pagosDeudaPorCuenta || [],
+    traspasosSalida || [],
+    traspasosEntrada || []
+  );
+
   const totalIngresos = (ingresos || []).reduce((s, i) => s + Number(i.monto), 0);
   const totalGastos = (gastos || []).reduce((s, g) => s + Number(g.monto), 0);
   const totalDeuda = (deudas || []).reduce((s, d) => s + Number(d.monto_actual), 0);
-  const disponible = totalSaldoInicial + totalIngresos - totalGastos;
+  const disponible = totalGeneralCuentas;
 
   const horaActual = new Date().getHours();
   const saludo = horaActual < 12 ? 'Buenos días' : horaActual < 19 ? 'Buenas tardes' : 'Buenas noches';
@@ -1325,6 +1359,10 @@ function openFabMenu() {
       <span style="font-size:20px;line-height:1"><i data-lucide="plus-circle" style="width:18px;height:18px;stroke-width:1.75"></i></span>
       <span>Registrar ingreso</span>
     </button>
+    <button onclick="closeFabMenu(); openRegistrarTraspaso();" style="display:flex;align-items:center;gap:10px;width:180px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text-primary);font-size:14px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
+      <span style="font-size:20px;line-height:1"><i data-lucide="arrow-left-right" style="width:18px;height:18px;stroke-width:1.75"></i></span>
+      <span>Traspaso</span>
+    </button>
   `;
 
   app.appendChild(backdrop);
@@ -1369,19 +1407,25 @@ async function loadCuentas() {
     { data: cuentas },
     { data: ingresosPorCuenta },
     { data: gastosPorCuenta },
-    { data: pagosDeudaPorCuenta }
+    { data: pagosDeudaPorCuenta },
+    { data: traspasosSalida },
+    { data: traspasosEntrada }
   ] = await Promise.all([
     db.from('cuentas').select('id, nombre, tipo, saldo_inicial').eq('usuario_id', uid).eq('activa', true),
     db.from('ingresos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
     db.from('gastos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
-    db.from('pagos_deuda').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null)
+    db.from('pagos_deuda').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
+    db.from('transferencias').select('cuenta_origen_id, monto').eq('usuario_id', uid).not('cuenta_origen_id', 'is', null),
+    db.from('transferencias').select('cuenta_destino_id, monto').eq('usuario_id', uid).not('cuenta_destino_id', 'is', null)
   ]);
 
   const { cuentasConSaldo, totalGeneralCuentas } = calcularCuentasConSaldo(
     cuentas || [],
     ingresosPorCuenta || [],
     gastosPorCuenta || [],
-    pagosDeudaPorCuenta || []
+    pagosDeudaPorCuenta || [],
+    traspasosSalida || [],
+    traspasosEntrada || []
   );
 
   document.getElementById('page-cuentas').innerHTML = `
