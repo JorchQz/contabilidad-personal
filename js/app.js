@@ -2455,7 +2455,7 @@ async function loadGastos() {
             <div class="item-row-detail">${g.categorias?.nombre || 'Sin categoría'} · ${g.fecha}</div>
           </div>
           <div class="item-row-amount">${formatMXN(g.monto)}</div>
-          <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="eliminarGasto('${g.id}')"><i data-lucide="trash-2" style="width:16px;height:16px;pointer-events:none"></i></button>
+          <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuGasto('${g.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
         </div>
       `).join('')}
     </div>
@@ -2464,8 +2464,14 @@ async function loadGastos() {
   renderLucideIcons();
 }
 
+function openMenuGasto(gastoId) {
+  openActionSheet('Opciones de gasto', [
+    { label: 'Eliminar', onClick: `eliminarGasto('${gastoId}')`, danger: true }
+  ]);
+}
+
 async function eliminarGasto(gastoId) {
-  if (!window.confirm('¿Eliminar este gasto del historial?')) return;
+  if (!window.confirm('¿Eliminar este gasto?')) return;
 
   const { error } = await db
     .from('gastos')
