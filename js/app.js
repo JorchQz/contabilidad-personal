@@ -3009,7 +3009,7 @@ async function openRegistrarIngreso() {
         <option value="beca">Beca</option>
         <option value="extra">Extra</option>
         <option value="otro">Otro</option>
-        <option value="prestamo">🤝 Préstamo recibido</option>
+        <option value="prestamo">Préstamo recibido</option>
       </select>
     </div>
     <div id="ri-prestamo-campos" style="display:none"></div>
