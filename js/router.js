@@ -1,6 +1,6 @@
 // js/router.js — Navegación entre páginas
 
-const PAGES = ['dashboard', 'gastos', 'deudas', 'metas', 'fijos', 'cuentas', 'ajustes'];
+const PAGES = ['dashboard', 'gastos', 'ingresos', 'deudas', 'metas', 'fijos', 'cuentas', 'ajustes'];
 
 function showPage(pageId) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -31,6 +31,7 @@ function renderNav() {
   const navItems = [
     { id: 'dashboard', icon: `<i data-lucide="layout-dashboard"></i>`, label: 'Inicio' },
     { id: 'gastos', icon: `<i data-lucide="clock"></i>`, label: 'Gastos' },
+    { id: 'ingresos', icon: `<i data-lucide="trending-up"></i>`, label: 'Ingresos' },
     { id: 'deudas', icon: `<i data-lucide="credit-card"></i>`, label: 'Deudas' },
     { id: 'metas', icon: `<i data-lucide="target"></i>`, label: 'Metas' },
     { id: 'fijos', icon: `<i data-lucide="pin"></i>`, label: 'Fijos' },
