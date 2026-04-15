@@ -278,6 +278,34 @@ function calcularCuentasConSaldo(cuentas = [], ingresosPorCuenta = [], gastosPor
   };
 }
 
+async function getSaldoDisponibleTotal(usuarioId) {
+  const [
+    { data: cuentas, error: errorCuentas },
+    { data: ingresos, error: errorIngresos },
+    { data: gastos, error: errorGastos },
+    { data: pagosDeuda, error: errorPagosDeuda }
+  ] = await Promise.all([
+    db.from('cuentas').select('saldo_inicial').eq('usuario_id', usuarioId).eq('activa', true),
+    db.from('ingresos').select('monto').eq('usuario_id', usuarioId),
+    db.from('gastos').select('monto').eq('usuario_id', usuarioId),
+    db.from('pagos_deuda').select('monto').eq('usuario_id', usuarioId)
+  ]);
+
+  if (errorCuentas || errorIngresos || errorGastos || errorPagosDeuda) {
+    return { error: true, saldoDisponible: null };
+  }
+
+  const totalSaldoInicial = (cuentas || []).reduce((acc, cuenta) => acc + Number(cuenta.saldo_inicial || 0), 0);
+  const totalIngresos = (ingresos || []).reduce((acc, movimiento) => acc + Number(movimiento.monto || 0), 0);
+  const totalGastos = (gastos || []).reduce((acc, movimiento) => acc + Number(movimiento.monto || 0), 0);
+  const totalPagosDeuda = (pagosDeuda || []).reduce((acc, movimiento) => acc + Number(movimiento.monto || 0), 0);
+
+  return {
+    error: false,
+    saldoDisponible: totalSaldoInicial + totalIngresos - totalGastos - totalPagosDeuda
+  };
+}
+
 // ---- PAGOS PENDIENTES ----
 function isSameDay(date1, date2) {
   return date1.getFullYear() === date2.getFullYear() &&
@@ -1857,15 +1885,28 @@ async function guardarAbonoMeta(metaId) {
     return;
   }
 
+  const usuarioId = getUsuarioId();
   const { data: meta, error: errorMeta } = await db
     .from('metas_ahorro')
-    .select('monto_actual')
+    .select('monto_actual, nombre')
     .eq('id', metaId)
-    .eq('usuario_id', getUsuarioId())
+    .eq('usuario_id', usuarioId)
     .maybeSingle();
 
   if (errorMeta || !meta) {
     showSnackbar('No se pudo actualizar la meta', 'error');
+    return;
+  }
+
+  const { error: errorSaldo, saldoDisponible } = await getSaldoDisponibleTotal(usuarioId);
+
+  if (errorSaldo) {
+    showSnackbar('No se pudo validar el saldo disponible', 'error');
+    return;
+  }
+
+  if (abono > saldoDisponible) {
+    showSnackbar('Saldo insuficiente — disponible: ' + formatMXN(saldoDisponible), 'error');
     return;
   }
 
@@ -1874,16 +1915,33 @@ async function guardarAbonoMeta(metaId) {
     .from('metas_ahorro')
     .update({ monto_actual: nuevoMonto })
     .eq('id', metaId)
-    .eq('usuario_id', getUsuarioId());
+    .eq('usuario_id', usuarioId);
 
   if (error) {
     showSnackbar('No se pudo guardar el abono', 'error');
     return;
   }
 
+  const { error: errorGasto } = await db.from('gastos').insert({
+    descripcion: 'Abono a meta: ' + meta.nombre,
+    monto: abono,
+    usuario_id: usuarioId,
+    fecha: new Date().toISOString().split('T')[0],
+    cuenta_id: null
+  });
+
+  if (errorGasto) {
+    showSnackbar('El abono se guardó, pero no se pudo registrar el gasto asociado', 'error');
+    await loadMetas();
+    await loadDashboard();
+    closeModal();
+    return;
+  }
+
   closeModal();
   showSnackbar('Abono registrado ✓', 'success');
   await loadMetas();
+  await loadDashboard();
 }
 
 async function openEditarMeta(metaId) {
