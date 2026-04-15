@@ -132,7 +132,10 @@ function openActionSheet(title, actions) {
   openModal(title, `
     <div style="display:flex;flex-direction:column;gap:8px">
       ${actions.map(action => `
-        <button class="btn ${action.danger ? 'btn-danger' : 'btn-secondary'}" onclick="${action.onClick}">${action.label}</button>
+        <button class="btn ${action.danger ? 'btn-danger' : 'btn-secondary'}" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;gap:8px" onclick="${action.onClick}">
+          ${action.icon ? `<i data-lucide="${action.icon}" style="width:16px;height:16px;pointer-events:none"></i>` : ''}
+          <span>${action.label}</span>
+        </button>
       `).join('')}
     </div>
   `);
@@ -1939,8 +1942,8 @@ async function loadMetas() {
 function openMetaActions(metaId) {
   openActionSheet('Opciones de meta', [
     { label: 'Abonar', onClick: `openAbonarMeta('${metaId}')` },
-    { label: 'Editar', onClick: `openEditarMeta('${metaId}')` },
-    { label: 'Eliminar', onClick: `eliminarMeta('${metaId}')`, danger: true }
+    { label: 'Editar', icon: 'pencil', onClick: `openEditarMeta('${metaId}')` },
+    { label: 'Eliminar', icon: 'trash-2', onClick: `eliminarMeta('${metaId}')`, danger: true }
   ]);
 }
 
