@@ -610,7 +610,7 @@ function getProximaFechaCobro(ingresoProgramado, fechaBase) {
 }
 
 async function getPagosPendientes() {
-  const usuarioId = getUsuarioId();
+  const usuarioId = (await getUsuarioId());
   const hoy = normalizeDate(new Date());
   const pendientes = [];
 
@@ -1430,15 +1430,18 @@ async function finishOnboarding() {
   btn.disabled = true;
 
   try {
-    // 1. Crear usuario
-    const { data: usuario, error: errUsuario } = await db
-      .from('usuarios')
-      .insert({ nombre: onboardingData.nombre, onboarding_completo: true })
-      .select()
-      .single();
+    // 1. Crear usuario (usando auth user id)
+    const { data: { user } } = await db.auth.getUser();
+    const userId = user.id;
+    const nombre = onboardingData.nombre || window._regNombre || 'Usuario';
+
+    const { error: errUsuario } = await db.from('usuarios').insert({
+      id: userId,
+      nombre: nombre,
+      onboarding_completo: true
+    });
 
     if (errUsuario) throw errUsuario;
-    setUsuarioId(usuario.id);
 
     // 2. Insertar tipos de ingreso como categorías
     if (onboardingData.tiposIngreso.length > 0) {
@@ -1446,7 +1449,7 @@ async function finishOnboarding() {
         nombre: t.nombre,
         emoji: t.icono,
         tipo: 'ingreso',
-        usuario_id: usuario.id,
+        usuario_id: userId,
         es_default: false
       }));
       await db.from('categorias').insert(cats_ingreso);
@@ -1458,7 +1461,7 @@ async function finishOnboarding() {
         nombre: c.nombre,
         emoji: c.icono,
         tipo: 'gasto',
-        usuario_id: usuario.id,
+        usuario_id: userId,
         es_default: false
       }));
       await db.from('categorias').insert(cats_gasto);
@@ -1466,13 +1469,13 @@ async function finishOnboarding() {
 
     // 4. Cuentas
     if (onboardingData.cuentas.length > 0) {
-      const cuentas = onboardingData.cuentas.map(c => ({ ...c, usuario_id: usuario.id }));
+      const cuentas = onboardingData.cuentas.map(c => ({ ...c, usuario_id: userId }));
       await db.from('cuentas').insert(cuentas);
     }
 
     // 5. Deudas
     if (onboardingData.deudas.length > 0) {
-      const deudas = onboardingData.deudas.map(d => ({ ...d, usuario_id: usuario.id }));
+      const deudas = onboardingData.deudas.map(d => ({ ...d, usuario_id: userId }));
       await db.from('deudas').insert(deudas);
     }
 
@@ -1484,7 +1487,7 @@ async function finishOnboarding() {
         frecuencia: g.frecuencia,
         dia_pago: g.dia_pago ?? null,
         dia_semana: g.dia_semana ?? null,
-        usuario_id: usuario.id,
+        usuario_id: userId,
         categoria_id: null
       }));
       await db.from('gastos_fijos').insert(fijos);
@@ -1492,7 +1495,7 @@ async function finishOnboarding() {
 
     // 7. Metas
     if (onboardingData.metas.length > 0) {
-      const metas = onboardingData.metas.map(m => ({ ...m, usuario_id: usuario.id }));
+      const metas = onboardingData.metas.map(m => ({ ...m, usuario_id: userId }));
       await db.from('metas_ahorro').insert(metas);
     }
 
@@ -1511,7 +1514,7 @@ async function finishOnboarding() {
 async function loadDashboard() {
   ensurePagosProximosStyles();
 
-  const uid = getUsuarioId();
+  const uid = (await getUsuarioId());
   const [
     { data: usuario },
     { data: ingresos },
@@ -1704,7 +1707,7 @@ function toggleFabMenu() {
 
 // ---- CUENTAS ----
 async function loadCuentas() {
-  const uid = getUsuarioId();
+  const uid = (await getUsuarioId());
   const [
     { data: cuentas },
     { data: ingresosPorCuenta },
@@ -1790,7 +1793,7 @@ async function openEditarCuenta(cuentaId) {
     .from('cuentas')
     .select('id, nombre, tipo, saldo_inicial')
     .eq('id', cuentaId)
-    .eq('usuario_id', getUsuarioId())
+    .eq('usuario_id', (await getUsuarioId()))
     .maybeSingle();
 
   if (error || !cuenta) {
@@ -1833,7 +1836,7 @@ async function guardarEdicionCuenta(cuentaId) {
     .from('cuentas')
     .update({ nombre, tipo, saldo_inicial })
     .eq('id', cuentaId)
-    .eq('usuario_id', getUsuarioId());
+    .eq('usuario_id', (await getUsuarioId()));
 
   if (error) {
     showSnackbar('No se pudo actualizar la cuenta', 'error');
@@ -1853,7 +1856,7 @@ async function eliminarCuenta(cuentaId) {
     .from('cuentas')
     .update({ activa: false })
     .eq('id', cuentaId)
-    .eq('usuario_id', getUsuarioId());
+    .eq('usuario_id', (await getUsuarioId()));
 
   if (error) {
     showSnackbar('No se pudo eliminar la cuenta', 'error');
@@ -1868,7 +1871,7 @@ async function eliminarCuenta(cuentaId) {
 
 // ---- DEUDAS ----
 async function loadDeudas() {
-  const uid = getUsuarioId();
+  const uid = (await getUsuarioId());
   const { data: deudas } = await db.from('deudas').select('*').eq('usuario_id', uid).eq('activa', true).order('created_at');
 
   const getBadgeDeuda = (tipo) => {
@@ -2017,7 +2020,7 @@ async function openEditarDeuda(deudaId) {
     .from('deudas')
     .select('id, acreedor, monto_actual, tipo_pago, dia_pago, dia_semana, monto_pago')
     .eq('id', deudaId)
-    .eq('usuario_id', getUsuarioId())
+    .eq('usuario_id', (await getUsuarioId()))
     .maybeSingle();
 
   if (error || !deuda) {
@@ -2114,7 +2117,7 @@ async function guardarEdicionDeuda(deudaId) {
     .from('deudas')
     .update({ acreedor, monto_actual, tipo_pago, dia_pago, dia_semana, monto_pago, activa: monto_actual > 0 })
     .eq('id', deudaId)
-    .eq('usuario_id', getUsuarioId());
+    .eq('usuario_id', (await getUsuarioId()));
 
   if (error) {
     showSnackbar('No se pudo actualizar la deuda', 'error');
@@ -2134,7 +2137,7 @@ async function eliminarDeuda(deudaId) {
     .from('deudas')
     .update({ activa: false })
     .eq('id', deudaId)
-    .eq('usuario_id', getUsuarioId());
+    .eq('usuario_id', (await getUsuarioId()));
 
   if (error) {
     showSnackbar('No se pudo eliminar la deuda', 'error');
@@ -2149,7 +2152,7 @@ async function eliminarDeuda(deudaId) {
 
 // ---- METAS ----
 async function loadMetas() {
-  const uid = getUsuarioId();
+  const uid = (await getUsuarioId());
   const [
     { data: metas },
     { data: cuentas }
@@ -2217,7 +2220,7 @@ async function openAbonarMeta(metaId = null) {
   const { data: metas, error } = await db
     .from('metas_ahorro')
     .select('id, nombre, cuenta_id')
-    .eq('usuario_id', getUsuarioId())
+    .eq('usuario_id', (await getUsuarioId()))
     .eq('activa', true)
     .order('nombre', { ascending: true });
 
@@ -2262,7 +2265,7 @@ async function guardarAbonoMeta(metaId) {
     return;
   }
 
-  const usuarioId = getUsuarioId();
+  const usuarioId = (await getUsuarioId());
   const { data: meta, error: errorMeta } = await db
     .from('metas_ahorro')
     .select('monto_actual, nombre, cuenta_id')
@@ -2336,9 +2339,9 @@ async function openEditarMeta(metaId) {
       .from('metas_ahorro')
       .select('id, nombre, emoji, monto_objetivo, cuenta_id')
       .eq('id', metaId)
-      .eq('usuario_id', getUsuarioId())
+      .eq('usuario_id', (await getUsuarioId()))
       .maybeSingle(),
-    db.from('cuentas').select('id, nombre').eq('usuario_id', getUsuarioId()).eq('activa', true)
+    db.from('cuentas').select('id, nombre').eq('usuario_id', (await getUsuarioId())).eq('activa', true)
   ]);
 
   if (error || !meta) {
@@ -2386,7 +2389,7 @@ async function guardarEdicionMeta(metaId) {
     .from('metas_ahorro')
     .update({ emoji, nombre, monto_objetivo, cuenta_id })
     .eq('id', metaId)
-    .eq('usuario_id', getUsuarioId());
+    .eq('usuario_id', (await getUsuarioId()));
 
   if (error) {
     showSnackbar('No se pudo actualizar la meta', 'error');
@@ -2405,7 +2408,7 @@ async function eliminarMeta(metaId) {
     .from('metas_ahorro')
     .update({ activa: false })
     .eq('id', metaId)
-    .eq('usuario_id', getUsuarioId());
+    .eq('usuario_id', (await getUsuarioId()));
 
   if (error) {
     showSnackbar('No se pudo eliminar la meta', 'error');
@@ -2438,7 +2441,7 @@ function formatearFrecuenciaGastoFijo(frecuencia, diaPago, diaSemana) {
 }
 
 async function loadFijos() {
-  const uid = getUsuarioId();
+  const uid = (await getUsuarioId());
   const { data: fijos, error } = await db
     .from('gastos_fijos')
     .select('*')
@@ -2545,7 +2548,7 @@ async function openEditarGastoFijo(gastoFijoId) {
     .from('gastos_fijos')
     .select('id, descripcion, monto, frecuencia, dia_pago, dia_semana')
     .eq('id', gastoFijoId)
-    .eq('usuario_id', getUsuarioId())
+    .eq('usuario_id', (await getUsuarioId()))
     .maybeSingle();
 
   if (error || !gasto) {
@@ -2628,7 +2631,7 @@ async function guardarEdicionGastoFijo(gastoFijoId) {
     .from('gastos_fijos')
     .update({ descripcion, monto, frecuencia, dia_pago, dia_semana })
     .eq('id', gastoFijoId)
-    .eq('usuario_id', getUsuarioId());
+    .eq('usuario_id', (await getUsuarioId()));
 
   if (error) {
     showSnackbar('No se pudo actualizar el gasto fijo', 'error');
@@ -2739,7 +2742,7 @@ async function guardarNuevoGastoFijo() {
   }
 
   const { error } = await db.from('gastos_fijos').insert({
-    usuario_id: getUsuarioId(),
+    usuario_id: (await getUsuarioId()),
     descripcion,
     monto,
     frecuencia,
@@ -2774,7 +2777,7 @@ async function eliminarGastoFijo(gastoFijoId) {
 
 // ---- GASTOS (historial) ----
 async function loadGastos() {
-  const uid = getUsuarioId();
+  const uid = (await getUsuarioId());
   const { data: gastos } = await db
     .from('gastos')
     .select('*, categorias(nombre, emoji)')
@@ -2822,7 +2825,7 @@ async function eliminarGasto(gastoId) {
     .from('gastos')
     .delete()
     .eq('id', gastoId)
-    .eq('usuario_id', getUsuarioId());
+    .eq('usuario_id', (await getUsuarioId()));
 
   if (error) {
     showSnackbar('No se pudo eliminar el gasto', 'error');
@@ -2862,7 +2865,7 @@ function formatIngresoTipo(tipo) {
 }
 
 async function loadIngresos() {
-  const uid = getUsuarioId();
+  const uid = (await getUsuarioId());
   const [
     { data: ingresosProgramados, error: errorProgramados },
     { data: ingresos, error: errorIngresos }
@@ -3005,7 +3008,7 @@ async function openEditarIngresoProgramado(ingresoProgramadoId) {
     .from('ingresos_programados')
     .select('id, descripcion, monto_estimado, frecuencia, dia_pago, dia_semana')
     .eq('id', ingresoProgramadoId)
-    .eq('usuario_id', getUsuarioId())
+    .eq('usuario_id', (await getUsuarioId()))
     .maybeSingle();
 
   if (error || !ingresoProgramado) {
@@ -3087,7 +3090,7 @@ async function guardarEdicionIngresoProgramado(ingresoProgramadoId) {
     .from('ingresos_programados')
     .update({ descripcion, monto_estimado, frecuencia, dia_pago, dia_semana })
     .eq('id', ingresoProgramadoId)
-    .eq('usuario_id', getUsuarioId());
+    .eq('usuario_id', (await getUsuarioId()));
 
   if (error) {
     showSnackbar('No se pudo actualizar el ingreso programado', 'error');
@@ -3112,7 +3115,7 @@ async function eliminarIngreso(ingresoId) {
     .from('ingresos')
     .delete()
     .eq('id', ingresoId)
-    .eq('usuario_id', getUsuarioId());
+    .eq('usuario_id', (await getUsuarioId()));
 
   if (error) {
     showSnackbar('No se pudo eliminar el ingreso', 'error');
@@ -3130,7 +3133,7 @@ async function openRegistrarTraspaso() {
   const { data: cuentas, error } = await db
     .from('cuentas')
     .select('id, nombre')
-    .eq('usuario_id', getUsuarioId())
+    .eq('usuario_id', (await getUsuarioId()))
     .eq('activa', true)
     .order('nombre', { ascending: true });
 
@@ -3169,7 +3172,7 @@ async function openRegistrarTraspaso() {
 }
 
 async function guardarTraspaso() {
-  const usuarioId = getUsuarioId();
+  const usuarioId = (await getUsuarioId());
   const cuenta_origen_id = document.getElementById('tr-origen')?.value;
   const cuenta_destino_id = document.getElementById('tr-destino')?.value;
   const monto = parseFloat(document.getElementById('tr-monto')?.value);
@@ -3276,7 +3279,7 @@ async function guardarNuevaCuenta() {
   }
 
   const { error } = await db.from('cuentas').insert({
-    usuario_id: getUsuarioId(),
+    usuario_id: (await getUsuarioId()),
     nombre,
     tipo,
     saldo_inicial,
@@ -3315,11 +3318,20 @@ function formatearFrecuenciaIngresoProgramado(frecuencia, diaPago, diaSemana) {
 }
 
 async function loadAjustes() {
+  const { data: { user } } = await db.auth.getUser();
+  const email = user?.email || '';
+
   document.getElementById('page-ajustes').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Ajustes</h1>
     </div>
     <div class="page-body">
+      <div class="card" style="margin-bottom:12px">
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Cuenta</div>
+        <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:12px">${email}</div>
+        <button class="btn btn-danger" onclick="cerrarSesion()">Cerrar sesión</button>
+      </div>
+
       <div class="theme-toggle" onclick="toggleTheme()" style="margin-bottom:12px">
         <div class="theme-toggle-label">
           <span id="theme-label">🌙  Modo oscuro</span>
@@ -3440,7 +3452,7 @@ async function guardarIngresoProgramado() {
   }
 
   const { error } = await db.from('ingresos_programados').insert({
-    usuario_id: getUsuarioId(),
+    usuario_id: (await getUsuarioId()),
     descripcion,
     monto_estimado,
     frecuencia,
@@ -3466,7 +3478,7 @@ async function eliminarIngresoProgramado(ingresoProgramadoId) {
     .from('ingresos_programados')
     .update({ activo: false })
     .eq('id', ingresoProgramadoId)
-    .eq('usuario_id', getUsuarioId());
+    .eq('usuario_id', (await getUsuarioId()));
 
   if (error) {
     showSnackbar('No se pudo eliminar el ingreso programado', 'error');
@@ -3486,7 +3498,7 @@ function resetApp() {
 
 // Registrar Ingreso
 async function openRegistrarIngreso() {
-  const { data: cuentas } = await db.from('cuentas').select('*').eq('usuario_id', getUsuarioId()).eq('activa', true);
+  const { data: cuentas } = await db.from('cuentas').select('*').eq('usuario_id', (await getUsuarioId())).eq('activa', true);
 
   openModal('Registrar ingreso', `
     <div class="form-group">
@@ -3563,7 +3575,7 @@ async function guardarIngreso() {
   const descripcion = document.getElementById('ri-desc').value.trim();
   const cuenta_id = document.getElementById('ri-cuenta')?.value || null;
   const fecha = document.getElementById('ri-fecha').value;
-  const usuario_id = getUsuarioId();
+  const usuario_id = (await getUsuarioId());
   const prestamista = document.getElementById('ri-prestamista')?.value?.trim() || '';
   const frecuenciaPrestamo = document.getElementById('ri-freq-prestamo')?.value || 'libre';
   const montoPagoPrestamo = parseFloat(document.getElementById('ri-pago-prestamo')?.value) || null;
@@ -3678,8 +3690,8 @@ function gastoFijoAplicaPorFrecuencia(frecuencia, fechaBase) {
 
 // Registrar Gasto
 async function openRegistrarGasto() {
-  const { data: categorias } = await db.from('categorias').select('*').eq('usuario_id', getUsuarioId()).eq('tipo', 'gasto');
-  const { data: cuentas } = await db.from('cuentas').select('*').eq('usuario_id', getUsuarioId()).eq('activa', true);
+  const { data: categorias } = await db.from('categorias').select('*').eq('usuario_id', (await getUsuarioId())).eq('tipo', 'gasto');
+  const { data: cuentas } = await db.from('cuentas').select('*').eq('usuario_id', (await getUsuarioId())).eq('activa', true);
 
   openModal('Registrar gasto', `
     <div class="form-group">
@@ -3716,7 +3728,7 @@ async function guardarGasto() {
   const categoria_id = document.getElementById('rg-cat').value;
   const cuenta_id = document.getElementById('rg-cuenta')?.value || null;
   const fecha = document.getElementById('rg-fecha').value;
-  const usuarioId = getUsuarioId();
+  const usuarioId = (await getUsuarioId());
   if (!descripcion || !monto) { showSnackbar('Completa descripción y monto', 'error'); return; }
 
   if (cuenta_id) {
@@ -3771,7 +3783,7 @@ async function openPagarDeuda(deudaId, acreedor, montoActual, tipoDeuda, montoUl
   const { data: cuentas, error } = await db
     .from('cuentas')
     .select('*')
-    .eq('usuario_id', getUsuarioId())
+    .eq('usuario_id', (await getUsuarioId()))
     .eq('activa', true);
 
   if (error) {
@@ -3817,7 +3829,7 @@ async function guardarPagoDeuda(deudaId, montoActual, tipoDeuda) {
   const monto = parseFloat(document.getElementById('pd-monto').value);
   const cuenta_id = document.getElementById('pd-cuenta')?.value || null;
   const nota = document.getElementById('pd-nota').value.trim();
-  const usuarioId = getUsuarioId();
+  const usuarioId = (await getUsuarioId());
   if (!monto || monto <= 0) { showSnackbar('Ingresa un monto válido', 'error'); return; }
   if (monto > montoActual) { showSnackbar('El pago no puede ser mayor a la deuda', 'error'); return; }
   if (!cuenta_id) { showSnackbar('Selecciona una cuenta', 'error'); return; }
@@ -4046,7 +4058,7 @@ async function guardarNuevaDeuda(tipo) {
   }
 
   const { data: deudaInsertada, error } = await db.from('deudas').insert({
-    usuario_id: getUsuarioId(),
+    usuario_id: (await getUsuarioId()),
     acreedor, monto_inicial: monto, monto_actual: monto, tipo_pago, monto_pago, dia_pago, dia_semana, tipo_deuda: tipo
   }).select();
 
@@ -4138,7 +4150,7 @@ async function guardarTablaPagesProgramados(deudaId) {
     return;
   }
 
-  const usuarioId = getUsuarioId();
+  const usuarioId = (await getUsuarioId());
   const filasAGuardar = filasPagesProgramados.map(fila => ({
     deuda_id: deudaId,
     usuario_id: usuarioId,
@@ -4163,8 +4175,8 @@ async function guardarTablaPagesProgramados(deudaId) {
 }
 
 // Agregar Meta
-function openAgregarMeta() {
-  db.from('cuentas').select('id, nombre').eq('usuario_id', getUsuarioId()).eq('activa', true).then(({ data: cuentas }) => {
+async function openAgregarMeta() {
+  db.from('cuentas').select('id, nombre').eq('usuario_id', (await getUsuarioId())).eq('activa', true).then(({ data: cuentas }) => {
     const cuentasOptions = (cuentas || []).map(cuenta => `<option value="${cuenta.id}">${cuenta.nombre}</option>`).join('');
 
     openModal('Nueva meta de ahorro', `
@@ -4199,7 +4211,7 @@ async function guardarNuevaMeta() {
   if (!nombre || !monto_objetivo) { showSnackbar('Completa nombre y monto', 'error'); return; }
 
   await db.from('metas_ahorro').insert({
-    usuario_id: getUsuarioId(),
+    usuario_id: (await getUsuarioId()),
     emoji, nombre, monto_objetivo, cuenta_id
   });
 
@@ -4277,19 +4289,238 @@ function closeModal() {
   }
 }
 
+// ---- AUTH ----
+
+function renderAuth() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="auth-screen">
+      <div class="auth-logo">
+        <div class="logo-mark">JM</div>
+        <div class="logo-text">
+          <span class="logo-jm">JM Finance</span>
+          <span class="logo-finance">Control de tus finanzas</span>
+        </div>
+      </div>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Iniciar sesión</button>
+        <button class="auth-tab" id="tab-registro" onclick="switchAuthTab('registro')">Crear cuenta</button>
+      </div>
+
+      <div id="auth-error" class="auth-error" style="display:none;width:100%;max-width:360px"></div>
+
+      <div id="auth-panel-login" class="auth-form">
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input class="form-input" id="auth-email" type="email" placeholder="tu@email.com" autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contraseña</label>
+          <div class="auth-password-wrap">
+            <input class="form-input" id="auth-password" type="password" placeholder="••••••••" autocomplete="current-password" />
+            <button class="auth-eye-btn" type="button" onclick="toggleAuthPassword('auth-password', this)">
+              <i data-lucide="eye" style="width:16px;height:16px"></i>
+            </button>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btn-login" onclick="loginUsuario()">Entrar</button>
+      </div>
+
+      <div id="auth-panel-registro" class="auth-form" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Nombre</label>
+          <input class="form-input" id="reg-nombre" type="text" placeholder="Tu nombre" autocomplete="name" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input class="form-input" id="reg-email" type="email" placeholder="tu@email.com" autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contraseña</label>
+          <div class="auth-password-wrap">
+            <input class="form-input" id="reg-password" type="password" placeholder="Mínimo 6 caracteres" autocomplete="new-password" oninput="updatePasswordStrength(this.value)" />
+            <button class="auth-eye-btn" type="button" onclick="toggleAuthPassword('reg-password', this)">
+              <i data-lucide="eye" style="width:16px;height:16px"></i>
+            </button>
+          </div>
+          <div id="password-strength" class="password-strength" style="display:none">
+            <div class="strength-bar"><div id="strength-fill" class="strength-fill"></div></div>
+            <span id="strength-label" class="strength-label"></span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Confirmar contraseña</label>
+          <div class="auth-password-wrap">
+            <input class="form-input" id="reg-password2" type="password" placeholder="Repite la contraseña" autocomplete="new-password" />
+            <button class="auth-eye-btn" type="button" onclick="toggleAuthPassword('reg-password2', this)">
+              <i data-lucide="eye" style="width:16px;height:16px"></i>
+            </button>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btn-registro" onclick="registrarUsuario()">Crear cuenta</button>
+      </div>
+    </div>
+  `;
+  renderLucideIcons();
+}
+
+function switchAuthTab(tab) {
+  const isLogin = tab === 'login';
+  document.getElementById('tab-login').classList.toggle('active', isLogin);
+  document.getElementById('tab-registro').classList.toggle('active', !isLogin);
+  document.getElementById('auth-panel-login').style.display = isLogin ? 'block' : 'none';
+  document.getElementById('auth-panel-registro').style.display = isLogin ? 'none' : 'block';
+  const err = document.getElementById('auth-error');
+  if (err) { err.textContent = ''; err.style.display = 'none'; }
+}
+
+function toggleAuthPassword(inputId, btn) {
+  const input = document.getElementById(inputId);
+  const isPassword = input.type === 'password';
+  input.type = isPassword ? 'text' : 'password';
+  btn.innerHTML = isPassword
+    ? '<i data-lucide="eye-off" style="width:16px;height:16px"></i>'
+    : '<i data-lucide="eye" style="width:16px;height:16px"></i>';
+  renderLucideIcons();
+}
+
+function updatePasswordStrength(value) {
+  const strengthEl = document.getElementById('password-strength');
+  const fillEl = document.getElementById('strength-fill');
+  const labelEl = document.getElementById('strength-label');
+  if (!strengthEl) return;
+
+  if (value.length === 0) { strengthEl.style.display = 'none'; return; }
+  strengthEl.style.display = 'flex';
+
+  let score = 0;
+  if (value.length >= 6) score++;
+  if (value.length >= 10) score++;
+  if (/[A-Z]/.test(value)) score++;
+  if (/[0-9]/.test(value)) score++;
+  if (/[^A-Za-z0-9]/.test(value)) score++;
+
+  let label, color, width;
+  if (score <= 1) { label = 'Débil'; color = 'var(--red)'; width = '33%'; }
+  else if (score <= 3) { label = 'Media'; color = 'var(--yellow)'; width = '66%'; }
+  else { label = 'Fuerte'; color = 'var(--green)'; width = '100%'; }
+
+  fillEl.style.width = width;
+  fillEl.style.background = color;
+  labelEl.textContent = label;
+  labelEl.style.color = color;
+}
+
+function mostrarErrorAuth(msg) {
+  const el = document.getElementById('auth-error');
+  if (el) {
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+}
+
+async function loginUsuario() {
+  const email = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+
+  if (!email || !password) {
+    mostrarErrorAuth('Completa todos los campos');
+    return;
+  }
+
+  const btnLogin = document.getElementById('btn-login');
+  btnLogin.textContent = 'Entrando...';
+  btnLogin.disabled = true;
+
+  const { error } = await db.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    mostrarErrorAuth('Email o contraseña incorrectos');
+    btnLogin.textContent = 'Entrar';
+    btnLogin.disabled = false;
+    return;
+  }
+
+  const userId = (await db.auth.getUser()).data.user.id;
+  const { data: usuario } = await db.from('usuarios')
+    .select('onboarding_completo')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (usuario?.onboarding_completo) {
+    renderApp();
+  } else {
+    renderOnboarding();
+  }
+}
+
+async function registrarUsuario() {
+  const nombre = document.getElementById('reg-nombre').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const password2 = document.getElementById('reg-password2').value;
+
+  if (!nombre || !email || !password || !password2) {
+    mostrarErrorAuth('Completa todos los campos');
+    return;
+  }
+
+  if (password !== password2) {
+    mostrarErrorAuth('Las contraseñas no coinciden');
+    return;
+  }
+
+  if (password.length < 6) {
+    mostrarErrorAuth('La contraseña debe tener al menos 6 caracteres');
+    return;
+  }
+
+  const btnReg = document.getElementById('btn-registro');
+  btnReg.textContent = 'Creando cuenta...';
+  btnReg.disabled = true;
+
+  const { error } = await db.auth.signUp({ email, password });
+
+  if (error) {
+    mostrarErrorAuth('Error al crear cuenta: ' + error.message);
+    btnReg.textContent = 'Crear cuenta';
+    btnReg.disabled = false;
+    return;
+  }
+
+  window._regNombre = nombre;
+  renderOnboarding();
+}
+
+async function cerrarSesion() {
+  if (!confirm('¿Cerrar sesión?')) return;
+  await db.auth.signOut();
+  localStorage.removeItem('jmf_usuario_id');
+  location.reload();
+}
+
 // ---- INICIO ----
 window.addEventListener('DOMContentLoaded', async () => {
   initTheme();
   await new Promise(r => setTimeout(r, 1200)); // splash
 
-  const usuarioId = getUsuarioId();
-  if (usuarioId) {
-    const { data } = await db.from('usuarios').select('onboarding_completo').eq('id', usuarioId).single();
-    if (data?.onboarding_completo) {
+  const { data: { session } } = await db.auth.getSession();
+
+  if (session) {
+    const userId = session.user.id;
+    const { data: usuario } = await db.from('usuarios')
+      .select('onboarding_completo')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (usuario?.onboarding_completo) {
       renderApp();
-      return;
+    } else {
+      renderOnboarding();
     }
+  } else {
+    renderAuth();
   }
-  renderOnboarding();
 });
 
