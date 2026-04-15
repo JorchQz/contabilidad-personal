@@ -1449,7 +1449,7 @@ async function loadCuentas() {
               <div class="item-row-detail">${cuenta.tipoLabel}</div>
             </div>
             <div class="item-row-amount">${formatMXN(cuenta.saldoCalculado)}</div>
-            <button class="item-row-delete" onclick="openMenuCuenta('${cuenta.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+            <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuCuenta('${cuenta.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
           </div>
         `).join('')}
         <div class="card" style="margin-top:8px;background:var(--bg-elevated)">
@@ -1637,7 +1637,7 @@ async function loadDeudas() {
             <span class="deuda-acreedor">${badgeEmoji} ${d.acreedor}</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="deuda-badge ${d.tipo_pago}">${d.tipo_pago || d.tipo_deuda}</span>
-              <button class="item-row-delete" style="margin-left:0" onclick="openMenuDeuda('${d.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+              <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuDeuda('${d.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
             </div>
           </div>
           <div class="deuda-progress">
@@ -1886,7 +1886,7 @@ async function loadMetas() {
                   <div style="font-size:12px;color:var(--text-secondary)">Meta: ${formatMXN(m.monto_objetivo)}</div>
                 </div>
               </div>
-              <button class="item-row-delete" onclick="openMenuMeta('${m.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+              <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuMeta('${m.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
             </div>
             <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:8px">
               <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:4px;transition:width 0.6s ease"></div>
@@ -2150,7 +2150,7 @@ async function loadFijos() {
             <div class="item-row-detail">${formatearFrecuenciaGastoFijo(g.frecuencia, g.dia_pago, g.dia_semana)}</div>
           </div>
           <div class="item-row-amount" style="color:var(--red)">${formatMXN(g.monto)}</div>
-          <button class="item-row-delete" onclick="openMenuGastoFijo('${g.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+          <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuGastoFijo('${g.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
         </div>
       `).join('')}
     </div>
@@ -2567,7 +2567,7 @@ async function loadIngresos() {
             <div class="item-row-detail">${formatearFrecuenciaIngresoProgramado(i.frecuencia, i.dia_pago, i.dia_semana)}</div>
           </div>
           <div class="item-row-amount" style="color:var(--green)">${formatMXN(i.monto_estimado)}</div>
-          <button class="item-row-delete" onclick="openMenuIngresoProgramado('${i.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+          <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuIngresoProgramado('${i.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
         </div>
       `).join(''));
 
@@ -2595,7 +2595,7 @@ async function loadIngresos() {
               <div class="item-row-detail">${i.fecha}</div>
             </div>
             <div class="item-row-amount" style="color:var(--green)">${formatMXN(i.monto)}</div>
-            <button class="item-row-delete" onclick="openMenuIngresoHistorial('${i.id}')"><i data-lucide="more-vertical" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+            <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuIngresoHistorial('${i.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
           </div>
         `;
       }).join(''));
