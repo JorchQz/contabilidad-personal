@@ -241,6 +241,14 @@ html, body {
   padding-bottom: max(16px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--border-light);
   background: var(--bg);
+  position: relative;
+  z-index: 10;
+}
+
+.onboarding-footer .btn {
+  position: relative;
+  z-index: 10;
+  width: 100%;
 }
 
 /* ---- FORMS ---- */
@@ -299,6 +307,27 @@ html, body {
   color: var(--text-muted);
   margin-top: 5px;
   line-height: 1.4;
+}
+
+/* ---- MONEY INPUT WRAPPER ---- */
+.input-money-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-money-wrap .currency-prefix {
+  position: absolute;
+  left: 14px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  font-weight: 500;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.input-money-wrap .form-input {
+  padding-left: 28px;
 }
 
 /* ---- CARDS ---- */
@@ -584,8 +613,8 @@ html, body {
 /* ---- FAB ---- */
 .fab {
   position: fixed;
-  bottom: 76px;
-  right: calc(50% - 215px + 16px);
+  bottom: 80px;
+  right: max(16px, calc(50vw - 215px + 16px));
   width: 52px;
   height: 52px;
   background: var(--accent);
@@ -777,9 +806,28 @@ html, body {
 .deuda-badge.quincenal{ background: var(--yellow-soft); color: var(--yellow); }
 .deuda-badge.mensual  { background: var(--green-soft);  color: var(--green);  }
 .deuda-badge.libre    { background: var(--bg-elevated); color: var(--text-secondary); }
+.deuda-badge.unico    { background: var(--yellow-soft); color: var(--yellow); }
 .deuda-badge.simple   { background: var(--accent-soft); color: var(--accent); }
 .deuda-badge.variable { background: var(--yellow-soft); color: var(--yellow); }
 .deuda-badge.tabla    { background: var(--green-soft);  color: var(--green);  }
+
+/* ---- BANK SEARCH RESULTS ---- */
+.banco-result-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  transition: background var(--transition);
+}
+
+.banco-result-item:last-child { border-bottom: none; }
+.banco-result-item:active { background: var(--bg-hover); }
+.banco-result-item.accent { color: var(--accent); }
 
 .deuda-progress {
   height: 4px;
