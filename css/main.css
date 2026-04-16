@@ -260,6 +260,131 @@ html, body {
   touch-action: manipulation;
 }
 
+/* ---- INCOME LIST & ITEMS ---- */
+.income-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item-row {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.item-row:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.item-row.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.btn-remove {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 2px 4px;
+  transition: color var(--transition);
+}
+
+.btn-remove:hover {
+  color: var(--red);
+}
+
+/* ---- CUSTOM FORM ---- */
+.custom-form {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.custom-form-row {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.emoji-picker-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  background: var(--bg-elevated);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+  padding: 0;
+  font-size: 20px;
+}
+
+.emoji-picker-btn:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.custom-form-row .form-input {
+  flex: 1;
+  margin: 0;
+}
+
+/* ---- ICON PANEL & GRID ---- */
+.icon-panel {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+
+.icon-grid-item {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all var(--transition);
+  font-size: 18px;
+}
+
+.icon-grid-item:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.icon-grid-item.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 /* ---- FORMS ---- */
 .form-group {
   margin-bottom: 18px;

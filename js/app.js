@@ -815,59 +815,97 @@ const ICONOS_PICKER = [
 ];
 
 // STEP 1 (ex-2): Tipos de ingreso
+const TODOS_ICONOS = [
+  'briefcase','laptop','store','clock','building-2','graduation-cap',
+  'landmark','users','home','zap','droplets','flame','wifi','smartphone',
+  'shopping-cart','utensils','coffee','package','fuel','bus','car',
+  'wrench','stethoscope','pill','dumbbell','shield','book-open','pencil',
+  'shirt','scissors','sparkles','tv','music','gamepad-2','baby','dog',
+  'gift','heart-pulse','piggy-bank','credit-card','trending-up',
+  'trending-down','wallet','banknote','coins','target','star','award',
+  'tool','hammer','paint-bucket','camera','mic','headphones','plane',
+  'ship','train','bike','footprints','moon','sun','cloud','umbrella',
+  'flag','map-pin','globe','key','lock','bell','calendar','clock-3',
+  'refresh-cw','check-circle','alert-circle','info','plus-circle',
+  'minus-circle','arrow-right','arrow-left','percent','tag','box'
+];
+
 function renderStep2nuevo() {
   const TIPOS_INGRESO = [
-    { nombre: 'Salario / Nómina',        icono: 'briefcase' },
-    { nombre: 'Honorarios / Freelance',  icono: 'laptop' },
-    { nombre: 'Negocio propio',          icono: 'store' },
-    { nombre: 'Horas extra',             icono: 'clock' },
-    { nombre: 'Renta de inmueble',       icono: 'building-2' },
-    { nombre: 'Beca / Apoyo gobierno',   icono: 'graduation-cap' },
-    { nombre: 'Pensión / Retiro',        icono: 'landmark' },
-    { nombre: 'Mesada / Apoyo familiar', icono: 'users' },
+    'Salario / Nómina',
+    'Honorarios / Freelance',
+    'Negocio propio',
+    'Horas extra',
+    'Renta de inmueble',
+    'Beca / Apoyo gobierno',
+    'Pensión / Retiro',
+    'Mesada / Apoyo familiar',
   ];
 
   setHeader('¿Cómo recibes dinero?', 'Selecciona todas las que apliquen.');
 
-  function render(showCustomForm = false, selectedIcono = '') {
-    document.getElementById('onboarding-body').innerHTML = `
-      <div class="category-grid">
-        ${TIPOS_INGRESO.map(t => {
-          const sel = onboardingData.tiposIngreso.some(x => x.nombre === t.nombre && x.icono === t.icono);
+  function render(showIconPanel = false, panelForIndex = null) {
+    const customItems = onboardingData.tiposIngreso.filter(x => !TIPOS_INGRESO.includes(x.nombre));
+    
+    const itemsHtml = `
+      <div class="income-list">
+        ${TIPOS_INGRESO.map(nombre => {
+          const selected = onboardingData.tiposIngreso.some(x => x.nombre === nombre);
           return `
-            <div class="category-item${sel ? ' selected' : ''}" onclick="toggleTipoIngreso('${t.nombre}','${t.icono}')">
-              <span class="cat-name">${t.nombre}</span>
+            <div class="item-row${selected ? ' selected' : ''}" onclick="toggleTipoIngreso('${nombre}')">
+              <span>${nombre}</span>
             </div>`;
         }).join('')}
-        ${onboardingData.tiposIngreso.filter(x => !TIPOS_INGRESO.some(t => t.nombre === x.nombre)).map((x) => `
-          <div class="category-item selected" onclick="toggleTipoIngreso('${x.nombre}','${x.icono}','custom')">
-            <i data-lucide="${x.icono}" class="cat-icon"></i>
-            <span class="cat-name">${x.nombre}</span>
+        
+        ${customItems.map((item, idx) => `
+          <div class="item-row selected">
+            <span>${item.nombre}</span>
+            <button class="btn-remove" onclick="removeTipoIngresoCustom(${idx})" style="margin-left:auto">✕</button>
           </div>`).join('')}
       </div>
-
-      ${showCustomForm ? `
-      <div class="mini-form" style="margin-top:12px">
-        <input class="form-input" id="ti-nombre" placeholder="Nombre del ingreso" style="margin-bottom:8px" />
-        <div class="icon-picker-grid" id="ti-icon-picker">
-          ${ICONOS_PICKER.map(ic => `
-            <div class="icon-picker-item${selectedIcono === ic ? ' selected' : ''}" onclick="selectIconoTipoIngreso('${ic}')">
-              <i data-lucide="${ic}"></i>
-            </div>`).join('')}
-        </div>
-        <input type="hidden" id="ti-icono" value="${selectedIcono || 'briefcase'}" />
-        <button class="btn btn-secondary" style="margin-top:4px" onclick="addTipoIngresoCustom()">+ Agregar</button>
-      </div>
-      ` : `
-      <button class="btn-add-item" style="margin-top:12px" onclick="renderStep2CustomForm()">
-        <span>+</span> Agregar personalizado
-      </button>
-      `}
     `;
+
+    const customFormHtml = `
+      <div class="custom-form">
+        <div class="custom-form-row">
+          <button class="emoji-picker-btn" id="emoji-btn" onclick="toggleIconPanel()">
+            <i data-lucide="${window._tipoIngresoSelectedIcono || 'plus'}"></i>
+          </button>
+          <input class="form-input" id="ti-nombre" placeholder="Nombre del ingreso" />
+        </div>
+        
+        ${showIconPanel ? `
+        <div class="icon-panel">
+          <div class="icon-grid">
+            ${TODOS_ICONOS.map(ic => `
+              <div class="icon-grid-item${ic === window._tipoIngresoSelectedIcono ? ' selected' : ''}" onclick="selectIconoTipoIngreso('${ic}')">
+                <i data-lucide="${ic}"></i>
+              </div>`).join('')}
+          </div>
+        </div>
+        ` : ''}
+        
+        <button class="btn btn-secondary" style="margin-top:12px; width:100%" onclick="addTipoIngresoCustom()">+ Agregar</button>
+      </div>
+    `;
+
+    document.getElementById('onboarding-body').innerHTML = `
+      ${itemsHtml}
+      <div style="margin-top:20px">
+        ${window._showCustomForm ? customFormHtml : `
+          <button class="btn-add-item" onclick="showCustomIngresoForm()">
+            <span>+</span> Agregar personalizado
+          </button>
+        `}
+      </div>
+    `;
+    
     lucide.createIcons();
   }
 
   window._renderStep2Body = render;
+  window._showCustomForm = false;
+  window._tipoIngresoSelectedIcono = 'plus';
   render();
 
   setFooter(`
@@ -875,29 +913,54 @@ function renderStep2nuevo() {
   `);
 }
 
-window.toggleTipoIngreso = function(nombre, icono, tipo) {
-  const idx = onboardingData.tiposIngreso.findIndex(x => x.nombre === nombre && x.icono === icono);
+window.toggleTipoIngreso = function(nombre) {
+  const idx = onboardingData.tiposIngreso.findIndex(x => x.nombre === nombre);
   if (idx >= 0) {
     onboardingData.tiposIngreso.splice(idx, 1);
   } else {
-    onboardingData.tiposIngreso.push({ nombre, icono });
+    onboardingData.tiposIngreso.push({ nombre, icono: 'briefcase' });
   }
   if (window._renderStep2Body) window._renderStep2Body();
 };
 
-window.renderStep2CustomForm = function() {
-  if (window._renderStep2Body) window._renderStep2Body(true, 'briefcase');
+window.showCustomIngresoForm = function() {
+  window._showCustomForm = true;
+  window._tipoIngresoSelectedIcono = 'plus';
+  if (window._renderStep2Body) window._renderStep2Body(false);
+};
+
+window.toggleIconPanel = function() {
+  const currentShow = window._showIconPanel || false;
+  if (window._renderStep2Body) window._renderStep2Body(!currentShow);
+  window._showIconPanel = !currentShow;
 };
 
 window.selectIconoTipoIngreso = function(icono) {
-  if (window._renderStep2Body) window._renderStep2Body(true, icono);
+  window._tipoIngresoSelectedIcono = icono;
+  window._showIconPanel = false;
+  if (window._renderStep2Body) window._renderStep2Body(false);
 };
 
 window.addTipoIngresoCustom = function() {
   const nombre = document.getElementById('ti-nombre')?.value.trim();
-  const icono  = document.getElementById('ti-icono')?.value || 'briefcase';
-  if (!nombre) { showSnackbar('Escribe el nombre del ingreso', 'error'); return; }
+  const icono = window._tipoIngresoSelectedIcono || 'plus';
+  if (!nombre) { 
+    showSnackbar('Escribe el nombre del ingreso', 'error'); 
+    return; 
+  }
   onboardingData.tiposIngreso.push({ nombre, icono });
+  window._showCustomForm = false;
+  window._tipoIngresoSelectedIcono = 'plus';
+  if (window._renderStep2Body) window._renderStep2Body();
+};
+
+window.removeTipoIngresoCustom = function(index) {
+  const customItems = onboardingData.tiposIngreso.filter(x => !['Salario / Nómina','Honorarios / Freelance','Negocio propio','Horas extra','Renta de inmueble','Beca / Apoyo gobierno','Pensión / Retiro','Mesada / Apoyo familiar'].includes(x.nombre));
+  const itemToRemove = customItems[index];
+  const idx = onboardingData.tiposIngreso.findIndex(x => x.nombre === itemToRemove.nombre && x.icono === itemToRemove.icono);
+  if (idx >= 0) {
+    onboardingData.tiposIngreso.splice(idx, 1);
+  }
   if (window._renderStep2Body) window._renderStep2Body();
 };
 
