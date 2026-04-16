@@ -1246,6 +1246,39 @@ html, body {
   margin: 16px 0 8px;
 }
 
+.category-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.category-group {
+  margin-bottom: 12px;
+}
+
+.category-chip {
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition: all var(--transition);
+  display: inline-flex;
+  align-items: center;
+}
+
+.category-chip:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.category-chip.is-fixed {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .icon-picker-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
