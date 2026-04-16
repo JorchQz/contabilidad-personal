@@ -798,7 +798,13 @@ function setHeader(title, subtitle) {
 }
 
 function setFooter(html) {
-  document.getElementById('onboarding-footer').innerHTML = html;
+  const footer = document.getElementById('onboarding-footer');
+  footer.innerHTML = html;
+  // Re-inicializar touch events para todos los botones del footer
+  footer.querySelectorAll('button, .btn').forEach(btn => {
+    btn.style.touchAction = 'manipulation';
+    btn.style.webkitTapHighlightColor = 'transparent';
+  });
 }
 
 // ---- ICONOS PARA SELECTOR PERSONALIZADO ----
