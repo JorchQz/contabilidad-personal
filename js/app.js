@@ -4051,9 +4051,136 @@ function resetApp() {
 
 // ---- MODALES ----
 
+let currentCatId = null;
+let currentCatTipo = null;
+let currentCatMeta = null;
+let currentIngresoTipo = 'otro';
+window._categoriaSelectorItems = [];
+
+function getCategoriaIcono(item, fallback = 'package') {
+  return item?.emoji || item?.icono || fallback;
+}
+
+function actualizarBotonCategoriaSelector() {
+  const btn = document.getElementById('btn-cat-selector');
+  if (!btn) return;
+
+  const icono = getCategoriaIcono(currentCatMeta, currentCatTipo === 'ingreso' ? 'wallet' : 'package');
+  const nombre = currentCatMeta?.nombre || (currentCatTipo === 'ingreso' ? 'Selecciona tipo' : 'Selecciona categoría');
+
+  btn.innerHTML = `
+    <i data-lucide="${icono}" class="cat-btn-icon"></i>
+    <span class="cat-btn-label">${nombre}</span>
+    <i data-lucide="chevron-down" class="cat-btn-chevron"></i>
+  `;
+
+  renderLucideIcons();
+}
+
+function closeSelectorCategoriaSheet() {
+  const overlay = document.getElementById('categoria-selector-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  setTimeout(() => overlay.remove(), 180);
+}
+
+function seleccionarCategoriaDesdeSheet(index) {
+  const item = window._categoriaSelectorItems[index];
+  if (!item) return;
+
+  currentCatId = item.id ?? null;
+  currentCatMeta = item;
+  currentCatTipo = item.tipoSelector;
+
+  if (currentCatTipo === 'ingreso') {
+    currentIngresoTipo = item.special === 'prestamo' ? 'prestamo' : 'otro';
+    toggleCamposPrestamo();
+  }
+
+  actualizarBotonCategoriaSelector();
+  closeSelectorCategoriaSheet();
+}
+
+async function abrirSelectorCategoria(tipo) {
+  const usuarioId = await getUsuarioId();
+  const { data: categorias } = await db
+    .from('categorias')
+    .select('id, nombre, emoji, es_default')
+    .eq('usuario_id', usuarioId)
+    .eq('tipo', tipo)
+    .order('nombre', { ascending: true });
+
+  const personalizadas = (categorias || []).filter(c => c.es_default === false).map(c => ({ ...c, tipoSelector: tipo }));
+  const resto = (categorias || []).filter(c => c.es_default !== false).map(c => ({ ...c, tipoSelector: tipo }));
+
+  const secciones = [];
+  if (personalizadas.length > 0) secciones.push({ titulo: 'Personalizadas', items: personalizadas });
+  if (resto.length > 0) secciones.push({ titulo: 'Categorías', items: resto });
+
+  if (tipo === 'ingreso') {
+    secciones.push({
+      titulo: 'Opciones',
+      items: [
+        { id: null, nombre: 'Otro', emoji: 'circle', special: 'otro', tipoSelector: 'ingreso' },
+        { id: null, nombre: 'Préstamo recibido', emoji: 'handshake', special: 'prestamo', tipoSelector: 'ingreso' }
+      ]
+    });
+  }
+
+  const flatItems = [];
+  const html = secciones.map(sec => {
+    const sectionHtml = sec.items.map(item => {
+      const idx = flatItems.push(item) - 1;
+      return `
+        <button class="category-item" style="width:100%" onclick="seleccionarCategoriaDesdeSheet(${idx})">
+          <i data-lucide="${getCategoriaIcono(item, tipo === 'ingreso' ? 'wallet' : 'package')}" class="cat-icon"></i>
+          <span class="cat-name">${item.nombre}</span>
+        </button>
+      `;
+    }).join('');
+
+    return `
+      <div style="margin-bottom:12px">
+        <div class="category-group-title" style="margin-top:0">${sec.titulo}</div>
+        <div style="display:flex;flex-direction:column;gap:8px">${sectionHtml}</div>
+      </div>
+    `;
+  }).join('');
+
+  window._categoriaSelectorItems = flatItems;
+
+  const old = document.getElementById('categoria-selector-overlay');
+  if (old) old.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'categoria-selector-overlay';
+  overlay.className = 'modal-overlay categoria-selector-overlay';
+  overlay.innerHTML = `
+    <div class="bottom-sheet" onclick="event.stopPropagation()">
+      <div class="sheet-handle"></div>
+      <h3 class="sheet-title">Selecciona ${tipo === 'ingreso' ? 'tipo de ingreso' : 'categoría'}</h3>
+      ${html || '<p class="form-hint">No hay categorías disponibles.</p>'}
+    </div>
+  `;
+  overlay.addEventListener('click', closeSelectorCategoriaSheet);
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('open'));
+
+  renderLucideIcons();
+}
+
 // Registrar Ingreso
 async function openRegistrarIngreso() {
+  const { data: categorias } = await db.from('categorias').select('id, nombre, emoji, es_default').eq('usuario_id', (await getUsuarioId())).eq('tipo', 'ingreso').order('nombre', { ascending: true });
   const { data: cuentas } = await db.from('cuentas').select('*').eq('usuario_id', (await getUsuarioId())).eq('activa', true);
+
+  const categoriasIngreso = categorias || [];
+  const categoriaInicial = categoriasIngreso.find(c => c.es_default === false) || categoriasIngreso[0] || { id: null, nombre: 'Otro', emoji: 'circle', special: 'otro', tipoSelector: 'ingreso' };
+
+  currentCatTipo = 'ingreso';
+  currentCatId = categoriaInicial.id ?? null;
+  currentCatMeta = { ...categoriaInicial, tipoSelector: 'ingreso' };
+  currentIngresoTipo = categoriaInicial.special === 'prestamo' ? 'prestamo' : 'otro';
 
   openModal('Registrar ingreso', `
     <div class="form-group">
@@ -4063,13 +4190,7 @@ async function openRegistrarIngreso() {
     </div>
     <div class="form-group">
       <label class="form-label">Tipo</label>
-      <select class="form-select" id="ri-tipo" onchange="toggleCamposPrestamo()">
-        <option value="salario">Salario</option>
-        <option value="beca">Beca</option>
-        <option value="extra">Extra</option>
-        <option value="otro">Otro</option>
-        <option value="prestamo">Préstamo recibido</option>
-      </select>
+      <button id="btn-cat-selector" class="categoria-btn" type="button" onclick="abrirSelectorCategoria('ingreso')"></button>
     </div>
     <div id="ri-prestamo-campos" style="display:none"></div>
     <div class="form-group">
@@ -4089,11 +4210,12 @@ async function openRegistrarIngreso() {
     <button class="btn btn-primary" onclick="guardarIngreso()">Guardar ingreso</button>
   `);
 
+  actualizarBotonCategoriaSelector();
   toggleCamposPrestamo();
 }
 
 function toggleCamposPrestamo() {
-  const tipo = document.getElementById('ri-tipo')?.value;
+  const tipo = currentIngresoTipo || 'otro';
   const contenedor = document.getElementById('ri-prestamo-campos');
   if (!contenedor) return;
 
@@ -4127,7 +4249,8 @@ function toggleCamposPrestamo() {
 
 async function guardarIngreso() {
   const monto = parseFloat(document.getElementById('ri-monto').value);
-  const tipo = document.getElementById('ri-tipo').value;
+  const tipo = currentIngresoTipo || 'otro';
+  const categoria_id = currentCatId;
   const descripcion = document.getElementById('ri-desc').value.trim();
   const cuenta_id = document.getElementById('ri-cuenta')?.value || null;
   const fecha = document.getElementById('ri-fecha').value;
@@ -4138,10 +4261,21 @@ async function guardarIngreso() {
   if (!monto) { showSnackbar('Ingresa un monto', 'error'); return; }
   if (tipo === 'prestamo' && !prestamista) { showSnackbar('Escribe quién te prestó', 'error'); return; }
 
-  const { error } = await db.from('ingresos').insert({
+  const ingresoPayload = {
     usuario_id,
-    monto, tipo, descripcion, cuenta_id, fecha
-  });
+    monto,
+    tipo,
+    descripcion,
+    cuenta_id,
+    fecha,
+    categoria_id: categoria_id ?? null
+  };
+
+  let { error } = await db.from('ingresos').insert(ingresoPayload);
+  if (error && /categoria_id/i.test(String(error.message || ''))) {
+    delete ingresoPayload.categoria_id;
+    ({ error } = await db.from('ingresos').insert(ingresoPayload));
+  }
 
   if (error) { showSnackbar('Error al guardar', 'error'); return; }
 
@@ -4249,6 +4383,13 @@ async function openRegistrarGasto() {
   const { data: categorias } = await db.from('categorias').select('*').eq('usuario_id', (await getUsuarioId())).eq('tipo', 'gasto');
   const { data: cuentas } = await db.from('cuentas').select('*').eq('usuario_id', (await getUsuarioId())).eq('activa', true);
 
+  const categoriasGasto = categorias || [];
+  const categoriaInicial = categoriasGasto.find(c => c.es_default === false) || categoriasGasto[0] || null;
+
+  currentCatTipo = 'gasto';
+  currentCatId = categoriaInicial?.id ?? null;
+  currentCatMeta = categoriaInicial ? { ...categoriaInicial, tipoSelector: 'gasto' } : null;
+
   openModal('Registrar gasto', `
     <div class="form-group">
       <label class="form-label">Descripción</label>
@@ -4261,9 +4402,7 @@ async function openRegistrarGasto() {
     </div>
     <div class="form-group">
       <label class="form-label">Categoría</label>
-      <select class="form-select" id="rg-cat">
-        ${(categorias || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
-      </select>
+      <button id="btn-cat-selector" class="categoria-btn" type="button" onclick="abrirSelectorCategoria('gasto')"></button>
     </div>
     <div class="form-group">
       <label class="form-label">Cuenta</label>
@@ -4277,16 +4416,19 @@ async function openRegistrarGasto() {
     </div>
     <button class="btn btn-primary" onclick="guardarGasto()">Guardar gasto</button>
   `);
+
+  actualizarBotonCategoriaSelector();
 }
 
 async function guardarGasto() {
   const descripcion = document.getElementById('rg-desc').value.trim();
   const monto = parseFloat(document.getElementById('rg-monto').value);
-  const categoria_id = document.getElementById('rg-cat').value;
+  const categoria_id = currentCatId;
   const cuenta_id = document.getElementById('rg-cuenta')?.value || null;
   const fecha = document.getElementById('rg-fecha').value;
   const usuarioId = (await getUsuarioId());
   if (!descripcion || !monto) { showSnackbar('Completa descripción y monto', 'error'); return; }
+  if (!categoria_id) { showSnackbar('Selecciona una categoría', 'error'); return; }
 
   if (cuenta_id) {
     const [

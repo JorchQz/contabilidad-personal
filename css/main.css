@@ -987,6 +987,44 @@ html, body {
   color: var(--accent);
 }
 
+.categoria-btn {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: var(--font);
+  font-size: 15px;
+  color: var(--text);
+  text-align: left;
+}
+
+.categoria-btn:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.categoria-btn .cat-btn-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.categoria-btn .cat-btn-label {
+  flex: 1;
+}
+
+.categoria-btn .cat-btn-chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+}
+
 .deuda-progress {
   height: 4px;
   background: var(--border);
@@ -1032,6 +1070,10 @@ html, body {
 .modal-overlay.open {
   opacity: 1;
   pointer-events: all;
+}
+
+.categoria-selector-overlay {
+  z-index: 260;
 }
 
 .bottom-sheet {
