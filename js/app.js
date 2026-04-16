@@ -17,7 +17,7 @@ let onboardingData = {
 };
 
 let currentStep = 1;
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 6;
 
 // ---- TEMA ----
 const THEME_STORAGE_KEY = 'jmf_theme';
@@ -774,7 +774,8 @@ function renderStep(step) {
     2: renderStep3nuevo,  // Categorías de gasto (+ gastos fijos)
     3: renderStep4,       // Cuentas
     4: renderStep5,       // Deudas
-    5: renderStep6        // Metas
+    5: renderStep6,       // Metas
+    6: renderStep6resumen // Resumen
   };
 
   steps[step]?.();
@@ -1753,12 +1754,93 @@ function nextStep5() {
   renderStep(5);
 }
 
+function renderStep6resumen() {
+  setHeader('Todo listo, revisa tu configuración', 'Si algo no está bien, regresa a corregirlo.');
+
+  const categoriasFijas = onboardingData.categorias.filter(c => c.es_fijo).length;
+  const categoriasVariables = onboardingData.categorias.filter(c => !c.es_fijo).length;
+
+  const sectionStyle = 'background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:12px';
+
+  const renderList = (items, emptyText = 'Ninguna', formatter = item => item) => {
+    if (!items || items.length === 0) return `<p class="form-hint">${emptyText}</p>`;
+    return `<div style="display:flex;flex-wrap:wrap;gap:8px">${items.map(item => `<span class="category-chip" style="cursor:default">${formatter(item)}</span>`).join('')}</div>`;
+  };
+
+  document.getElementById('onboarding-body').innerHTML = `
+    <div style="${sectionStyle}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+        <strong>Ingresos</strong>
+        <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="renderStep(1)">Editar</button>
+      </div>
+      ${renderList(onboardingData.tiposIngreso, 'Ninguno', item => item.nombre)}
+    </div>
+
+    <div style="${sectionStyle}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+        <strong>Categorías</strong>
+        <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="renderStep(2)">Editar</button>
+      </div>
+      <p class="form-hint" style="margin-bottom:8px">${categoriasVariables} variables · ${categoriasFijas} fijas</p>
+      ${renderList(onboardingData.categorias, 'Ninguna', item => `${item.nombre}${item.es_fijo ? ' · fijo' : ''}`)}
+    </div>
+
+    <div style="${sectionStyle}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+        <strong>Cuentas</strong>
+        <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="renderStep(3)">Editar</button>
+      </div>
+      ${onboardingData.cuentas.length === 0 ? '<p class="form-hint">Ninguna</p>' : onboardingData.cuentas.map(c => `
+        <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light)">
+          <span>${c.nombre}</span>
+          <span style="color:var(--text-secondary)">${formatMXN(c.saldo_inicial || 0)}</span>
+        </div>
+      `).join('')}
+    </div>
+
+    <div style="${sectionStyle}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+        <strong>Deudas</strong>
+        <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="renderStep(4)">Editar</button>
+      </div>
+      ${onboardingData.deudas.length === 0 ? '<p class="form-hint">Ninguna</p>' : onboardingData.deudas.map(d => `
+        <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light)">
+          <span>${d.acreedor}</span>
+          <span style="color:var(--text-secondary)">${formatMXN(d.monto_actual || 0)}</span>
+        </div>
+      `).join('')}
+    </div>
+
+    <div style="${sectionStyle}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+        <strong>Metas</strong>
+        <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="renderStep(5)">Editar</button>
+      </div>
+      ${onboardingData.metas.length === 0 ? '<p class="form-hint">Ninguna</p>' : onboardingData.metas.map(m => `
+        <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light)">
+          <span>${m.nombre}</span>
+          <span style="color:var(--text-secondary)">${formatMXN(m.monto_objetivo || 0)}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  setFooter(`
+    <button class="btn btn-success" id="btn-finish" onclick="finishOnboarding()">¡Listo, empecemos! 🚀</button>
+    <button class="btn btn-ghost mt-8" onclick="renderStep(5)">← Atrás</button>
+  `);
+
+  renderLucideIcons();
+}
+
 
 function renderStep6() {
+  window._metaSelectedIcono = window._metaSelectedIcono || 'target';
+  window._metaIconPanelOpen = false;
   setHeader('¿Para qué quieres ahorrar?', 'Define tus metas. Las iremos completando juntos poco a poco.');
   renderStep6Body();
   setFooter(`
-    <button class="btn btn-success" id="btn-finish" onclick="finishOnboarding()">¡Listo, empecemos!</button>
+    <button class="btn btn-primary" onclick="nextStep6()">Continuar →</button>
     <button class="btn btn-ghost mt-8" onclick="renderStep(4)">← Atrás</button>
   `);
 }
@@ -1784,20 +1866,22 @@ function renderStep6Body(showForm = false, selectedIcono = 'target') {
 
     ${showForm ? `
     <div class="mini-form">
-      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
-        <div>
-          <div class="icon-picker-grid" id="m-icon-picker" style="width:140px">
-            ${ICONOS_PICKER.map(ic => `
-              <div class="icon-picker-item${selectedIcono === ic ? ' selected' : ''}" onclick="selectIconoMeta('${ic}')">
+      <div class="custom-form-row" style="margin-bottom:10px">
+        <button class="emoji-picker-btn" onclick="toggleMetaIconPanel()">
+          ${window._metaSelectedIcono ? `<i data-lucide="${window._metaSelectedIcono}"></i>` : '+'}
+        </button>
+        <input class="form-input" id="m-nombre" placeholder="Nombre de la meta" style="margin:0" />
+      </div>
+      ${window._metaIconPanelOpen ? `
+        <div class="icon-panel" style="margin-bottom:10px">
+          <div class="icon-grid">
+            ${TODOS_ICONOS.map(ic => `
+              <div class="icon-grid-item${selectedIcono === ic ? ' selected' : ''}" onclick="selectIconoMeta('${ic}')">
                 <i data-lucide="${ic}"></i>
               </div>`).join('')}
           </div>
-          <input type="hidden" id="m-icono" value="${selectedIcono}" />
         </div>
-        <div style="flex:1;min-width:0">
-          <input class="form-input" id="m-nombre" placeholder="Nombre de la meta" style="margin-bottom:8px" />
-        </div>
-      </div>
+      ` : ''}
       <div class="input-money-wrap" style="margin-bottom:8px">
         <span class="currency-prefix">$</span>
         <input class="form-input" id="m-monto" type="number" placeholder="¿Cuánto necesitas?" min="0" />
@@ -1824,22 +1908,35 @@ function renderStep6Body(showForm = false, selectedIcono = 'target') {
 }
 
 window.selectIconoMeta = function(icono) {
+  window._metaSelectedIcono = icono;
+  window._metaIconPanelOpen = false;
   renderStep6Body(true, icono);
 };
 
+window.toggleMetaIconPanel = function() {
+  window._metaIconPanelOpen = !window._metaIconPanelOpen;
+  renderStep6Body(true, window._metaSelectedIcono || 'target');
+};
+
 function addMeta() {
-  const icono = document.getElementById('m-icono')?.value || 'target';
+  const icono = window._metaSelectedIcono || 'target';
   const nombre = document.getElementById('m-nombre')?.value.trim();
   const monto_objetivo = parseFloat(document.getElementById('m-monto')?.value);
   const cuenta_nombre = document.getElementById('m-cuenta-nombre')?.value || null;
   if (!nombre || !monto_objetivo) { showSnackbar('Completa nombre y monto', 'error'); return; }
   onboardingData.metas.push({ icono, nombre, monto_objetivo, cuenta_nombre });
+  window._metaSelectedIcono = 'target';
+  window._metaIconPanelOpen = false;
   renderStep6Body(false);
 }
 
 function removeMeta(i) {
   onboardingData.metas.splice(i, 1);
   renderStep6Body(false);
+}
+
+function nextStep6() {
+  renderStep(6);
 }
 
 // ---- GUARDAR ONBOARDING EN SUPABASE ----
