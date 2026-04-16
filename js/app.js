@@ -1538,6 +1538,69 @@ function renderStep5() {
 }
 
 function renderStep5Body(showForm = false) {
+  const tipoDeuda = window._onboardingTipoDeuda || null;
+
+  const selectorTipoHtml = `
+    <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:16px">
+      <button onclick="selectTipoDeudaOnboarding('simple')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'simple' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
+        <div style="font-size:20px;margin-bottom:6px">💳</div>
+        <div style="font-weight:600;font-size:14px">Simple</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Monto fijo, fecha fija</div>
+      </button>
+      <button onclick="selectTipoDeudaOnboarding('variable')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'variable' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
+        <div style="font-size:20px;margin-bottom:6px">📊</div>
+        <div style="font-weight:600;font-size:14px">Variable</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Monto cambia cada pago</div>
+      </button>
+      <button onclick="selectTipoDeudaOnboarding('tabla')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'tabla' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
+        <div style="font-size:20px;margin-bottom:6px">📋</div>
+        <div style="font-weight:600;font-size:14px">Con tabla</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Pagos programados</div>
+      </button>
+    </div>
+  `;
+
+  const formularioSimpleVariable = `
+    <div class="form-group" style="margin-bottom:8px">
+      <label class="form-label">¿A quién le debes?</label>
+      <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Caja Popular, mamá, etc." />
+    </div>
+    <div class="form-group" style="margin-bottom:8px">
+      <label class="form-label">Monto total</label>
+      <div class="input-money-wrap"><span class="currency-prefix">$</span>
+      <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" /></div>
+    </div>
+    <div class="form-group" style="margin-bottom:8px">
+      <label class="form-label">Frecuencia de pago</label>
+      <select class="form-select" id="d-freq" onchange="renderCamposDeudaOnboarding()">
+        <option value="unico">Pago único</option>
+        <option value="semanal">Semanal</option>
+        <option value="quincenal">Quincenal</option>
+        <option value="mensual">Mensual</option>
+        <option value="libre">Sin fecha fija</option>
+      </select>
+    </div>
+    <div class="form-group" id="d-fecha-campos" style="margin-bottom:8px"></div>
+    <div class="form-group" style="margin-bottom:8px">
+      <label class="form-label">Pago por cuota (opcional)</label>
+      <div class="input-money-wrap"><span class="currency-prefix">$</span>
+      <input class="form-input" id="d-cuota" type="number" placeholder="0.00" min="0" /></div>
+    </div>
+  `;
+
+  const formularioTabla = `
+    <div class="form-group" style="margin-bottom:8px">
+      <label class="form-label">¿A quién le debes?</label>
+      <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Caja Popular, mamá, etc." />
+    </div>
+    <div class="form-group" style="margin-bottom:8px">
+      <label class="form-label">Monto total</label>
+      <div class="input-money-wrap"><span class="currency-prefix">$</span>
+      <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" /></div>
+    </div>
+    <p class="form-hint" style="margin-bottom:8px">Podrás agregar los pagos programados después</p>
+  `;
+
   document.getElementById('onboarding-body').innerHTML = `
     <div class="item-list" id="deudas-list">
       ${onboardingData.deudas.map((d, i) => `
@@ -1545,7 +1608,7 @@ function renderStep5Body(showForm = false) {
           <div class="item-row-emoji"><i data-lucide="trending-down" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <div class="item-row-info">
             <div class="item-row-name">${d.acreedor}</div>
-            <div class="item-row-detail">${d.tipo_pago}${d.monto_pago ? ` · ${formatMXN(d.monto_pago)}/pago` : ''}</div>
+            <div class="item-row-detail">${d.tipo_deuda === 'tabla' ? 'con tabla' : (d.tipo_pago || 'sin fecha fija')}${d.monto_pago ? ` · ${formatMXN(d.monto_pago)}/pago` : ''}</div>
           </div>
           <div class="item-row-amount">${formatMXN(d.monto_actual)}</div>
           <button class="item-row-delete" onclick="removeDeuda(${i})"><i data-lucide="x" style="width:18px;height:18px;stroke-width:1.75"></i></button>
@@ -1555,42 +1618,37 @@ function renderStep5Body(showForm = false) {
 
     ${showForm ? `
     <div class="mini-form">
-      <input class="form-input" id="d-acreedor" placeholder="¿A quién le debes? (ej: Caja Popular)" style="margin-bottom:8px" />
-      <div class="input-money-wrap" style="margin-bottom:8px">
-        <span class="currency-prefix">$</span>
-        <input class="form-input" id="d-monto" type="number" placeholder="Monto total que debes" min="0" />
-      </div>
-      <select class="form-select" id="d-tipo-pago" onchange="renderCamposDeudaOnboarding()" style="margin-bottom:8px">
-        <option value="unico">Pago único</option>
-        <option value="semanal">Semanal</option>
-        <option value="quincenal">Quincenal</option>
-        <option value="mensual">Mensual</option>
-        <option value="libre">Sin fecha fija</option>
-      </select>
-      <div id="d-fecha-campos" style="margin-bottom:8px"></div>
-      <div class="input-money-wrap" style="margin-bottom:8px">
-        <span class="currency-prefix">$</span>
-        <input class="form-input" id="d-pago" type="number" placeholder="¿Cuánto pagas cada vez? (opcional)" min="0" />
-      </div>
-      <button class="btn btn-secondary" onclick="addDeuda()">+ Agregar</button>
+      ${selectorTipoHtml}
+      ${tipoDeuda ? (tipoDeuda === 'tabla' ? formularioTabla : formularioSimpleVariable) : `<p class="form-hint" style="margin-bottom:8px">Selecciona el tipo de deuda para continuar</p>`}
+      ${tipoDeuda ? `<button class="btn btn-secondary" onclick="addDeuda()">+ Agregar</button>` : ''}
     </div>
     ` : `
-    <button class="btn-add-item" onclick="renderStep5Body(true)">
+    <button class="btn-add-item" onclick="openDeudaOnboardingForm()">
       <span>+</span> Agregar deuda
     </button>
     `}
     <p class="form-hint mt-8" style="padding: 0 4px">Si no tienes deudas activas puedes continuar sin agregar ninguna.</p>
   `;
 
-  if (showForm) {
+  if (showForm && (tipoDeuda === 'simple' || tipoDeuda === 'variable')) {
     renderCamposDeudaOnboarding();
   }
 
   renderLucideIcons();
 }
 
+window.openDeudaOnboardingForm = function() {
+  window._onboardingTipoDeuda = null;
+  renderStep5Body(true);
+};
+
+window.selectTipoDeudaOnboarding = function(tipo) {
+  window._onboardingTipoDeuda = tipo;
+  renderStep5Body(true);
+};
+
 window.renderCamposDeudaOnboarding = function() {
-  const tipo = document.getElementById('d-tipo-pago')?.value;
+  const tipo = document.getElementById('d-freq')?.value;
   const campos = document.getElementById('d-fecha-campos');
   if (!campos) return;
 
@@ -1614,8 +1672,9 @@ window.renderCamposDeudaOnboarding = function() {
   }
   if (tipo === 'quincenal') {
     campos.innerHTML = `
-      <label class="form-label">Día de la quincena (1-15)</label>
-      <input class="form-input" id="d-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" />`;
+      <label class="form-label">Quincena de pago</label>
+      <input class="form-input" id="d-quincena" type="number" min="1" max="2" placeholder="1 o 2" />
+      <p class="form-hint" style="margin-top:6px">Los pagos quincenales son el día 15 y último día del mes. Ingresa en qué quincena: 1 = cobra el 15, 2 = cobra el último día</p>`;
     return;
   }
   if (tipo === 'mensual') {
@@ -1628,26 +1687,60 @@ window.renderCamposDeudaOnboarding = function() {
 };
 
 function addDeuda() {
+  const tipo_deuda = window._onboardingTipoDeuda || 'simple';
+  if (!window._onboardingTipoDeuda) {
+    showSnackbar('Selecciona un tipo de deuda', 'error');
+    return;
+  }
   const acreedor = document.getElementById('d-acreedor')?.value.trim();
   const monto = parseFloat(document.getElementById('d-monto')?.value);
-  const tipo_pago = document.getElementById('d-tipo-pago')?.value || 'libre';
-  const monto_pago = parseFloat(document.getElementById('d-pago')?.value) || null;
+  let tipo_pago = null;
+  let monto_pago = null;
   if (!acreedor || !monto) { showSnackbar('Completa acreedor y monto', 'error'); return; }
 
   let dia_pago = null;
   let dia_semana = null;
 
-  if (tipo_pago === 'unico') {
-    const fechaStr = document.getElementById('d-fecha-pago')?.value;
-    if (fechaStr) dia_pago = new Date(fechaStr + 'T00:00:00').getDate();
-  } else if (tipo_pago === 'semanal') {
-    dia_semana = parseInt(document.getElementById('d-dia-semana')?.value, 10);
-    if (Number.isNaN(dia_semana)) dia_semana = null;
-  } else if (tipo_pago === 'mensual' || tipo_pago === 'quincenal') {
-    dia_pago = parseInt(document.getElementById('d-dia-pago')?.value, 10) || null;
+  if (tipo_deuda === 'simple' || tipo_deuda === 'variable') {
+    tipo_pago = document.getElementById('d-freq')?.value || 'libre';
+    monto_pago = parseFloat(document.getElementById('d-cuota')?.value) || null;
+
+    if (tipo_pago === 'unico') {
+      const fechaStr = document.getElementById('d-fecha-pago')?.value;
+      if (fechaStr) dia_pago = new Date(fechaStr + 'T00:00:00').getDate();
+    } else if (tipo_pago === 'semanal') {
+      dia_semana = parseInt(document.getElementById('d-dia-semana')?.value, 10);
+      if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
+        showSnackbar('Selecciona un día de la semana válido', 'error');
+        return;
+      }
+    } else if (tipo_pago === 'mensual') {
+      dia_pago = parseInt(document.getElementById('d-dia-pago')?.value, 10);
+      if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
+        showSnackbar('Ingresa un día del mes entre 1 y 31', 'error');
+        return;
+      }
+    } else if (tipo_pago === 'quincenal') {
+      dia_pago = parseInt(document.getElementById('d-quincena')?.value, 10);
+      if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 2) {
+        showSnackbar('Ingresa 1 o 2 para la quincena', 'error');
+        return;
+      }
+    }
   }
 
-  onboardingData.deudas.push({ acreedor, monto_inicial: monto, monto_actual: monto, tipo_pago, monto_pago, dia_pago, dia_semana });
+  onboardingData.deudas.push({
+    acreedor,
+    monto_inicial: monto,
+    monto_actual: monto,
+    tipo_pago,
+    monto_pago,
+    dia_pago,
+    dia_semana,
+    tipo_deuda
+  });
+
+  window._onboardingTipoDeuda = null;
   renderStep5Body(false);
 }
 
@@ -1828,11 +1921,11 @@ async function finishOnboarding() {
         acreedor: d.acreedor,
         monto_inicial: d.monto_inicial,
         monto_actual: d.monto_actual,
-        tipo_pago: d.tipo_pago,
+        tipo_pago: d.tipo_pago ?? null,
         monto_pago: d.monto_pago ?? null,
         dia_pago: d.dia_pago ?? null,
         dia_semana: d.dia_semana ?? null,
-        tipo_deuda: 'simple',
+        tipo_deuda: d.tipo_deuda || 'simple',
         usuario_id: userId
       }));
       await db.from('deudas').insert(deudas);
