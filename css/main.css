@@ -946,6 +946,15 @@ html, body {
 .deuda-badge.tabla    { background: var(--green-soft);  color: var(--green);  }
 
 /* ---- BANK SEARCH RESULTS ---- */
+.banco-resultados-list {
+  max-height: 236px;
+  overflow-y: auto;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  margin-bottom: 8px;
+}
+
 .banco-result-item {
   display: flex;
   align-items: center;
@@ -959,9 +968,24 @@ html, body {
   transition: background var(--transition);
 }
 
+.banco-result-item:hover {
+  background: var(--bg-hover);
+}
+
 .banco-result-item:last-child { border-bottom: none; }
 .banco-result-item:active { background: var(--bg-hover); }
 .banco-result-item.accent { color: var(--accent); }
+
+.banco-result-item.featured {
+  background: var(--accent-soft);
+}
+
+.banco-pill {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
 
 .deuda-progress {
   height: 4px;

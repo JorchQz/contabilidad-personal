@@ -1408,10 +1408,10 @@ function renderStep4Body() {
 
     <div style="position:relative;margin-bottom:8px">
       <i data-lucide="search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-muted);pointer-events:none;z-index:1"></i>
-      <input class="form-input" id="banco-search" style="padding-left:36px" placeholder="Buscar banco..." oninput="filtrarBancos(this.value)" autocomplete="off" />
+      <input class="form-input" id="banco-search" style="padding-left:36px" placeholder="Buscar banco..." onfocus="mostrarInstituciones()" oninput="filtrarBancos(this.value)" autocomplete="off" />
     </div>
 
-    <div id="banco-resultados" style="display:none;max-height:200px;overflow-y:auto;border:1.5px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);margin-bottom:8px"></div>
+    <div id="banco-resultados" class="banco-resultados-list" style="display:none"></div>
 
     <div id="form-cuenta-banco" style="display:none">
       <div class="mini-form">
@@ -1430,31 +1430,47 @@ function renderStep4Body() {
 
 window._bancosFiltered = [];
 
+function ordenarInstitucionesConEfectivoPrimero(items) {
+  const sorted = [...items];
+  sorted.sort((a, b) => {
+    if (a.nombre === 'Efectivo') return -1;
+    if (b.nombre === 'Efectivo') return 1;
+    return a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' });
+  });
+  return sorted;
+}
+
+window.mostrarInstituciones = function() {
+  window.filtrarBancos(document.getElementById('banco-search')?.value || '');
+};
+
 window.filtrarBancos = function(q) {
   const resultadosDiv = document.getElementById('banco-resultados');
   const formDiv = document.getElementById('form-cuenta-banco');
-  q = (q || '').trim().toLowerCase();
-
-  if (!q) { resultadosDiv.style.display = 'none'; return; }
+  const qRaw = (q || '').trim();
+  const qNorm = qRaw.toLowerCase();
 
   formDiv.style.display = 'none';
   document.getElementById('c-nombre') && (document.getElementById('c-nombre').value = '');
 
-  const filtered = INSTITUCIONES.filter(inst => inst.nombre.toLowerCase().includes(q));
-  window._bancosFiltered = filtered;
-  const sliced = filtered.slice(0, 6);
+  const filtered = qNorm
+    ? INSTITUCIONES.filter(inst => inst.nombre.toLowerCase().includes(qNorm))
+    : INSTITUCIONES;
+
+  const ordered = ordenarInstitucionesConEfectivoPrimero(filtered);
+  window._bancosFiltered = ordered;
 
   resultadosDiv.style.display = 'block';
-  const qRaw = document.getElementById('banco-search')?.value.trim() || '';
-  const exactMatch = filtered.find(f => f.nombre.toLowerCase() === q);
+  const exactMatch = ordered.find(f => f.nombre.toLowerCase() === qNorm);
 
-  let html = sliced.map((inst, idx) => `
-    <div class="banco-result-item" onclick="seleccionarBancoIdx(${idx})">
+  let html = ordered.map((inst, idx) => `
+    <div class="banco-result-item ${inst.nombre === 'Efectivo' ? 'featured' : ''}" onclick="seleccionarBancoIdx(${idx})">
       <i data-lucide="${inst.icono}" style="width:16px;height:16px;color:var(--text-secondary);pointer-events:none"></i>
       <span>${inst.nombre}</span>
+      ${inst.nombre === 'Efectivo' ? '<span class="banco-pill">Recomendado</span>' : ''}
     </div>`).join('');
 
-  if (!exactMatch) {
+  if (ordered.length === 0 && qNorm) {
     html += `<div class="banco-result-item accent" onclick="seleccionarBancoCustom()">
       <i data-lucide="plus" style="width:16px;height:16px;pointer-events:none"></i>
       <span>Agregar "${qRaw}" como cuenta</span>
