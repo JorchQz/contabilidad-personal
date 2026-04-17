@@ -5,11 +5,18 @@
 // ALTER TABLE deudas ADD CONSTRAINT deudas_tipo_pago_check
 //   CHECK (tipo_pago = ANY (ARRAY['semanal','quincenal','mensual','libre','unico']));
 
+// NOTA — Migración para gastos fijos con monto variable + frecuencias extendidas:
+// ALTER TABLE gastos_fijos ALTER COLUMN monto DROP NOT NULL;
+// ALTER TABLE gastos_fijos ADD COLUMN IF NOT EXISTS monto_variable BOOLEAN DEFAULT false;
+// ALTER TABLE gastos_fijos ADD COLUMN IF NOT EXISTS proximo_pago DATE;
+// ALTER TABLE gastos_fijos DROP CONSTRAINT IF EXISTS gastos_fijos_frecuencia_check;
+// ALTER TABLE gastos_fijos ADD CONSTRAINT gastos_fijos_frecuencia_check
+//   CHECK (frecuencia = ANY (ARRAY['semanal','quincenal','mensual','bimestral','trimestral','semestral','anual']));
+
 // ---- ESTADO DEL ONBOARDING ----
 let onboardingData = {
   nombre: '',
   tiposIngreso: [],
-  categorias: [],
   cuentas: [],
   deudas: [],
   gastosFijos: [],
@@ -109,6 +116,16 @@ function getCategoriaGastoIcon(nombre) {
 
   const iconName = map[nombre] || 'package';
   return `<i data-lucide="${iconName}" style="width:18px;height:18px;stroke-width:1.75"></i>`;
+}
+
+// Renderiza un valor que puede ser un nombre de icono lucide (kebab-case) o un emoji literal
+function renderEmojiOrIcon(value, fallbackIcon = 'package', size = 18) {
+  const sty = `width:${size}px;height:${size}px;stroke-width:1.75`;
+  if (!value) return `<i data-lucide="${fallbackIcon}" style="${sty}"></i>`;
+  const isLucideName = /^[a-z][a-z0-9-]*$/.test(value);
+  return isLucideName
+    ? `<i data-lucide="${value}" style="${sty}"></i>`
+    : value;
 }
 
 function renderLucideIcons() {
@@ -273,7 +290,28 @@ function openMarcarPagoFijo(gastoFijoId) {
 
 async function confirmarMarcarPagoFijo(gastoFijoId) {
   const fechaHoy = new Date().toISOString().split('T')[0];
-  const { error } = await db.from('gastos_fijos').update({ ultimo_pago: fechaHoy }).eq('id', gastoFijoId);
+
+  const { data: gf } = await db.from('gastos_fijos')
+    .select('frecuencia, proximo_pago')
+    .eq('id', gastoFijoId)
+    .maybeSingle();
+
+  const update = { ultimo_pago: fechaHoy };
+
+  if (gf?.proximo_pago) {
+    const monthsByFreq = { mensual: 1, bimestral: 2, trimestral: 3, semestral: 6, anual: 12 };
+    const months = monthsByFreq[gf.frecuencia];
+    const fecha = new Date(gf.proximo_pago + 'T00:00:00');
+    if (gf.frecuencia === 'semanal') fecha.setDate(fecha.getDate() + 7);
+    else if (gf.frecuencia === 'quincenal') fecha.setDate(fecha.getDate() + 15);
+    else if (months) fecha.setMonth(fecha.getMonth() + months);
+    const y = fecha.getFullYear();
+    const m = String(fecha.getMonth() + 1).padStart(2, '0');
+    const d = String(fecha.getDate()).padStart(2, '0');
+    update.proximo_pago = `${y}-${m}-${d}`;
+  }
+
+  const { error } = await db.from('gastos_fijos').update(update).eq('id', gastoFijoId);
 
   if (error) {
     showSnackbar('No se pudo actualizar el gasto fijo', 'error');
@@ -577,6 +615,40 @@ function getNextQuincenalDate(dayOfQuincena, fromDate) {
   return new Date(year, month + 1, Math.min(dayOfQuincena, nextMonthDays));
 }
 
+function getNextFijoDate(gf, fromDate) {
+  const base = normalizeDate(fromDate || new Date());
+
+  if (gf.proximo_pago) {
+    const fecha = normalizeDate(new Date(gf.proximo_pago + 'T00:00:00'));
+    const monthsByFreq = { mensual: 1, bimestral: 2, trimestral: 3, semestral: 6, anual: 12 };
+    const months = monthsByFreq[gf.frecuencia];
+    let guard = 0;
+    while (fecha < base && guard++ < 120) {
+      if (gf.frecuencia === 'semanal') {
+        fecha.setDate(fecha.getDate() + 7);
+      } else if (gf.frecuencia === 'quincenal') {
+        fecha.setDate(fecha.getDate() + 15);
+      } else if (months) {
+        fecha.setMonth(fecha.getMonth() + months);
+      } else {
+        break;
+      }
+    }
+    return fecha;
+  }
+
+  if (gf.frecuencia === 'semanal' && Number.isInteger(gf.dia_semana)) {
+    return getNextWeeklyDate(gf.dia_semana, base);
+  }
+  if (gf.frecuencia === 'quincenal' && gf.dia_pago) {
+    return getNextQuincenalDate(gf.dia_pago, base);
+  }
+  if (gf.dia_pago) {
+    return getNextMonthlyDate(gf.dia_pago, base);
+  }
+  return null;
+}
+
 function getProximaFechaCobro(ingresoProgramado, fechaBase) {
   const base = normalizeDate(fechaBase || new Date());
 
@@ -646,19 +718,10 @@ async function getPagosPendientes() {
 
   // Gastos fijos pendientes
   for (const gf of (gastosFijos || [])) {
-    let fechaEsperada = null;
-
-    if (gf.frecuencia === 'semanal' && Number.isInteger(gf.dia_semana)) {
-      fechaEsperada = getNextWeeklyDate(gf.dia_semana, hoy);
-    } else if (gf.frecuencia === 'mensual' && gf.dia_pago) {
-      fechaEsperada = getNextMonthlyDate(gf.dia_pago, hoy);
-    } else if (gf.frecuencia === 'quincenal' && gf.dia_pago) {
-      fechaEsperada = getNextQuincenalDate(gf.dia_pago, hoy);
-    }
-
+    const fechaEsperada = getNextFijoDate(gf, hoy);
     if (!fechaEsperada) continue;
 
-    // Está dentro del período hoy → próximo cobro
+    // Dentro del período hoy → próximo cobro
     if (!isDateInRange(fechaEsperada, hoy, fechaLimite)) continue;
 
     // Ya se pagó en este período?
@@ -667,11 +730,13 @@ async function getPagosPendientes() {
       if (isDateInRange(ultimoPago, hoy, fechaLimite)) continue;
     }
 
+    const esVariable = gf.monto_variable === true || gf.monto == null;
     pendientes.push({
       item_id: `fijo-${gf.id}`,
       gasto_fijo_id: gf.id,
       nombre: gf.descripcion,
       monto: Number(gf.monto || 0),
+      monto_variable: esVariable,
       fecha_esperada: fechaEsperada,
       tipo: 'fijo',
       urgente: true
@@ -973,82 +1038,248 @@ function nextStep2nuevo() {
   renderStep(2);
 }
 
-// STEP 3: Categorías de gasto
-const CATEGORIA_ICONOS = {
-  'Renta': 'home', 'Luz / CFE': 'zap', 'Agua': 'droplets', 'Gas': 'flame', 'Internet': 'wifi', 'Teléfono celular': 'smartphone',
-  'Despensa': 'shopping-cart', 'Restaurantes': 'utensils', 'Antojitos / snacks': 'coffee', 'Delivery / pedidos': 'package',
-  'Gasolina': 'fuel', 'Transporte público': 'bus', 'Uber / Didi': 'car', 'Mantenimiento auto': 'wrench',
-  'Médico / consultas': 'stethoscope', 'Medicamentos': 'pill', 'Gimnasio': 'dumbbell', 'Seguro médico': 'shield',
-  'Colegiatura': 'graduation-cap', 'Libros / cursos': 'book-open', 'Útiles escolares': 'pencil',
-  'Ropa': 'shirt', 'Calzado': 'footprints', 'Corte de pelo': 'scissors', 'Cosméticos / higiene': 'sparkles',
-  'Streaming': 'tv', 'Cine / teatro': 'tv', 'Salidas / fiestas': 'music', 'Videojuegos': 'gamepad-2',
-  'Hijos': 'baby', 'Padres / familia': 'users', 'Mascotas': 'dog', 'Regalos': 'gift', 'Otros': 'package'
-};
+// ---- CATÁLOGO DE GASTOS FIJOS ----
+// `montoVariable: true` = el usuario define monto en cada pago (luz, agua, etc.)
+// `frecuencia` = default; el usuario puede cambiarla al seleccionar.
+const GASTOS_FIJOS_CATALOGO = [
+  {
+    titulo: 'Vivienda', icono: 'home',
+    items: [
+      { nombre: 'Renta',    icono: 'home',        frecuencia: 'mensual' },
+      { nombre: 'Hipoteca', icono: 'building-2',  frecuencia: 'mensual' },
+    ],
+  },
+  {
+    titulo: 'Servicios', icono: 'zap',
+    items: [
+      { nombre: 'Luz / CFE',        icono: 'zap',        frecuencia: 'bimestral', montoVariable: true },
+      { nombre: 'Agua',             icono: 'droplets',   frecuencia: 'mensual',   montoVariable: true },
+      { nombre: 'Internet',         icono: 'wifi',       frecuencia: 'mensual' },
+      { nombre: 'Teléfono celular', icono: 'smartphone', frecuencia: 'mensual' },
+    ],
+  },
+  {
+    titulo: 'Streaming y suscripciones', icono: 'tv',
+    items: [
+      { nombre: 'Netflix',         icono: 'tv',           frecuencia: 'mensual' },
+      { nombre: 'Spotify',         icono: 'music',        frecuencia: 'mensual' },
+      { nombre: 'Disney+',         icono: 'clapperboard', frecuencia: 'mensual' },
+      { nombre: 'HBO Max',         icono: 'tv',           frecuencia: 'mensual' },
+      { nombre: 'Amazon Prime',    icono: 'package',      frecuencia: 'mensual' },
+      { nombre: 'YouTube Premium', icono: 'youtube',      frecuencia: 'mensual' },
+      { nombre: 'Apple Music',     icono: 'music',        frecuencia: 'mensual' },
+    ],
+  },
+  {
+    titulo: 'Salud y bienestar', icono: 'shield',
+    items: [
+      { nombre: 'Seguro médico', icono: 'shield',   frecuencia: 'anual' },
+      { nombre: 'Gimnasio',      icono: 'dumbbell', frecuencia: 'mensual' },
+    ],
+  },
+  {
+    titulo: 'Auto', icono: 'car',
+    items: [
+      { nombre: 'Seguro de auto', icono: 'car', frecuencia: 'anual' },
+    ],
+  },
+  {
+    titulo: 'Educación', icono: 'graduation-cap',
+    items: [
+      { nombre: 'Colegiatura', icono: 'graduation-cap', frecuencia: 'mensual' },
+    ],
+  },
+  {
+    titulo: 'Créditos', icono: 'credit-card',
+    items: [
+      { nombre: 'Tarjeta de crédito', icono: 'credit-card', frecuencia: 'mensual', montoVariable: true },
+    ],
+  },
+];
 
+// ---- CATÁLOGO DE GASTOS VARIABLES (predefinidos para el picker) ----
+// Se siembran en la tabla `categorias` al terminar onboarding.
+// Marcador `special` se usa para flujos especiales en el registro (ahorro, pago de deuda).
+const GASTOS_VARIABLES_CATALOGO = [
+  {
+    titulo: 'Hogar', icono: 'home',
+    items: [
+      { nombre: 'Renta',           icono: 'home' },
+      { nombre: 'Mantenimiento',   icono: 'wrench' },
+      { nombre: 'Muebles y decoración', icono: 'sofa' },
+      { nombre: 'Otro hogar',      icono: 'home' },
+    ],
+  },
+  {
+    titulo: 'Servicios', icono: 'zap',
+    items: [
+      { nombre: 'Luz',             icono: 'zap' },
+      { nombre: 'Agua',            icono: 'droplets' },
+      { nombre: 'Gas',             icono: 'flame' },
+      { nombre: 'Internet y telefonía', icono: 'wifi' },
+      { nombre: 'Otro servicio',   icono: 'package' },
+    ],
+  },
+  {
+    titulo: 'Alimentación', icono: 'utensils',
+    items: [
+      { nombre: 'Súper',           icono: 'shopping-cart' },
+      { nombre: 'Restaurantes',    icono: 'utensils' },
+      { nombre: 'Cafés y snacks',  icono: 'coffee' },
+      { nombre: 'Comida a domicilio', icono: 'package' },
+      { nombre: 'Otro alimentación', icono: 'utensils' },
+    ],
+  },
+  {
+    titulo: 'Transporte', icono: 'car',
+    items: [
+      { nombre: 'Gasolina',        icono: 'fuel' },
+      { nombre: 'Mantenimiento auto', icono: 'wrench' },
+      { nombre: 'Trámites y seguros', icono: 'file-text' },
+      { nombre: 'Transporte público y apps', icono: 'bus' },
+      { nombre: 'Otro transporte', icono: 'car' },
+    ],
+  },
+  {
+    titulo: 'Entretenimiento', icono: 'gamepad-2',
+    items: [
+      { nombre: 'Gaming',          icono: 'gamepad-2' },
+      { nombre: 'Eventos y salidas', icono: 'music' },
+      { nombre: 'Hobbies',         icono: 'palette' },
+      { nombre: 'Otro entretenimiento', icono: 'tv' },
+    ],
+  },
+  {
+    titulo: 'Educación', icono: 'graduation-cap',
+    items: [
+      { nombre: 'Colegiaturas',    icono: 'graduation-cap' },
+      { nombre: 'Material y libros', icono: 'book-open' },
+      { nombre: 'Cursos y apps',   icono: 'laptop' },
+      { nombre: 'Otro educación',  icono: 'graduation-cap' },
+    ],
+  },
+  {
+    titulo: 'Salud y cuidado', icono: 'heart-pulse',
+    items: [
+      { nombre: 'Médico y farmacia', icono: 'stethoscope' },
+      { nombre: 'Ropa y calzado',  icono: 'shirt' },
+      { nombre: 'Aseo personal',   icono: 'sparkles' },
+      { nombre: 'Otro salud',      icono: 'heart-pulse' },
+    ],
+  },
+  {
+    titulo: 'Personas', icono: 'users',
+    items: [
+      { nombre: 'Citas',           icono: 'heart' },
+      { nombre: 'Familia',         icono: 'users' },
+      { nombre: 'Amigos',          icono: 'users' },
+      { nombre: 'Regalos',         icono: 'gift' },
+      { nombre: 'Otro personas',   icono: 'users' },
+    ],
+  },
+  {
+    titulo: 'Finanzas', icono: 'piggy-bank',
+    items: [
+      { nombre: 'Ahorro',          icono: 'piggy-bank',   special: 'ahorro' },
+      { nombre: 'Pago de deudas',  icono: 'trending-down', special: 'pago_deuda' },
+      { nombre: 'Comisiones e impuestos', icono: 'percent' },
+      { nombre: 'Otro finanzas',   icono: 'coins' },
+    ],
+  },
+  {
+    titulo: 'Negocio', icono: 'briefcase',
+    items: [
+      { nombre: 'Inventario',      icono: 'box' },
+      { nombre: 'Software y herramientas', icono: 'laptop' },
+      { nombre: 'Publicidad y envíos', icono: 'megaphone' },
+      { nombre: 'Otro negocio',    icono: 'briefcase' },
+    ],
+  },
+];
+
+// Mapa rápido nombre → {grupo, icono, special} para el picker de registro de gasto
+const GASTOS_VARIABLES_INDEX = (() => {
+  const idx = {};
+  GASTOS_VARIABLES_CATALOGO.forEach(g => {
+    g.items.forEach(it => {
+      idx[it.nombre] = { grupo: g.titulo, grupoIcono: g.icono, icono: it.icono, special: it.special || null };
+    });
+  });
+  return idx;
+})();
+
+// STEP 3: Gastos fijos
 function renderStep3nuevo() {
-  const GASTOS_FIJOS_SUGERIDOS = [
-    { nombre: 'Renta',              icono: 'home' },
-    { nombre: 'Hipoteca',           icono: 'building-2' },
-    { nombre: 'Luz / CFE',          icono: 'zap' },
-    { nombre: 'Agua',               icono: 'droplets' },
-    { nombre: 'Gas',                icono: 'flame' },
-    { nombre: 'Internet',           icono: 'wifi' },
-    { nombre: 'Teléfono celular',   icono: 'smartphone' },
-    { nombre: 'Netflix',            icono: 'tv' },
-    { nombre: 'Spotify',            icono: 'music' },
-    { nombre: 'Disney+',            icono: 'clapperboard' },
-    { nombre: 'Seguro médico',      icono: 'shield' },
-    { nombre: 'Gimnasio',           icono: 'dumbbell' },
-    { nombre: 'Colegiatura',        icono: 'graduation-cap' },
-    { nombre: 'Seguro de auto',     icono: 'car' },
-    { nombre: 'Tarjeta de crédito', icono: 'credit-card' },
-    { nombre: 'Préstamo personal',  icono: 'banknote' },
-  ];
-
-  const GRUPOS = [
-    { titulo: 'Hogar', items: ['Renta', 'Luz / CFE', 'Agua', 'Gas', 'Internet', 'Teléfono celular'] },
-    { titulo: 'Alimentación', items: ['Despensa', 'Restaurantes', 'Antojitos / snacks', 'Delivery / pedidos'] },
-    { titulo: 'Transporte', items: ['Gasolina', 'Transporte público', 'Uber / Didi', 'Mantenimiento auto'] },
-    { titulo: 'Salud', items: ['Médico / consultas', 'Medicamentos', 'Gimnasio', 'Seguro médico'] },
-    { titulo: 'Educación', items: ['Colegiatura', 'Libros / cursos', 'Útiles escolares'] },
-    { titulo: 'Ropa y personal', items: ['Ropa', 'Calzado', 'Corte de pelo', 'Cosméticos / higiene'] },
-    { titulo: 'Entretenimiento', items: ['Streaming', 'Cine / teatro', 'Salidas / fiestas', 'Videojuegos'] },
-    { titulo: 'Familia y otros', items: ['Hijos', 'Padres / familia', 'Mascotas', 'Regalos', 'Otros'] },
-  ];
-
-  setHeader('¿En qué sueles gastar?', 'Configura tus gastos fijos y elige tus categorías.');
+  setHeader('Gastos fijos', 'Los que pagas sí o sí cada cierto tiempo.');
 
   window._showFijoCustomForm = false;
   window._fijoCustomNombre = '';
   window._fijoCustomIcono = 'receipt';
   window._showFijoIconPanel = false;
 
-  window._showCustomCatForm = false;
-  window._selectedCatIcono = 'plus';
-  window._customCatNombre = '';
-  window._showCatIconPanel = false;
+  if (!(window._fijoGruposAbiertos instanceof Set)) {
+    window._fijoGruposAbiertos = new Set();
+  }
+
+  window.toggleFijoGrupo = function(titulo) {
+    if (window._fijoGruposAbiertos.has(titulo)) {
+      window._fijoGruposAbiertos.delete(titulo);
+    } else {
+      window._fijoGruposAbiertos.add(titulo);
+    }
+    if (window._renderStep3Body) window._renderStep3Body();
+  };
 
   function render() {
     const fijosNombres = new Set(onboardingData.gastosFijos.map(f => f.nombre));
-    const predefinedNames = GRUPOS.flatMap(g => g.items);
-    const customCats = onboardingData.categorias.filter(x => !predefinedNames.includes(x.nombre));
 
-    // ---- Sección 1: Gastos Fijos ----
     const sugeridosHtml = `
-      <div class="fijo-sugeridos-wrap">
-        ${GASTOS_FIJOS_SUGERIDOS.map(s => {
-          const added = fijosNombres.has(s.nombre);
-          return `<button class="fijo-sugerido-chip${added ? ' added' : ''}" onclick="toggleGastoFijoSugerido('${s.nombre}','${s.icono}')">
-            <i data-lucide="${s.icono}"></i>
-            <span>${s.nombre}</span>
-          </button>`;
+      <div class="fijo-grupos">
+        ${GASTOS_FIJOS_CATALOGO.map(grupo => {
+          const seleccionados = grupo.items.filter(it => fijosNombres.has(it.nombre)).length;
+          const abierto = window._fijoGruposAbiertos.has(grupo.titulo) || seleccionados > 0;
+          return `
+            <div class="fijo-grupo${abierto ? ' is-open' : ''}">
+              <button type="button" class="fijo-grupo-header" onclick="toggleFijoGrupo('${grupo.titulo.replace(/'/g, "\\'")}')">
+                <span class="fijo-grupo-title">
+                  <i data-lucide="${grupo.icono}"></i>
+                  <span>${grupo.titulo}</span>
+                  ${seleccionados > 0 ? `<span class="fijo-grupo-count">${seleccionados}</span>` : ''}
+                </span>
+                <i data-lucide="chevron-down" class="fijo-grupo-chevron"></i>
+              </button>
+              ${abierto ? `
+                <div class="fijo-grupo-body">
+                  ${grupo.items.map(it => {
+                    const added = fijosNombres.has(it.nombre);
+                    const meta = JSON.stringify({ nombre: it.nombre, icono: it.icono, frecuencia: it.frecuencia || 'mensual', montoVariable: !!it.montoVariable }).replace(/"/g, '&quot;');
+                    return `<button class="fijo-sugerido-chip${added ? ' added' : ''}" onclick="toggleGastoFijoSugerido(this)" data-item="${meta}">
+                      <i data-lucide="${it.icono}"></i>
+                      <span>${it.nombre}</span>
+                    </button>`;
+                  }).join('')}
+                </div>
+              ` : ''}
+            </div>
+          `;
         }).join('')}
       </div>
     `;
 
+    const FRECUENCIA_OPTIONS = [
+      ['semanal',    'Semanal'],
+      ['quincenal',  'Quincenal'],
+      ['mensual',    'Mensual'],
+      ['bimestral',  'Bimestral'],
+      ['trimestral', 'Trimestral'],
+      ['semestral',  'Semestral'],
+      ['anual',      'Anual'],
+    ];
+
     const fijosAddedHtml = onboardingData.gastosFijos.length > 0 ? `
       <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
         ${onboardingData.gastosFijos.map((f, idx) => {
+          const isVariable = f.monto_variable === true;
           const diaField = f.frecuencia === 'semanal'
             ? `<select class="form-select" id="gf-dia-${idx}" onchange="updateGastoFijo(${idx})">
                 <option value="0" ${f.dia_semana === 0 ? 'selected':''}>Domingo</option>
@@ -1059,7 +1290,7 @@ function renderStep3nuevo() {
                 <option value="5" ${f.dia_semana === 5 ? 'selected':''}>Viernes</option>
                 <option value="6" ${f.dia_semana === 6 ? 'selected':''}>Sábado</option>
                </select>`
-            : `<input class="form-input" id="gf-dia-${idx}" type="number" min="1" max="${f.frecuencia === 'quincenal' ? 15 : 31}" value="${f.dia_pago ?? ''}" placeholder="${f.frecuencia === 'quincenal' ? 'Día (1–15)' : 'Día del mes'}" onchange="updateGastoFijo(${idx})" />`;
+            : `<input class="form-input" id="gf-prox-${idx}" type="date" value="${f.proximo_pago ?? ''}" onchange="updateGastoFijo(${idx})" />`;
           return `
             <div class="fijo-card">
               <div class="fijo-card-header">
@@ -1070,14 +1301,20 @@ function renderStep3nuevo() {
                 <button class="btn-remove" onclick="removeGastoFijo(${idx})">✕</button>
               </div>
               <div class="fijo-card-fields">
-                <div class="input-money-wrap">
-                  <span class="currency-prefix">$</span>
-                  <input class="form-input" id="gf-monto-${idx}" type="number" min="0" value="${f.monto ?? ''}" placeholder="Monto" onchange="updateGastoFijo(${idx})" />
+                <div class="tipo-monto-toggle" role="group" aria-label="Tipo de monto">
+                  <button type="button" class="tipo-monto-opt${!isVariable ? ' active' : ''}" onclick="setFijoMontoVariable(${idx}, false)">Definido</button>
+                  <button type="button" class="tipo-monto-opt${isVariable ? ' active' : ''}" onclick="setFijoMontoVariable(${idx}, true)">Variable</button>
                 </div>
+                ${isVariable ? `
+                  <div class="fijo-hint">Cambia cada pago — solo te avisaremos la fecha.</div>
+                ` : `
+                  <div class="input-money-wrap">
+                    <span class="currency-prefix">$</span>
+                    <input class="form-input" id="gf-monto-${idx}" type="number" min="0" value="${f.monto ?? ''}" placeholder="Monto" onchange="updateGastoFijo(${idx})" />
+                  </div>
+                `}
                 <select class="form-select" id="gf-freq-${idx}" onchange="updateGastoFijo(${idx})">
-                  <option value="semanal"  ${f.frecuencia === 'semanal'  ? 'selected':''}>Semanal</option>
-                  <option value="quincenal"${f.frecuencia === 'quincenal'? 'selected':''}>Quincenal</option>
-                  <option value="mensual"  ${f.frecuencia === 'mensual'  ? 'selected':''}>Mensual</option>
+                  ${FRECUENCIA_OPTIONS.map(([v, l]) => `<option value="${v}" ${f.frecuencia === v ? 'selected':''}>${l}</option>`).join('')}
                 </select>
                 ${diaField}
               </div>
@@ -1113,80 +1350,13 @@ function renderStep3nuevo() {
       </button>
     `;
 
-    // ---- Sección 2: Categorías ----
-    const catCustomFormHtml = window._showCustomCatForm ? `
-      <div class="custom-form" style="margin-top:20px">
-        <div class="custom-form-row">
-          <button class="emoji-picker-btn" onclick="toggleCatIconPanel()">
-            ${window._selectedCatIcono === 'plus' ? '+' : `<i data-lucide="${window._selectedCatIcono}"></i>`}
-          </button>
-          <input class="form-input" id="cat3-nombre" value="${window._customCatNombre || ''}" placeholder="Nombre de la categoría" oninput="window._customCatNombre=this.value" />
-        </div>
-        ${window._showCatIconPanel ? `
-          <div class="icon-panel" style="margin-top:12px">
-            <div class="icon-grid">
-              ${TODOS_ICONOS.map(ic => `
-                <div class="icon-grid-item${ic === window._selectedCatIcono ? ' selected' : ''}" onclick="selectCatIcono('${ic}')">
-                  <i data-lucide="${ic}"></i>
-                </div>`).join('')}
-            </div>
-          </div>
-        ` : ''}
-        <button class="btn btn-secondary" style="margin-top:12px;width:100%" onclick="addCategoria3Custom()">+ Agregar</button>
-      </div>
-    ` : `
-      <button class="btn-add-item" style="margin-top:20px" onclick="showCustomCat3Form()">
-        <span>+</span> Agregar categoría propia
-      </button>
-    `;
-
     document.getElementById('onboarding-body').innerHTML = `
       <div class="step-section-header">
-        <div class="step-section-title">Gastos fijos</div>
-        <div class="step-section-subtitle">Los que pagas sí o sí cada periodo. Añade monto y cuándo vencen.</div>
+        <div class="step-section-subtitle">Montos pueden ser definidos (igual cada vez, como renta o internet) o variables (cambian, como luz o agua). Solo los usamos para recordarte cuándo se acerca la fecha y que apartes dinero.</div>
       </div>
       ${sugeridosHtml}
       ${fijosAddedHtml}
       ${fijoCustomFormHtml}
-
-      <div class="step-section-divider"></div>
-
-      <div class="step-section-header">
-        <div class="step-section-title">Categorías de gasto</div>
-        <div class="step-section-subtitle">Para etiquetar tus gastos del día a día.</div>
-      </div>
-      <div class="category-list">
-        ${GRUPOS.map(grupo => `
-          <div class="category-group">
-            <div class="category-group-title">${grupo.titulo}</div>
-            <div class="category-grid">
-              ${grupo.items.map(nombre => {
-                const selected = onboardingData.categorias.some(x => x.nombre === nombre);
-                return `
-                  <div class="category-item${selected ? ' selected' : ''}" onclick="toggleCategoria3('${nombre}')">
-                    <i data-lucide="${CATEGORIA_ICONOS[nombre] || 'package'}" class="cat-icon"></i>
-                    <span class="cat-name">${nombre}</span>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-          </div>
-        `).join('')}
-        ${customCats.length > 0 ? `
-          <div class="category-group">
-            <div class="category-group-title">Personalizadas</div>
-            <div class="category-grid">
-              ${customCats.map(cat => `
-                <div class="category-item selected" onclick="toggleCategoria3('${cat.nombre}')">
-                  <i data-lucide="${cat.icono}" class="cat-icon"></i>
-                  <span class="cat-name">${cat.nombre}</span>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        ` : ''}
-      </div>
-      ${catCustomFormHtml}
     `;
 
     lucide.createIcons();
@@ -1202,12 +1372,35 @@ function renderStep3nuevo() {
 }
 
 // ---- Gastos Fijos (onboarding) ----
-window.toggleGastoFijoSugerido = function(nombre, icono) {
+window.toggleGastoFijoSugerido = function(btnOrNombre, iconoOpt) {
+  let nombre, icono, frecuencia = 'mensual', montoVariable = false;
+  if (typeof btnOrNombre === 'string') {
+    nombre = btnOrNombre;
+    icono = iconoOpt || 'receipt';
+  } else {
+    try {
+      const meta = JSON.parse(btnOrNombre.getAttribute('data-item'));
+      nombre = meta.nombre;
+      icono = meta.icono;
+      frecuencia = meta.frecuencia || 'mensual';
+      montoVariable = !!meta.montoVariable;
+    } catch {
+      return;
+    }
+  }
   const idx = onboardingData.gastosFijos.findIndex(f => f.nombre === nombre);
   if (idx >= 0) {
     onboardingData.gastosFijos.splice(idx, 1);
   } else {
-    onboardingData.gastosFijos.push({ nombre, icono, monto: null, frecuencia: 'mensual', dia_pago: null, dia_semana: null });
+    onboardingData.gastosFijos.push({
+      nombre, icono,
+      monto: null,
+      monto_variable: montoVariable,
+      frecuencia,
+      dia_pago: null,
+      dia_semana: null,
+      proximo_pago: null,
+    });
   }
   if (window._renderStep3Body) window._renderStep3Body();
 };
@@ -1217,22 +1410,40 @@ window.removeGastoFijo = function(idx) {
   if (window._renderStep3Body) window._renderStep3Body();
 };
 
+window.setFijoMontoVariable = function(idx, isVariable) {
+  const f = onboardingData.gastosFijos[idx];
+  if (!f) return;
+  f.monto_variable = !!isVariable;
+  if (isVariable) f.monto = null;
+  if (window._renderStep3Body) window._renderStep3Body();
+};
+
 window.updateGastoFijo = function(idx) {
   const f = onboardingData.gastosFijos[idx];
   if (!f) return;
   const prevFreq = f.frecuencia;
 
   f.frecuencia = document.getElementById(`gf-freq-${idx}`)?.value || 'mensual';
-  const monto = parseFloat(document.getElementById(`gf-monto-${idx}`)?.value);
-  f.monto = Number.isFinite(monto) ? monto : null;
+
+  if (!f.monto_variable) {
+    const monto = parseFloat(document.getElementById(`gf-monto-${idx}`)?.value);
+    f.monto = Number.isFinite(monto) ? monto : null;
+  } else {
+    f.monto = null;
+  }
 
   if (f.frecuencia === 'semanal') {
     const diaSemana = parseInt(document.getElementById(`gf-dia-${idx}`)?.value, 10);
     f.dia_semana = Number.isInteger(diaSemana) ? diaSemana : null;
     f.dia_pago = null;
+    f.proximo_pago = null;
   } else {
-    const diaPago = parseInt(document.getElementById(`gf-dia-${idx}`)?.value, 10);
-    f.dia_pago = Number.isInteger(diaPago) ? diaPago : null;
+    const prox = document.getElementById(`gf-prox-${idx}`)?.value || null;
+    f.proximo_pago = prox || null;
+    if (prox) {
+      const dia = parseInt(prox.split('-')[2], 10);
+      f.dia_pago = Number.isInteger(dia) ? dia : null;
+    }
     f.dia_semana = null;
   }
 
@@ -1261,55 +1472,25 @@ window.selectFijoIcono = function(icono) {
 window.addGastoFijoCustom = function() {
   const nombre = (window._fijoCustomNombre || document.getElementById('fijo-custom-nombre')?.value || '').trim();
   if (!nombre) { showSnackbar('Escribe el nombre del gasto fijo', 'error'); return; }
-  onboardingData.gastosFijos.push({ nombre, icono: window._fijoCustomIcono || 'receipt', monto: null, frecuencia: 'mensual', dia_pago: null, dia_semana: null });
+  onboardingData.gastosFijos.push({
+    nombre,
+    icono: window._fijoCustomIcono || 'receipt',
+    monto: null,
+    monto_variable: false,
+    frecuencia: 'mensual',
+    dia_pago: null,
+    dia_semana: null,
+    proximo_pago: null,
+  });
   window._showFijoCustomForm = false;
   window._fijoCustomNombre = '';
   if (window._renderStep3Body) window._renderStep3Body();
 };
 
-// ---- Categorías (onboarding) ----
-window.toggleCategoria3 = function(nombre) {
-  const idx = onboardingData.categorias.findIndex(x => x.nombre === nombre);
-  if (idx >= 0) {
-    onboardingData.categorias.splice(idx, 1);
-  } else {
-    onboardingData.categorias.push({ nombre, icono: CATEGORIA_ICONOS[nombre] || 'package', tipo: 'gasto' });
-  }
-  if (window._renderStep3Body) window._renderStep3Body();
-};
-
-window.showCustomCat3Form = function() {
-  window._showCustomCatForm = true;
-  window._showCatIconPanel = false;
-  window._selectedCatIcono = 'plus';
-  window._customCatNombre = '';
-  if (window._renderStep3Body) window._renderStep3Body();
-};
-
-window.toggleCatIconPanel = function() {
-  window._showCatIconPanel = !window._showCatIconPanel;
-  if (window._renderStep3Body) window._renderStep3Body();
-};
-
-window.selectCatIcono = function(icono) {
-  window._selectedCatIcono = icono;
-  window._showCatIconPanel = false;
-  if (window._renderStep3Body) window._renderStep3Body();
-};
-
-window.addCategoria3Custom = function() {
-  const nombre = (window._customCatNombre || document.getElementById('cat3-nombre')?.value || '').trim();
-  if (!nombre) { showSnackbar('Escribe el nombre de la categoría', 'error'); return; }
-  const icono = window._selectedCatIcono === 'plus' ? 'package' : (window._selectedCatIcono || 'package');
-  onboardingData.categorias.push({ nombre, icono, tipo: 'gasto' });
-  window._showCustomCatForm = false;
-  window._customCatNombre = '';
-  if (window._renderStep3Body) window._renderStep3Body();
-};
-
 function nextStep3nuevo() {
-  if (onboardingData.categorias.length < 3) {
-    showSnackbar('Selecciona al menos 3 categorías de gasto', 'error');
+  const faltantes = onboardingData.gastosFijos.filter(f => !f.monto_variable && (!Number.isFinite(f.monto) || f.monto <= 0));
+  if (faltantes.length > 0) {
+    showSnackbar(`Falta monto en "${faltantes[0].nombre}" o márcalo como Variable`, 'error');
     return;
   }
   renderStep(3);
@@ -1718,8 +1899,7 @@ function nextStep5() {
 function renderStep6resumen() {
   setHeader('Todo listo, revisa tu configuración', 'Si algo no está bien, regresa a corregirlo.');
 
-  const categoriasFijas = onboardingData.categorias.filter(c => c.es_fijo).length;
-  const categoriasVariables = onboardingData.categorias.filter(c => !c.es_fijo).length;
+  const totalGastosFijos = onboardingData.gastosFijos.length;
 
   const sectionStyle = 'background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:12px';
 
@@ -1739,11 +1919,11 @@ function renderStep6resumen() {
 
     <div style="${sectionStyle}">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
-        <strong>Categorías</strong>
+        <strong>Gastos fijos</strong>
         <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="renderStep(2)">Editar</button>
       </div>
-      <p class="form-hint" style="margin-bottom:8px">${categoriasVariables} variables · ${categoriasFijas} fijas</p>
-      ${renderList(onboardingData.categorias, 'Ninguna', item => `${item.nombre}${item.es_fijo ? ' · fijo' : ''}`)}
+      <p class="form-hint" style="margin-bottom:8px">${totalGastosFijos} ${totalGastosFijos === 1 ? 'gasto fijo' : 'gastos fijos'}</p>
+      ${renderList(onboardingData.gastosFijos, 'Ninguno', item => `${item.nombre}${item.monto_variable ? ' · variable' : (item.monto ? ` · ${formatMXN(item.monto)}` : '')}`)}
     </div>
 
     <div style="${sectionStyle}">
@@ -1932,36 +2112,48 @@ async function finishOnboarding() {
       await db.from('categorias').insert(cats_ingreso);
     }
 
-    // 3. Insertar categorías de gasto (variables)
-    if (onboardingData.categorias.length > 0) {
-      const cats_gasto = onboardingData.categorias.map(c => ({
-        nombre: c.nombre,
-        emoji: c.icono,
-        tipo: 'gasto',
-        usuario_id: userId,
-        es_default: false
-      }));
-      await db.from('categorias').insert(cats_gasto);
+    // 3. Sembrar categorías de gasto predefinidas (picker agrupado)
+    const cats_gasto_predef = GASTOS_VARIABLES_CATALOGO.flatMap(g => g.items.map(it => ({
+      nombre: it.nombre,
+      emoji: it.icono,
+      tipo: 'gasto',
+      usuario_id: userId,
+      es_default: true
+    })));
+    if (cats_gasto_predef.length > 0) {
+      await db.from('categorias').insert(cats_gasto_predef);
     }
 
-    // Insertar gastos fijos y sus categorías (para el desplegable de registro)
+    // Insertar gastos fijos (la categoría_id se resuelve por nombre si existe)
     if (onboardingData.gastosFijos.length > 0) {
-      const nombresVars = new Set(onboardingData.categorias.map(c => c.nombre));
-      const catsFijos = onboardingData.gastosFijos
-        .filter(f => !nombresVars.has(f.nombre))
-        .map(f => ({ nombre: f.nombre, emoji: f.icono, tipo: 'gasto', usuario_id: userId, es_default: false }));
-      if (catsFijos.length > 0) await db.from('categorias').insert(catsFijos);
+      const { data: categoriasGasto } = await db
+        .from('categorias')
+        .select('id, nombre')
+        .eq('usuario_id', userId)
+        .eq('tipo', 'gasto');
+      const catNombreAId = {};
+      (categoriasGasto || []).forEach(c => { catNombreAId[c.nombre] = c.id; });
 
       const fijos = onboardingData.gastosFijos.map(f => ({
         descripcion: f.nombre,
-        monto: f.monto || 0,
+        monto: f.monto_variable ? null : (f.monto ?? null),
+        monto_variable: !!f.monto_variable,
         frecuencia: f.frecuencia || 'mensual',
         dia_pago: f.dia_pago ?? null,
         dia_semana: f.dia_semana ?? null,
+        proximo_pago: f.proximo_pago ?? null,
         usuario_id: userId,
-        categoria_id: null
+        categoria_id: catNombreAId[f.nombre] || null
       }));
-      await db.from('gastos_fijos').insert(fijos);
+      const { error: errFijos } = await db.from('gastos_fijos').insert(fijos);
+      if (errFijos) {
+        // Fallback: si la migración aún no corrió, reintentar sin las columnas nuevas.
+        const fijosLegacy = fijos.map(({ monto_variable, proximo_pago, ...rest }) => ({
+          ...rest,
+          monto: rest.monto ?? 0,
+        }));
+        await db.from('gastos_fijos').insert(fijosLegacy);
+      }
     }
 
     // 4. Cuentas — obtenemos IDs para vincular metas
@@ -2129,7 +2321,7 @@ async function loadDashboard() {
                 </div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-                <div class="item-row-amount">${formatMXN(p.monto)}</div>
+                <div class="item-row-amount">${p.monto_variable && !p.monto ? 'Variable' : formatMXN(p.monto)}</div>
                 <span class="pago-pendiente-chevron"><i data-lucide="chevron-down" style="width:18px;height:18px;stroke-width:1.75"></i></span>
               </div>
             </div>
@@ -2492,9 +2684,17 @@ function renderCamposFechaEditarDeuda() {
   const campos = document.getElementById('ed-fecha-campos');
   if (!campos) return;
 
+  if (frecuencia === 'unico') {
+    campos.innerHTML = `
+      <label class="form-label">Día de pago</label>
+      <input class="form-input" id="ed-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />
+    `;
+    return;
+  }
+
   if (frecuencia === 'mensual') {
     campos.innerHTML = `
-      <label class="form-label">Dia del mes que pagas</label>
+      <label class="form-label">Día del mes que pagas</label>
       <input class="form-input" id="ed-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />
     `;
     return;
@@ -2502,15 +2702,15 @@ function renderCamposFechaEditarDeuda() {
 
   if (frecuencia === 'semanal') {
     campos.innerHTML = `
-      <label class="form-label">Dia de la semana</label>
+      <label class="form-label">Día de la semana</label>
       <select class="form-select" id="ed-dia-semana">
         <option value="0">Domingo</option>
         <option value="1">Lunes</option>
         <option value="2">Martes</option>
-        <option value="3">Miercoles</option>
+        <option value="3">Miércoles</option>
         <option value="4">Jueves</option>
         <option value="5">Viernes</option>
-        <option value="6">Sabado</option>
+        <option value="6">Sábado</option>
       </select>
     `;
     return;
@@ -2518,7 +2718,7 @@ function renderCamposFechaEditarDeuda() {
 
   if (frecuencia === 'quincenal') {
     campos.innerHTML = `
-      <label class="form-label">Dia de la quincena</label>
+      <label class="form-label">Día de la quincena</label>
       <input class="form-input" id="ed-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" />
     `;
     return;
@@ -2530,7 +2730,7 @@ function renderCamposFechaEditarDeuda() {
 async function openEditarDeuda(deudaId) {
   const { data: deuda, error } = await db
     .from('deudas')
-    .select('id, acreedor, monto_actual, tipo_pago, dia_pago, dia_semana, monto_pago')
+    .select('id, acreedor, monto_actual, tipo_pago, dia_pago, dia_semana, monto_pago, tipo_deuda')
     .eq('id', deudaId)
     .eq('usuario_id', (await getUsuarioId()))
     .maybeSingle();
@@ -2540,21 +2740,14 @@ async function openEditarDeuda(deudaId) {
     return;
   }
 
+  const esTabla = deuda.tipo_deuda === 'tabla';
   const frecuenciaInicial = deuda.tipo_pago || 'libre';
 
-  openModal('Editar deuda', `
-    <div class="form-group">
-      <label class="form-label">Acreedor</label>
-      <input class="form-input" id="ed-acreedor" type="text" value="${deuda.acreedor || ''}" />
-    </div>
-    <div class="form-group">
-      <label class="form-label">Monto actual</label>
-      <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="ed-monto" type="number" min="0" value="${Number(deuda.monto_actual || 0)}" /></div>
-    </div>
+  const formFrecuencia = esTabla ? '' : `
     <div class="form-group">
       <label class="form-label">Frecuencia de pago</label>
       <select class="form-select" id="ed-freq" onchange="renderCamposFechaEditarDeuda()">
+        <option value="unico" ${frecuenciaInicial === 'unico' ? 'selected' : ''}>Pago único</option>
         <option value="semanal" ${frecuenciaInicial === 'semanal' ? 'selected' : ''}>Semanal</option>
         <option value="quincenal" ${frecuenciaInicial === 'quincenal' ? 'selected' : ''}>Quincenal</option>
         <option value="mensual" ${frecuenciaInicial === 'mensual' ? 'selected' : ''}>Mensual</option>
@@ -2567,69 +2760,95 @@ async function openEditarDeuda(deudaId) {
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
       <input class="form-input" id="ed-monto-pago" type="number" min="0" value="${deuda.monto_pago ? Number(deuda.monto_pago) : ''}" placeholder="0.00" /></div>
     </div>
-    <button class="btn btn-primary" onclick="guardarEdicionDeuda('${deuda.id}')">Guardar cambios</button>
+  `;
+
+  openModal('Editar deuda', `
+    <div class="form-group">
+      <label class="form-label">Acreedor</label>
+      <input class="form-input" id="ed-acreedor" type="text" value="${deuda.acreedor || ''}" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Monto actual</label>
+      <div class="input-money-wrap"><span class="currency-prefix">$</span>
+      <input class="form-input" id="ed-monto" type="number" min="0" value="${Number(deuda.monto_actual || 0)}" /></div>
+    </div>
+    ${formFrecuencia}
+    ${esTabla ? '<p class="form-hint" style="margin-bottom:8px">Esta deuda tiene una tabla de pagos programados.</p>' : ''}
+    <button class="btn btn-primary" onclick="guardarEdicionDeuda('${deuda.id}', ${esTabla})">Guardar cambios</button>
   `);
 
-  renderCamposFechaEditarDeuda();
+  if (!esTabla) {
+    renderCamposFechaEditarDeuda();
 
-  if (frecuenciaInicial === 'semanal') {
-    const inputSemana = document.getElementById('ed-dia-semana');
-    if (inputSemana && deuda.dia_semana !== null && deuda.dia_semana !== undefined) {
-      inputSemana.value = String(deuda.dia_semana);
-    }
-  } else if (frecuenciaInicial === 'mensual' || frecuenciaInicial === 'quincenal') {
-    const inputDia = document.getElementById('ed-dia-pago');
-    if (inputDia && deuda.dia_pago) {
-      inputDia.value = String(deuda.dia_pago);
+    if (frecuenciaInicial === 'semanal') {
+      const inputSemana = document.getElementById('ed-dia-semana');
+      if (inputSemana && deuda.dia_semana !== null && deuda.dia_semana !== undefined) {
+        inputSemana.value = String(deuda.dia_semana);
+      }
+    } else if (frecuenciaInicial === 'mensual' || frecuenciaInicial === 'quincenal' || frecuenciaInicial === 'unico') {
+      const inputDia = document.getElementById('ed-dia-pago');
+      if (inputDia && deuda.dia_pago) {
+        inputDia.value = String(deuda.dia_pago);
+      }
     }
   }
 
   renderLucideIcons();
 }
 
-async function guardarEdicionDeuda(deudaId) {
+async function guardarEdicionDeuda(deudaId, esTabla = false) {
   const acreedor = document.getElementById('ed-acreedor')?.value.trim();
   const monto_actual = parseFloat(document.getElementById('ed-monto')?.value);
-  const tipo_pago = document.getElementById('ed-freq')?.value || 'libre';
-  const monto_pagoValor = document.getElementById('ed-monto-pago')?.value;
-  const monto_pago = monto_pagoValor ? parseFloat(monto_pagoValor) : null;
-
-  let dia_pago = null;
-  let dia_semana = null;
 
   if (!acreedor || Number.isNaN(monto_actual) || monto_actual < 0) {
     showSnackbar('Completa los campos requeridos', 'error');
     return;
   }
 
-  if (tipo_pago === 'semanal') {
-    dia_semana = parseInt(document.getElementById('ed-dia-semana')?.value, 10);
-    if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
-      showSnackbar('Selecciona un dia de la semana valido', 'error');
-      return;
-    }
-  } else if (tipo_pago === 'mensual') {
-    dia_pago = parseInt(document.getElementById('ed-dia-pago')?.value, 10);
-    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
-      showSnackbar('Ingresa un dia del mes entre 1 y 31', 'error');
-      return;
-    }
-  } else if (tipo_pago === 'quincenal') {
-    dia_pago = parseInt(document.getElementById('ed-dia-pago')?.value, 10);
-    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
-      showSnackbar('Ingresa un dia de la quincena entre 1 y 15', 'error');
-      return;
-    }
-  }
+  const payload = { acreedor, monto_actual, activa: monto_actual > 0 };
 
-  if (monto_pago !== null && (Number.isNaN(monto_pago) || monto_pago < 0)) {
-    showSnackbar('Monto por pago invalido', 'error');
-    return;
+  if (!esTabla) {
+    const tipo_pago = document.getElementById('ed-freq')?.value || 'libre';
+    const monto_pagoValor = document.getElementById('ed-monto-pago')?.value;
+    const monto_pago = monto_pagoValor ? parseFloat(monto_pagoValor) : null;
+
+    let dia_pago = null;
+    let dia_semana = null;
+
+    if (tipo_pago === 'semanal') {
+      dia_semana = parseInt(document.getElementById('ed-dia-semana')?.value, 10);
+      if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
+        showSnackbar('Selecciona un día de la semana válido', 'error');
+        return;
+      }
+    } else if (tipo_pago === 'mensual' || tipo_pago === 'unico') {
+      dia_pago = parseInt(document.getElementById('ed-dia-pago')?.value, 10);
+      if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
+        showSnackbar('Ingresa un día del mes entre 1 y 31', 'error');
+        return;
+      }
+    } else if (tipo_pago === 'quincenal') {
+      dia_pago = parseInt(document.getElementById('ed-dia-pago')?.value, 10);
+      if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
+        showSnackbar('Ingresa un día de la quincena entre 1 y 15', 'error');
+        return;
+      }
+    }
+
+    if (monto_pago !== null && (Number.isNaN(monto_pago) || monto_pago < 0)) {
+      showSnackbar('Monto por pago inválido', 'error');
+      return;
+    }
+
+    payload.tipo_pago = tipo_pago;
+    payload.dia_pago = dia_pago;
+    payload.dia_semana = dia_semana;
+    payload.monto_pago = monto_pago;
   }
 
   const { error } = await db
     .from('deudas')
-    .update({ acreedor, monto_actual, tipo_pago, dia_pago, dia_semana, monto_pago, activa: monto_actual > 0 })
+    .update(payload)
     .eq('id', deudaId)
     .eq('usuario_id', (await getUsuarioId()));
 
@@ -2693,7 +2912,7 @@ async function loadMetas() {
           <div class="card">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
               <div style="display:flex;align-items:center;gap:12px">
-                <span style="font-size:28px">${m.emoji || '<i data-lucide="target" style="width:18px;height:18px;stroke-width:1.75"></i>'}</span>
+                <span style="font-size:28px;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px">${renderEmojiOrIcon(m.emoji, 'target', 22)}</span>
                 <div>
                   <div style="font-weight:600;font-size:14px">${m.nombre}</div>
                   <div style="font-size:12px;color:var(--text-muted)">${m.cuenta_id ? (cuentasPorId[m.cuenta_id] || 'Cuenta eliminada') : 'Sin cuenta vinculada'}</div>
@@ -2775,7 +2994,7 @@ async function guardarAbonoMeta(metaId) {
   const abono = parseFloat(document.getElementById('ma-abono')?.value);
 
   if (!abono || abono <= 0) {
-    showSnackbar('Ingresa un monto valido', 'error');
+    showSnackbar('Ingresa un monto válido', 'error');
     return;
   }
 
@@ -2864,11 +3083,40 @@ async function openEditarMeta(metaId) {
   }
 
   const cuentasOptions = (cuentas || []).map(cuenta => `<option value="${cuenta.id}" ${cuenta.id === meta.cuenta_id ? 'selected' : ''}>${cuenta.nombre}</option>`).join('');
+  const sinCuentaSelected = !meta.cuenta_id ? 'selected' : '';
+  const iconoInicial = (meta.emoji && /^[a-z][a-z0-9-]*$/.test(meta.emoji)) ? meta.emoji : 'target';
+
+  window._editMetaIcono = iconoInicial;
+  window._editMetaIconPanelOpen = false;
+  window._editMetaMeta = { ...meta, cuentasOptions, sinCuentaSelected };
+
+  renderEditarMetaModal();
+}
+
+function renderEditarMetaModal() {
+  const meta = window._editMetaMeta;
+  const icono = window._editMetaIcono;
+  const panelAbierto = window._editMetaIconPanelOpen;
 
   openModal('Editar meta', `
     <div class="form-group">
-      <label class="form-label">Emoji</label>
-      <input class="form-input" id="em-emoji" type="text" value="${meta.emoji || ''}" style="max-width:80px" />
+      <label class="form-label">Icono</label>
+      <div class="custom-form-row" style="align-items:center">
+        <button type="button" class="emoji-picker-btn" onclick="toggleEditMetaIconPanel()">
+          <i data-lucide="${icono}"></i>
+        </button>
+        <span style="font-size:13px;color:var(--text-secondary);margin-left:10px">Toca el icono para cambiarlo</span>
+      </div>
+      ${panelAbierto ? `
+        <div class="icon-panel" style="margin-top:10px">
+          <div class="icon-grid">
+            ${TODOS_ICONOS.map(ic => `
+              <div class="icon-grid-item${icono === ic ? ' selected' : ''}" onclick="selectEditMetaIcono('${ic}')">
+                <i data-lucide="${ic}"></i>
+              </div>`).join('')}
+          </div>
+        </div>
+      ` : ''}
     </div>
     <div class="form-group">
       <label class="form-label">Nombre</label>
@@ -2882,15 +3130,45 @@ async function openEditarMeta(metaId) {
     <div class="form-group">
       <label class="form-label">¿En qué cuenta ahorrarás?</label>
       <select class="form-select" id="meta-cuenta-id">
-        ${cuentasOptions}
+        <option value="" ${meta.sinCuentaSelected}>Sin cuenta vinculada</option>
+        ${meta.cuentasOptions}
       </select>
     </div>
     <button class="btn btn-primary" onclick="guardarEdicionMeta('${meta.id}')">Guardar cambios</button>
   `);
 }
 
+window.toggleEditMetaIconPanel = function() {
+  const nombre = document.getElementById('em-nombre')?.value;
+  const monto = document.getElementById('em-monto')?.value;
+  const cuenta = document.getElementById('meta-cuenta-id')?.value;
+  if (nombre !== undefined) window._editMetaMeta.nombre = nombre;
+  if (monto !== undefined) window._editMetaMeta.monto_objetivo = monto;
+  window._editMetaIconPanelOpen = !window._editMetaIconPanelOpen;
+  renderEditarMetaModal();
+  if (cuenta !== undefined) {
+    const sel = document.getElementById('meta-cuenta-id');
+    if (sel) sel.value = cuenta;
+  }
+};
+
+window.selectEditMetaIcono = function(ic) {
+  const nombre = document.getElementById('em-nombre')?.value;
+  const monto = document.getElementById('em-monto')?.value;
+  const cuenta = document.getElementById('meta-cuenta-id')?.value;
+  if (nombre !== undefined) window._editMetaMeta.nombre = nombre;
+  if (monto !== undefined) window._editMetaMeta.monto_objetivo = monto;
+  window._editMetaIcono = ic;
+  window._editMetaIconPanelOpen = false;
+  renderEditarMetaModal();
+  if (cuenta !== undefined) {
+    const sel = document.getElementById('meta-cuenta-id');
+    if (sel) sel.value = cuenta;
+  }
+};
+
 async function guardarEdicionMeta(metaId) {
-  const emoji = document.getElementById('em-emoji')?.value.trim() || '🎯';
+  const emoji = window._editMetaIcono || 'target';
   const nombre = document.getElementById('em-nombre')?.value.trim();
   const monto_objetivo = parseFloat(document.getElementById('em-monto')?.value);
   const cuenta_id = document.getElementById('meta-cuenta-id')?.value || null;
@@ -2902,7 +3180,7 @@ async function guardarEdicionMeta(metaId) {
 
   const { error } = await db
     .from('metas_ahorro')
-    .update({ emoji, nombre, monto_objetivo, cuenta_id })
+    .update({ emoji, nombre, monto_objetivo, cuenta_id: cuenta_id || null })
     .eq('id', metaId)
     .eq('usuario_id', (await getUsuarioId()));
 
@@ -2914,6 +3192,7 @@ async function guardarEdicionMeta(metaId) {
   closeModal();
   showSnackbar('Meta actualizada ✓', 'success');
   await loadMetas();
+  await loadDashboard();
 }
 
 async function eliminarMeta(metaId) {
@@ -2933,33 +3212,46 @@ async function eliminarMeta(metaId) {
   closeModal();
   showSnackbar('Meta eliminada', 'success');
   await loadMetas();
+  await loadDashboard();
 }
 
 // ---- GASTOS FIJOS ----
-function formatearFrecuenciaGastoFijo(frecuencia, diaPago, diaSemana) {
-  const diasSemana = ['domingos', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabados'];
+const FRECUENCIA_LABEL = {
+  semanal:    'Semanal',
+  quincenal:  'Quincenal',
+  mensual:    'Mensual',
+  bimestral:  'Bimestral',
+  trimestral: 'Trimestral',
+  semestral:  'Semestral',
+  anual:      'Anual',
+};
 
-  if (frecuencia === 'mensual') {
-    return `Mensual${diaPago ? ` · dia ${diaPago}` : ''}`;
-  }
-
-  if (frecuencia === 'quincenal') {
-    return `Quincenal${diaPago ? ` · dia ${diaPago}` : ''}`;
-  }
+function formatearFrecuenciaGastoFijo(frecuencia, diaPago, diaSemana, proximoPago) {
+  const diasSemana = ['domingos', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábados'];
+  const base = FRECUENCIA_LABEL[frecuencia] || frecuencia || 'Sin frecuencia';
 
   if (frecuencia === 'semanal') {
     const dia = Number.isInteger(diaSemana) && diaSemana >= 0 && diaSemana <= 6 ? diasSemana[diaSemana] : null;
-    return `Semanal${dia ? ` · ${dia}` : ''}`;
+    return `${base}${dia ? ` · ${dia}` : ''}`;
   }
 
-  return frecuencia || 'Sin frecuencia';
+  if (proximoPago) {
+    const d = new Date(proximoPago);
+    if (!Number.isNaN(d.getTime())) {
+      const opts = { day: 'numeric', month: 'short' };
+      return `${base} · próx. ${d.toLocaleDateString('es-MX', opts)}`;
+    }
+  }
+
+  if (diaPago) return `${base} · día ${diaPago}`;
+  return base;
 }
 
 async function loadFijos() {
   const uid = (await getUsuarioId());
   const { data: fijos, error } = await db
     .from('gastos_fijos')
-    .select('*')
+    .select('*, categorias(emoji)')
     .eq('usuario_id', uid)
     .eq('activo', true)
     .order('descripcion', { ascending: true });
@@ -2990,17 +3282,22 @@ async function loadFijos() {
           <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <p>No tienes gastos fijos registrados.<br>Agrega uno para empezar.</p>
         </div>
-      ` : fijos.map(g => `
+      ` : fijos.map(g => {
+        const iconoHtml = renderEmojiOrIcon(g.categorias?.emoji, 'pin', 18);
+        const isVariable = g.monto_variable === true || g.monto == null;
+        const montoTxt = isVariable ? 'Variable' : formatMXN(g.monto);
+        return `
         <div class="item-row" style="margin-bottom:8px">
-          <div class="item-row-emoji"><i data-lucide="pin" style="width:18px;height:18px;stroke-width:1.75"></i></div>
+          <div class="item-row-emoji">${iconoHtml}</div>
           <div class="item-row-info">
             <div class="item-row-name">${g.descripcion}</div>
-            <div class="item-row-detail">${formatearFrecuenciaGastoFijo(g.frecuencia, g.dia_pago, g.dia_semana)}</div>
+            <div class="item-row-detail">${formatearFrecuenciaGastoFijo(g.frecuencia, g.dia_pago, g.dia_semana, g.proximo_pago)}</div>
           </div>
-          <div class="item-row-amount" style="color:var(--red)">${formatMXN(g.monto)}</div>
+          <div class="item-row-amount" style="color:var(--red)">${montoTxt}</div>
           <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuGastoFijo('${g.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
         </div>
-      `).join('')}
+      `;
+      }).join('')}
     </div>
   `;
 
@@ -3018,136 +3315,180 @@ function openMenuGastoFijo(gastoFijoId) {
   openGastoFijoActions(gastoFijoId);
 }
 
-function renderCamposFechaEditarGastoFijo() {
-  const frecuencia = document.getElementById('egf-freq')?.value;
-  const campos = document.getElementById('egf-fecha-campos');
+const FRECUENCIAS_FIJO_UI = [
+  ['semanal',    'Semanal'],
+  ['quincenal',  'Quincenal'],
+  ['mensual',    'Mensual'],
+  ['bimestral',  'Bimestral'],
+  ['trimestral', 'Trimestral'],
+  ['semestral',  'Semestral'],
+  ['anual',      'Anual'],
+];
+
+function frecuenciaSelectHtml(id, onchange, selected) {
+  return `<select class="form-select" id="${id}" onchange="${onchange}">
+    ${FRECUENCIAS_FIJO_UI.map(([v, l]) => `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('')}
+  </select>`;
+}
+
+function renderCamposFechaFijo(prefix, initial = {}) {
+  const frecuencia = document.getElementById(`${prefix}-freq`)?.value;
+  const campos = document.getElementById(`${prefix}-fecha-campos`);
   if (!campos) return;
 
-  if (frecuencia === 'mensual') {
-    campos.innerHTML = `
-      <label class="form-label">Dia del mes que pagas</label>
-      <input class="form-input" id="egf-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />
-    `;
-    return;
-  }
+  // Preservar valores actuales si el usuario los ingresó
+  const previoProx = document.getElementById(`${prefix}-prox`)?.value;
+  const previoDiaSemana = document.getElementById(`${prefix}-dia-semana`)?.value;
+  const diaSemanaInicial = Number.isInteger(initial.dia_semana)
+    ? initial.dia_semana
+    : (previoDiaSemana !== undefined ? parseInt(previoDiaSemana, 10) : null);
+  const proxInicial = initial.proximo_pago || previoProx || '';
 
   if (frecuencia === 'semanal') {
     campos.innerHTML = `
-      <label class="form-label">Dia de la semana</label>
-      <select class="form-select" id="egf-dia-semana">
-        <option value="0">Domingo</option>
-        <option value="1">Lunes</option>
-        <option value="2">Martes</option>
-        <option value="3">Miercoles</option>
-        <option value="4">Jueves</option>
-        <option value="5">Viernes</option>
-        <option value="6">Sabado</option>
+      <label class="form-label">Día de la semana</label>
+      <select class="form-select" id="${prefix}-dia-semana">
+        ${['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado']
+          .map((d, i) => `<option value="${i}" ${diaSemanaInicial === i ? 'selected' : ''}>${d}</option>`).join('')}
       </select>
     `;
     return;
   }
 
-  if (frecuencia === 'quincenal') {
-    campos.innerHTML = `
-      <label class="form-label">Dia de la quincena</label>
-      <input class="form-input" id="egf-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" />
-    `;
-    return;
-  }
+  campos.innerHTML = `
+    <label class="form-label">Próximo pago</label>
+    <input class="form-input" id="${prefix}-prox" type="date" value="${proxInicial}" />
+  `;
+}
 
-  campos.innerHTML = '';
+window.setFijoMontoVariableModal = function(prefix, isVariable) {
+  const toggleRoot = document.getElementById(`${prefix}-tipo-monto`);
+  const montoWrap = document.getElementById(`${prefix}-monto-wrap`);
+  const hint = document.getElementById(`${prefix}-hint`);
+  if (!toggleRoot) return;
+  toggleRoot.dataset.variable = isVariable ? '1' : '0';
+  toggleRoot.querySelectorAll('.tipo-monto-opt').forEach((btn, i) => {
+    const matches = (i === 0 && !isVariable) || (i === 1 && isVariable);
+    btn.classList.toggle('active', matches);
+  });
+  if (montoWrap) montoWrap.style.display = isVariable ? 'none' : '';
+  if (hint) hint.style.display = isVariable ? '' : 'none';
+};
+
+function tipoMontoToggleHtml(prefix, isVariable) {
+  return `
+    <div class="tipo-monto-toggle" id="${prefix}-tipo-monto" role="group" data-variable="${isVariable ? '1' : '0'}">
+      <button type="button" class="tipo-monto-opt${!isVariable ? ' active' : ''}" onclick="setFijoMontoVariableModal('${prefix}', false)">Definido</button>
+      <button type="button" class="tipo-monto-opt${isVariable ? ' active' : ''}" onclick="setFijoMontoVariableModal('${prefix}', true)">Variable</button>
+    </div>
+  `;
 }
 
 async function openEditarGastoFijo(gastoFijoId) {
-  const { data: gasto, error } = await db
-    .from('gastos_fijos')
-    .select('id, descripcion, monto, frecuencia, dia_pago, dia_semana')
-    .eq('id', gastoFijoId)
-    .eq('usuario_id', (await getUsuarioId()))
-    .maybeSingle();
+  const uid = (await getUsuarioId());
+  const [
+    { data: gasto, error },
+    { data: categorias }
+  ] = await Promise.all([
+    db.from('gastos_fijos')
+      .select('*')
+      .eq('id', gastoFijoId)
+      .eq('usuario_id', uid)
+      .maybeSingle(),
+    db.from('categorias').select('id, nombre, emoji').eq('usuario_id', uid).eq('tipo', 'gasto').order('nombre', { ascending: true })
+  ]);
 
   if (error || !gasto) {
     showSnackbar('No se pudo cargar el gasto fijo', 'error');
     return;
   }
 
+  const isVariable = gasto.monto_variable === true || (gasto.monto == null);
+  const catOptions = (categorias || []).map(c => `<option value="${c.id}" ${c.id === gasto.categoria_id ? 'selected' : ''}>${c.nombre}</option>`).join('');
+  const sinCatSel = !gasto.categoria_id ? 'selected' : '';
+
   openModal('Editar gasto fijo', `
     <div class="form-group">
-      <label class="form-label">Descripcion</label>
+      <label class="form-label">Descripción</label>
       <input class="form-input" id="egf-desc" type="text" value="${gasto.descripcion || ''}" />
     </div>
     <div class="form-group">
+      <label class="form-label">Tipo de monto</label>
+      ${tipoMontoToggleHtml('egf', isVariable)}
+    </div>
+    <div class="form-group" id="egf-monto-wrap" style="${isVariable ? 'display:none' : ''}">
       <label class="form-label">Monto</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="egf-monto" type="number" min="0" value="${Number(gasto.monto || 0)}" /></div>
+      <input class="form-input" id="egf-monto" type="number" min="0" value="${gasto.monto != null ? Number(gasto.monto) : ''}" /></div>
+    </div>
+    <p class="form-hint" id="egf-hint" style="${isVariable ? '' : 'display:none'};margin:-8px 0 12px">Cambia cada pago — solo te avisaremos la fecha.</p>
+    <div class="form-group">
+      <label class="form-label">Categoría (define el icono)</label>
+      <select class="form-select" id="egf-cat">
+        <option value="" ${sinCatSel}>Sin categoría</option>
+        ${catOptions}
+      </select>
     </div>
     <div class="form-group">
       <label class="form-label">Frecuencia</label>
-      <select class="form-select" id="egf-freq" onchange="renderCamposFechaEditarGastoFijo()">
-        <option value="semanal" ${gasto.frecuencia === 'semanal' ? 'selected' : ''}>Semanal</option>
-        <option value="quincenal" ${gasto.frecuencia === 'quincenal' ? 'selected' : ''}>Quincenal</option>
-        <option value="mensual" ${gasto.frecuencia === 'mensual' ? 'selected' : ''}>Mensual</option>
-      </select>
+      ${frecuenciaSelectHtml('egf-freq', "renderCamposFechaFijo('egf')", gasto.frecuencia || 'mensual')}
     </div>
     <div class="form-group" id="egf-fecha-campos"></div>
     <button class="btn btn-primary" onclick="guardarEdicionGastoFijo('${gasto.id}')">Guardar cambios</button>
   `);
 
-  renderCamposFechaEditarGastoFijo();
-
-  if (gasto.frecuencia === 'semanal') {
-    const inputSemana = document.getElementById('egf-dia-semana');
-    if (inputSemana && gasto.dia_semana !== null && gasto.dia_semana !== undefined) {
-      inputSemana.value = String(gasto.dia_semana);
-    }
-  } else {
-    const inputDia = document.getElementById('egf-dia-pago');
-    if (inputDia && gasto.dia_pago) {
-      inputDia.value = String(gasto.dia_pago);
-    }
-  }
+  renderCamposFechaFijo('egf', {
+    dia_semana: gasto.dia_semana,
+    proximo_pago: gasto.proximo_pago || null,
+  });
 
   renderLucideIcons();
 }
 
 async function guardarEdicionGastoFijo(gastoFijoId) {
   const descripcion = document.getElementById('egf-desc')?.value.trim();
-  const monto = parseFloat(document.getElementById('egf-monto')?.value);
+  const toggleRoot = document.getElementById('egf-tipo-monto');
+  const isVariable = toggleRoot?.dataset.variable === '1';
   const frecuencia = document.getElementById('egf-freq')?.value;
+  const categoria_id = document.getElementById('egf-cat')?.value || null;
 
-  let dia_pago = null;
-  let dia_semana = null;
+  if (!descripcion) { showSnackbar('Escribe una descripción', 'error'); return; }
 
-  if (!descripcion || Number.isNaN(monto) || monto <= 0) {
-    showSnackbar('Completa descripcion y monto', 'error');
-    return;
+  let monto = null;
+  if (!isVariable) {
+    monto = parseFloat(document.getElementById('egf-monto')?.value);
+    if (Number.isNaN(monto) || monto <= 0) {
+      showSnackbar('Ingresa un monto válido o marca como variable', 'error');
+      return;
+    }
   }
+
+  let dia_semana = null;
+  let dia_pago = null;
+  let proximo_pago = null;
 
   if (frecuencia === 'semanal') {
     dia_semana = parseInt(document.getElementById('egf-dia-semana')?.value, 10);
     if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
-      showSnackbar('Selecciona un dia de la semana valido', 'error');
+      showSnackbar('Selecciona un día de la semana', 'error');
       return;
     }
-  } else if (frecuencia === 'mensual') {
-    dia_pago = parseInt(document.getElementById('egf-dia-pago')?.value, 10);
-    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
-      showSnackbar('Ingresa un dia del mes entre 1 y 31', 'error');
-      return;
-    }
-  } else if (frecuencia === 'quincenal') {
-    dia_pago = parseInt(document.getElementById('egf-dia-pago')?.value, 10);
-    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
-      showSnackbar('Ingresa un dia de la quincena entre 1 y 15', 'error');
-      return;
+  } else {
+    proximo_pago = document.getElementById('egf-prox')?.value || null;
+    if (proximo_pago) {
+      const dia = parseInt(proximo_pago.split('-')[2], 10);
+      dia_pago = Number.isInteger(dia) ? dia : null;
     }
   }
 
-  const { error } = await db
-    .from('gastos_fijos')
-    .update({ descripcion, monto, frecuencia, dia_pago, dia_semana })
-    .eq('id', gastoFijoId)
-    .eq('usuario_id', (await getUsuarioId()));
+  const payload = { descripcion, monto, monto_variable: isVariable, frecuencia, dia_pago, dia_semana, proximo_pago, categoria_id };
+  let { error } = await db.from('gastos_fijos').update(payload).eq('id', gastoFijoId).eq('usuario_id', (await getUsuarioId()));
+
+  if (error) {
+    const { monto_variable, proximo_pago: _p, ...legacy } = payload;
+    legacy.monto = monto ?? 0;
+    ({ error } = await db.from('gastos_fijos').update(legacy).eq('id', gastoFijoId).eq('usuario_id', (await getUsuarioId())));
+  }
 
   if (error) {
     showSnackbar('No se pudo actualizar el gasto fijo', 'error');
@@ -3160,113 +3501,99 @@ async function guardarEdicionGastoFijo(gastoFijoId) {
   await loadDashboard();
 }
 
-function openAgregarGastoFijo() {
+async function openAgregarGastoFijo() {
+  const uid = (await getUsuarioId());
+  const { data: categorias } = await db.from('categorias').select('id, nombre, emoji').eq('usuario_id', uid).eq('tipo', 'gasto').order('nombre', { ascending: true });
+  const catOptions = (categorias || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+
   openModal('Nuevo gasto fijo', `
     <div class="form-group">
-      <label class="form-label">Descripcion</label>
+      <label class="form-label">Descripción</label>
       <input class="form-input" id="fgf-desc" type="text" placeholder="Ej: Internet, renta, gimnasio" />
     </div>
     <div class="form-group">
+      <label class="form-label">Tipo de monto</label>
+      ${tipoMontoToggleHtml('fgf', false)}
+    </div>
+    <div class="form-group" id="fgf-monto-wrap">
       <label class="form-label">Monto</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
       <input class="form-input" id="fgf-monto" type="number" placeholder="0.00" min="0" /></div>
     </div>
+    <p class="form-hint" id="fgf-hint" style="display:none;margin:-8px 0 12px">Cambia cada pago — solo te avisaremos la fecha.</p>
+    <div class="form-group">
+      <label class="form-label">Categoría (define el icono)</label>
+      <select class="form-select" id="fgf-cat">
+        <option value="">Sin categoría</option>
+        ${catOptions}
+      </select>
+    </div>
     <div class="form-group">
       <label class="form-label">Frecuencia</label>
-      <select class="form-select" id="fgf-freq" onchange="renderCamposFechaGastoFijoModal()">
-        <option value="semanal">Semanal</option>
-        <option value="quincenal">Quincenal</option>
-        <option value="mensual">Mensual</option>
-      </select>
+      ${frecuenciaSelectHtml('fgf-freq', "renderCamposFechaFijo('fgf')", 'mensual')}
     </div>
     <div class="form-group" id="fgf-fecha-campos"></div>
     <button class="btn btn-primary" onclick="guardarNuevoGastoFijo()">Guardar</button>
   `);
 
-  renderCamposFechaGastoFijoModal();
-}
-
-function renderCamposFechaGastoFijoModal() {
-  const frecuencia = document.getElementById('fgf-freq')?.value;
-  const campos = document.getElementById('fgf-fecha-campos');
-  if (!campos) return;
-
-  if (frecuencia === 'mensual') {
-    campos.innerHTML = `
-      <label class="form-label">Dia del mes que pagas</label>
-      <input class="form-input" id="fgf-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />
-    `;
-    return;
-  }
-
-  if (frecuencia === 'semanal') {
-    campos.innerHTML = `
-      <label class="form-label">Dia de la semana</label>
-      <select class="form-select" id="fgf-dia-semana">
-        <option value="0">Domingo</option>
-        <option value="1">Lunes</option>
-        <option value="2">Martes</option>
-        <option value="3">Miercoles</option>
-        <option value="4">Jueves</option>
-        <option value="5">Viernes</option>
-        <option value="6">Sabado</option>
-      </select>
-    `;
-    return;
-  }
-
-  if (frecuencia === 'quincenal') {
-    campos.innerHTML = `
-      <label class="form-label">Dia de la quincena</label>
-      <input class="form-input" id="fgf-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" />
-    `;
-    return;
-  }
-
-  campos.innerHTML = '';
+  renderCamposFechaFijo('fgf');
 }
 
 async function guardarNuevoGastoFijo() {
   const descripcion = document.getElementById('fgf-desc')?.value.trim();
-  const monto = parseFloat(document.getElementById('fgf-monto')?.value);
+  const toggleRoot = document.getElementById('fgf-tipo-monto');
+  const isVariable = toggleRoot?.dataset.variable === '1';
   const frecuencia = document.getElementById('fgf-freq')?.value;
-  let dia_pago = null;
-  let dia_semana = null;
+  const categoria_id = document.getElementById('fgf-cat')?.value || null;
 
-  if (!descripcion || !monto) {
-    showSnackbar('Completa descripcion y monto', 'error');
-    return;
+  if (!descripcion) { showSnackbar('Escribe una descripción', 'error'); return; }
+
+  let monto = null;
+  if (!isVariable) {
+    monto = parseFloat(document.getElementById('fgf-monto')?.value);
+    if (Number.isNaN(monto) || monto <= 0) {
+      showSnackbar('Ingresa un monto válido o marca como variable', 'error');
+      return;
+    }
   }
+
+  let dia_semana = null;
+  let dia_pago = null;
+  let proximo_pago = null;
 
   if (frecuencia === 'semanal') {
     dia_semana = parseInt(document.getElementById('fgf-dia-semana')?.value, 10);
     if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
-      showSnackbar('Selecciona un dia de la semana valido', 'error');
+      showSnackbar('Selecciona un día de la semana', 'error');
       return;
     }
-  } else if (frecuencia === 'mensual') {
-    dia_pago = parseInt(document.getElementById('fgf-dia-pago')?.value, 10);
-    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
-      showSnackbar('Ingresa un dia del mes entre 1 y 31', 'error');
-      return;
-    }
-  } else if (frecuencia === 'quincenal') {
-    dia_pago = parseInt(document.getElementById('fgf-dia-pago')?.value, 10);
-    if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
-      showSnackbar('Ingresa un dia de la quincena entre 1 y 15', 'error');
-      return;
+  } else {
+    proximo_pago = document.getElementById('fgf-prox')?.value || null;
+    if (proximo_pago) {
+      const dia = parseInt(proximo_pago.split('-')[2], 10);
+      dia_pago = Number.isInteger(dia) ? dia : null;
     }
   }
 
-  const { error } = await db.from('gastos_fijos').insert({
+  const payload = {
     usuario_id: (await getUsuarioId()),
     descripcion,
     monto,
+    monto_variable: isVariable,
     frecuencia,
     dia_pago,
     dia_semana,
-    activo: true
-  });
+    proximo_pago,
+    categoria_id,
+    activo: true,
+  };
+
+  let { error } = await db.from('gastos_fijos').insert(payload);
+  if (error) {
+    const { monto_variable, proximo_pago: _p, ...legacy } = payload;
+    legacy.monto = monto ?? 0;
+    ({ error } = await db.from('gastos_fijos').insert(legacy));
+  }
 
   if (error) {
     showSnackbar('No se pudo guardar el gasto fijo', 'error');
@@ -3276,12 +3603,17 @@ async function guardarNuevoGastoFijo() {
   closeModal();
   showSnackbar('Gasto fijo guardado ✓', 'success');
   await loadFijos();
+  await loadDashboard();
 }
 
 async function eliminarGastoFijo(gastoFijoId) {
   if (!window.confirm('¿Eliminar este gasto fijo?')) return;
 
-  const { error } = await db.from('gastos_fijos').update({ activo: false }).eq('id', gastoFijoId);
+  const { error } = await db
+    .from('gastos_fijos')
+    .update({ activo: false })
+    .eq('id', gastoFijoId)
+    .eq('usuario_id', (await getUsuarioId()));
 
   if (error) {
     showSnackbar('No se pudo eliminar el gasto fijo', 'error');
@@ -3290,6 +3622,7 @@ async function eliminarGastoFijo(gastoFijoId) {
 
   showSnackbar('Gasto fijo eliminado', 'success');
   await loadFijos();
+  await loadDashboard();
 }
 
 // ---- GASTOS (historial) ----
@@ -3314,7 +3647,7 @@ async function loadGastos() {
         </div>
       ` : gastos.map(g => `
         <div class="item-row" style="margin-bottom:8px">
-          <div class="item-row-emoji">${getCategoriaGastoIcon(g.categorias?.nombre)}</div>
+          <div class="item-row-emoji">${g.categorias?.emoji ? renderEmojiOrIcon(g.categorias.emoji, 'package', 18) : getCategoriaGastoIcon(g.categorias?.nombre)}</div>
           <div class="item-row-info">
             <div class="item-row-name">${g.descripcion}</div>
             <div class="item-row-detail">${g.categorias?.nombre || 'Sin categoría'} · ${g.fecha}</div>
@@ -3388,7 +3721,7 @@ async function loadIngresos() {
     { data: ingresos, error: errorIngresos }
   ] = await Promise.all([
     db.from('ingresos_programados').select('*').eq('usuario_id', uid).eq('activo', true).order('created_at', { ascending: true }),
-    db.from('ingresos').select('*').eq('usuario_id', uid).order('fecha', { ascending: false }).limit(50)
+    db.from('ingresos').select('*, categorias(nombre, emoji)').eq('usuario_id', uid).order('fecha', { ascending: false }).limit(50)
   ]);
 
   const programadosHTML = errorProgramados
@@ -3432,10 +3765,13 @@ async function loadIngresos() {
         </div>
       `
       : ingresos.map(i => {
-        const nombre = i.descripcion?.trim() || formatIngresoTipo(i.tipo);
+        const nombre = i.descripcion?.trim() || i.categorias?.nombre || formatIngresoTipo(i.tipo);
+        const iconoHtml = i.categorias?.emoji
+          ? renderEmojiOrIcon(i.categorias.emoji, 'plus-circle', 18)
+          : getIngresoTipoIcon(i.tipo);
         return `
           <div class="item-row" style="margin-bottom:8px">
-            <div class="item-row-emoji">${getIngresoTipoIcon(i.tipo)}</div>
+            <div class="item-row-emoji">${iconoHtml}</div>
             <div class="item-row-info">
               <div class="item-row-name">${nombre}</div>
               <div class="item-row-detail">${i.fecha}</div>
@@ -3449,13 +3785,13 @@ async function loadIngresos() {
   document.getElementById('page-ingresos').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Ingresos</h1>
-      <button onclick="openRegistrarIngreso()" style="background:var(--green-soft);border:1px solid rgba(45,212,160,0.2);border-radius:var(--radius-sm);padding:8px 14px;color:var(--green);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nuevo</button>
+      <button onclick="openRegistrarIngreso()" style="background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius-sm);padding:8px 14px;color:var(--green);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nuevo</button>
     </div>
     <div class="page-body">
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px">
           <div style="font-weight:700;font-size:14px">Programados</div>
-          <button onclick="openAgregarIngresoProgramado()" style="background:var(--green-soft);border:1px solid rgba(45,212,160,0.2);border-radius:var(--radius-sm);padding:8px 12px;color:var(--green);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Agregar</button>
+          <button onclick="openAgregarIngresoProgramado()" style="background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius-sm);padding:8px 12px;color:var(--green);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Agregar</button>
         </div>
         ${programadosHTML}
       </div>
@@ -3487,7 +3823,7 @@ function renderCamposFechaEditarIngresoProgramado() {
 
   if (frecuencia === 'mensual') {
     campos.innerHTML = `
-      <label class="form-label">Dia del mes</label>
+      <label class="form-label">Día del mes</label>
       <input class="form-input" id="eip-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />
     `;
     return;
@@ -3495,15 +3831,15 @@ function renderCamposFechaEditarIngresoProgramado() {
 
   if (frecuencia === 'semanal') {
     campos.innerHTML = `
-      <label class="form-label">Dia de la semana</label>
+      <label class="form-label">Día de la semana</label>
       <select class="form-select" id="eip-dia-semana">
         <option value="0">Domingo</option>
         <option value="1">Lunes</option>
         <option value="2">Martes</option>
-        <option value="3">Miercoles</option>
+        <option value="3">Miércoles</option>
         <option value="4">Jueves</option>
         <option value="5">Viernes</option>
-        <option value="6">Sabado</option>
+        <option value="6">Sábado</option>
       </select>
     `;
     return;
@@ -3511,7 +3847,7 @@ function renderCamposFechaEditarIngresoProgramado() {
 
   if (frecuencia === 'quincenal') {
     campos.innerHTML = `
-      <label class="form-label">Dia de la quincena</label>
+      <label class="form-label">Día de la quincena</label>
       <input class="form-input" id="eip-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" />
     `;
     return;
@@ -3535,7 +3871,7 @@ async function openEditarIngresoProgramado(ingresoProgramadoId) {
 
   openModal('Editar ingreso programado', `
     <div class="form-group">
-      <label class="form-label">Descripcion</label>
+      <label class="form-label">Descripción</label>
       <input class="form-input" id="eip-desc" type="text" value="${ingresoProgramado.descripcion || ''}" />
     </div>
     <div class="form-group">
@@ -3580,26 +3916,26 @@ async function guardarEdicionIngresoProgramado(ingresoProgramadoId) {
   let dia_semana = null;
 
   if (!descripcion || !monto_estimado) {
-    showSnackbar('Completa descripcion y monto', 'error');
+    showSnackbar('Completa descripción y monto', 'error');
     return;
   }
 
   if (frecuencia === 'semanal') {
     dia_semana = parseInt(document.getElementById('eip-dia-semana')?.value, 10);
     if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
-      showSnackbar('Selecciona un dia de la semana valido', 'error');
+      showSnackbar('Selecciona un día de la semana válido', 'error');
       return;
     }
   } else if (frecuencia === 'mensual') {
     dia_pago = parseInt(document.getElementById('eip-dia-pago')?.value, 10);
     if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
-      showSnackbar('Ingresa un dia del mes entre 1 y 31', 'error');
+      showSnackbar('Ingresa un día del mes entre 1 y 31', 'error');
       return;
     }
   } else if (frecuencia === 'quincenal') {
     dia_pago = parseInt(document.getElementById('eip-dia-pago')?.value, 10);
     if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
-      showSnackbar('Ingresa un dia de la quincena entre 1 y 15', 'error');
+      showSnackbar('Ingresa un día de la quincena entre 1 y 15', 'error');
       return;
     }
   }
@@ -3819,14 +4155,14 @@ async function guardarNuevaCuenta() {
 
 // ---- AJUSTES ----
 function formatearFrecuenciaIngresoProgramado(frecuencia, diaPago, diaSemana) {
-  const diasSemana = ['domingos', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabados'];
+  const diasSemana = ['domingos', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábados'];
 
   if (frecuencia === 'mensual') {
-    return `Mensual${diaPago ? ` · dia ${diaPago}` : ''}`;
+    return `Mensual${diaPago ? ` · día ${diaPago}` : ''}`;
   }
 
   if (frecuencia === 'quincenal') {
-    return `Quincenal${diaPago ? ` · dia ${diaPago}` : ''}`;
+    return `Quincenal${diaPago ? ` · día ${diaPago}` : ''}`;
   }
 
   if (frecuencia === 'semanal') {
@@ -3877,7 +4213,7 @@ async function loadAjustes() {
 function openAgregarIngresoProgramado() {
   openModal('Nuevo ingreso programado', `
     <div class="form-group">
-      <label class="form-label">Descripcion</label>
+      <label class="form-label">Descripción</label>
       <input class="form-input" id="ip-desc" type="text" placeholder="Ej: Salario semanal" />
     </div>
     <div class="form-group">
@@ -3907,7 +4243,7 @@ function renderCamposFechaIngresoProgramado() {
 
   if (frecuencia === 'mensual') {
     campos.innerHTML = `
-      <label class="form-label">Dia del mes</label>
+      <label class="form-label">Día del mes</label>
       <input class="form-input" id="ip-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />
     `;
     return;
@@ -3915,15 +4251,15 @@ function renderCamposFechaIngresoProgramado() {
 
   if (frecuencia === 'semanal') {
     campos.innerHTML = `
-      <label class="form-label">Dia de la semana</label>
+      <label class="form-label">Día de la semana</label>
       <select class="form-select" id="ip-dia-semana">
         <option value="0">Domingo</option>
         <option value="1">Lunes</option>
         <option value="2">Martes</option>
-        <option value="3">Miercoles</option>
+        <option value="3">Miércoles</option>
         <option value="4">Jueves</option>
         <option value="5">Viernes</option>
-        <option value="6">Sabado</option>
+        <option value="6">Sábado</option>
       </select>
     `;
     return;
@@ -3931,7 +4267,7 @@ function renderCamposFechaIngresoProgramado() {
 
   if (frecuencia === 'quincenal') {
     campos.innerHTML = `
-      <label class="form-label">Dia de la quincena</label>
+      <label class="form-label">Día de la quincena</label>
       <input class="form-input" id="ip-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" />
     `;
     return;
@@ -3948,26 +4284,26 @@ async function guardarIngresoProgramado() {
   let dia_semana = null;
 
   if (!descripcion || !monto_estimado) {
-    showSnackbar('Completa descripcion y monto', 'error');
+    showSnackbar('Completa descripción y monto', 'error');
     return;
   }
 
   if (frecuencia === 'semanal') {
     dia_semana = parseInt(document.getElementById('ip-dia-semana')?.value, 10);
     if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
-      showSnackbar('Selecciona un dia de la semana valido', 'error');
+      showSnackbar('Selecciona un día de la semana válido', 'error');
       return;
     }
   } else if (frecuencia === 'mensual') {
     dia_pago = parseInt(document.getElementById('ip-dia-pago')?.value, 10);
     if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
-      showSnackbar('Ingresa un dia del mes entre 1 y 31', 'error');
+      showSnackbar('Ingresa un día del mes entre 1 y 31', 'error');
       return;
     }
   } else if (frecuencia === 'quincenal') {
     dia_pago = parseInt(document.getElementById('ip-dia-pago')?.value, 10);
     if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
-      showSnackbar('Ingresa un dia de la quincena entre 1 y 15', 'error');
+      showSnackbar('Ingresa un día de la quincena entre 1 y 15', 'error');
       return;
     }
   }
@@ -4010,8 +4346,10 @@ async function eliminarIngresoProgramado(ingresoProgramadoId) {
   await loadIngresos();
 }
 
-function resetApp() {
+async function resetApp() {
+  if (!window.confirm('¿Cerrar sesión y reiniciar la app?')) return;
   localStorage.removeItem('jmf_usuario_id');
+  await db.auth.signOut();
   location.reload();
 }
 
@@ -4063,11 +4401,20 @@ function seleccionarCategoriaDesdeSheet(index) {
     toggleCamposPrestamo();
   }
 
+  if (currentCatTipo === 'gasto') {
+    window._gastoEspecial = item.special || null;
+    toggleCamposGastoEspecial();
+  }
+
   actualizarBotonCategoriaSelector();
   closeSelectorCategoriaSheet();
 }
 
 async function abrirSelectorCategoria(tipo) {
+  if (tipo === 'gasto') {
+    return abrirSelectorGasto();
+  }
+
   const usuarioId = await getUsuarioId();
   const { data: categorias } = await db
     .from('categorias')
@@ -4133,6 +4480,213 @@ async function abrirSelectorCategoria(tipo) {
   requestAnimationFrame(() => overlay.classList.add('open'));
 
   renderLucideIcons();
+}
+
+// ---- Picker agrupado de GASTO (con recientes + subgrupos) ----
+async function abrirSelectorGasto() {
+  const usuarioId = await getUsuarioId();
+
+  const [catsRes, gastosRes] = await Promise.all([
+    db.from('categorias').select('id, nombre, emoji, es_default').eq('usuario_id', usuarioId).eq('tipo', 'gasto').order('nombre', { ascending: true }),
+    db.from('gastos').select('categoria_id, fecha').eq('usuario_id', usuarioId).order('fecha', { ascending: false }).limit(40)
+  ]);
+
+  const categorias = catsRes.data || [];
+  const catByNombre = Object.fromEntries(categorias.map(c => [c.nombre, c]));
+  const catById = Object.fromEntries(categorias.map(c => [c.id, c]));
+
+  // Top 5 categorías más recientes (únicas)
+  const recientes = [];
+  const seen = new Set();
+  for (const g of (gastosRes.data || [])) {
+    if (!g.categoria_id || seen.has(g.categoria_id) || !catById[g.categoria_id]) continue;
+    recientes.push(catById[g.categoria_id]);
+    seen.add(g.categoria_id);
+    if (recientes.length >= 5) break;
+  }
+
+  // Personalizadas que no están en el catálogo predefinido
+  const personalizadas = categorias.filter(c => c.es_default === false && !GASTOS_VARIABLES_INDEX[c.nombre]);
+
+  window._gastoPickerCache = { categorias, catByNombre, recientes, personalizadas };
+  renderGastoPickerSheet();
+}
+
+function renderGastoPickerSheet() {
+  const cache = window._gastoPickerCache;
+  if (!cache) return;
+  const { catByNombre, recientes, personalizadas } = cache;
+
+  if (!(window._gastoGruposAbiertos instanceof Set)) {
+    window._gastoGruposAbiertos = new Set();
+  }
+
+  const flatItems = [];
+  const pushItem = (cat, special = null) => {
+    const item = { id: cat.id ?? null, nombre: cat.nombre, emoji: cat.emoji || 'package', tipoSelector: 'gasto', special };
+    flatItems.push(item);
+    return flatItems.length - 1;
+  };
+
+  const chipHtml = (cat, special = null, iconoFallback = null) => {
+    const idx = pushItem(cat, special);
+    const icono = cat.emoji || iconoFallback || 'package';
+    return `<button class="fijo-sugerido-chip" onclick="seleccionarCategoriaDesdeSheet(${idx})">
+      <i data-lucide="${icono}"></i>
+      <span>${cat.nombre}</span>
+    </button>`;
+  };
+
+  const recientesHtml = recientes.length > 0 ? `
+    <div class="gasto-pick-section">
+      <div class="gasto-pick-section-label"><i data-lucide="clock"></i>Recientes</div>
+      <div class="gasto-pick-chips">
+        ${recientes.map(c => chipHtml(c)).join('')}
+      </div>
+    </div>
+  ` : '';
+
+  const personalizadasHtml = personalizadas.length > 0 ? `
+    <div class="gasto-pick-section">
+      <div class="gasto-pick-section-label"><i data-lucide="sparkles"></i>Personalizadas</div>
+      <div class="gasto-pick-chips">
+        ${personalizadas.map(c => chipHtml(c)).join('')}
+      </div>
+    </div>
+  ` : '';
+
+  const gruposHtml = `
+    <div class="fijo-grupos">
+      ${GASTOS_VARIABLES_CATALOGO.map(grupo => {
+        const abierto = window._gastoGruposAbiertos.has(grupo.titulo);
+        const chips = grupo.items.map(it => {
+          const cat = catByNombre[it.nombre];
+          if (!cat) return '';
+          return chipHtml(cat, it.special || null, it.icono);
+        }).join('');
+        return `
+          <div class="fijo-grupo${abierto ? ' is-open' : ''}">
+            <button type="button" class="fijo-grupo-header" onclick="toggleGastoPickerGrupo('${grupo.titulo.replace(/'/g, "\\'")}')">
+              <span class="fijo-grupo-title">
+                <i data-lucide="${grupo.icono}"></i>
+                <span>${grupo.titulo}</span>
+              </span>
+              <i data-lucide="chevron-down" class="fijo-grupo-chevron"></i>
+            </button>
+            ${abierto ? `<div class="fijo-grupo-body">${chips}</div>` : ''}
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+
+  window._categoriaSelectorItems = flatItems;
+
+  const old = document.getElementById('categoria-selector-overlay');
+  if (old) old.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'categoria-selector-overlay';
+  overlay.className = 'modal-overlay categoria-selector-overlay';
+  overlay.innerHTML = `
+    <div class="bottom-sheet gasto-picker-sheet" onclick="event.stopPropagation()">
+      <div class="sheet-handle"></div>
+      <h3 class="sheet-title">Selecciona categoría</h3>
+      ${recientesHtml}
+      ${personalizadasHtml}
+      <div class="gasto-pick-section">
+        <div class="gasto-pick-section-label"><i data-lucide="grid-2x2"></i>Todas las categorías</div>
+        ${gruposHtml}
+      </div>
+    </div>
+  `;
+  overlay.addEventListener('click', closeSelectorCategoriaSheet);
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('open'));
+
+  renderLucideIcons();
+}
+
+window.toggleGastoPickerGrupo = function(titulo) {
+  if (!(window._gastoGruposAbiertos instanceof Set)) window._gastoGruposAbiertos = new Set();
+  if (window._gastoGruposAbiertos.has(titulo)) window._gastoGruposAbiertos.delete(titulo);
+  else window._gastoGruposAbiertos.add(titulo);
+  renderGastoPickerSheet();
+};
+
+// ---- Campos especiales para Finanzas (Ahorro / Pago de deudas) ----
+async function toggleCamposGastoEspecial() {
+  const tipo = window._gastoEspecial || null;
+  const contenedor = document.getElementById('rg-extra-campos');
+  if (!contenedor) return;
+
+  if (!tipo) {
+    contenedor.style.display = 'none';
+    contenedor.innerHTML = '';
+    return;
+  }
+
+  const uid = await getUsuarioId();
+
+  if (tipo === 'ahorro') {
+    const { data: metas } = await db
+      .from('metas_ahorro')
+      .select('id, nombre, emoji, monto_objetivo, monto_actual')
+      .eq('usuario_id', uid)
+      .eq('activa', true)
+      .order('nombre', { ascending: true });
+    const lista = metas || [];
+    contenedor.style.display = 'block';
+    if (lista.length === 0) {
+      contenedor.innerHTML = `
+        <div class="form-group finanza-empty">
+          <p class="form-hint" style="margin-bottom:8px">No tienes metas activas. Crea una para aportar tu ahorro.</p>
+          <button class="btn btn-secondary" type="button" style="width:100%" onclick="closeModal(); openAgregarMeta();">+ Crear meta</button>
+        </div>
+      `;
+    } else {
+      contenedor.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">Meta</label>
+          <select class="form-select" id="rg-meta-id">
+            ${lista.map(m => `<option value="${m.id}">${m.nombre} · ${formatMXN(m.monto_actual || 0)} / ${formatMXN(m.monto_objetivo || 0)}</option>`).join('')}
+          </select>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  if (tipo === 'pago_deuda') {
+    const { data: deudas } = await db
+      .from('deudas')
+      .select('id, acreedor, monto_actual, tipo_deuda')
+      .eq('usuario_id', uid)
+      .eq('activa', true)
+      .order('acreedor', { ascending: true });
+    const lista = deudas || [];
+    contenedor.style.display = 'block';
+    if (lista.length === 0) {
+      contenedor.innerHTML = `
+        <div class="form-group finanza-empty">
+          <p class="form-hint">No tienes deudas activas.</p>
+        </div>
+      `;
+    } else {
+      contenedor.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">Deuda</label>
+          <select class="form-select" id="rg-deuda-id">
+            ${lista.map(d => `<option value="${d.id}" data-tipo="${d.tipo_deuda}" data-max="${d.monto_actual}">${d.acreedor} · ${formatMXN(d.monto_actual)}</option>`).join('')}
+          </select>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  contenedor.style.display = 'none';
+  contenedor.innerHTML = '';
 }
 
 // Registrar Ingreso
@@ -4294,7 +4848,7 @@ async function guardarIngreso() {
             <div class="item-row-name">${pago.nombre}</div>
             <div class="item-row-detail">${pago.tipo === 'fijo' ? 'Gasto fijo' : 'Deuda'}${pago.urgente ? ' · <i data-lucide="alert-triangle" style="width:18px;height:18px;stroke-width:1.75"></i> Urgente' : ''}</div>
           </div>
-          <div class="item-row-amount">${formatMXN(pago.monto)}</div>
+          <div class="item-row-amount">${pago.monto_variable && !pago.monto ? 'Variable' : formatMXN(pago.monto)}</div>
         </div>
       `).join('')}
     </div>
@@ -4333,28 +4887,14 @@ async function onEntendidoDineroComprometido() {
   await loadCuentas();
 }
 
-function gastoFijoAplicaPorFrecuencia(frecuencia, fechaBase) {
-  const fechaRef = fechaBase ? new Date(`${fechaBase}T00:00:00`) : new Date();
-  const dia = fechaRef.getDate();
-
-  if (frecuencia === 'semanal') return true;
-  if (frecuencia === 'quincenal') return dia <= 15 || dia > 15;
-  if (frecuencia === 'mensual') return true;
-
-  return false;
-}
-
 // Registrar Gasto
 async function openRegistrarGasto() {
-  const { data: categorias } = await db.from('categorias').select('*').eq('usuario_id', (await getUsuarioId())).eq('tipo', 'gasto');
   const { data: cuentas } = await db.from('cuentas').select('*').eq('usuario_id', (await getUsuarioId())).eq('activa', true);
 
-  const categoriasGasto = categorias || [];
-  const categoriaInicial = categoriasGasto.find(c => c.es_default === false) || categoriasGasto[0] || null;
-
   currentCatTipo = 'gasto';
-  currentCatId = categoriaInicial?.id ?? null;
-  currentCatMeta = categoriaInicial ? { ...categoriaInicial, tipoSelector: 'gasto' } : null;
+  currentCatId = null;
+  currentCatMeta = null;
+  window._gastoEspecial = null;
 
   openModal('Registrar gasto', `
     <div class="form-group">
@@ -4370,6 +4910,7 @@ async function openRegistrarGasto() {
       <label class="form-label">Categoría</label>
       <button id="btn-cat-selector" class="categoria-btn" type="button" onclick="abrirSelectorCategoria('gasto')"></button>
     </div>
+    <div id="rg-extra-campos" style="display:none"></div>
     <div class="form-group">
       <label class="form-label">Cuenta</label>
       <select class="form-select" id="rg-cuenta">
@@ -4393,9 +4934,12 @@ async function guardarGasto() {
   const cuenta_id = document.getElementById('rg-cuenta')?.value || null;
   const fecha = document.getElementById('rg-fecha').value;
   const usuarioId = (await getUsuarioId());
-  if (!descripcion || !monto) { showSnackbar('Completa descripción y monto', 'error'); return; }
+  const especial = window._gastoEspecial || null;
+  if (!monto || monto <= 0) { showSnackbar('Ingresa un monto válido', 'error'); return; }
   if (!categoria_id) { showSnackbar('Selecciona una categoría', 'error'); return; }
+  if (!especial && !descripcion) { showSnackbar('Escribe una descripción', 'error'); return; }
 
+  // Validación de saldo disponible (aplica a todos los flujos con cuenta)
   if (cuenta_id) {
     const [
       { data: cuenta, error: errorCuenta },
@@ -4425,6 +4969,92 @@ async function guardarGasto() {
     }
   }
 
+  // Flujo especial: Ahorro → registra el gasto y aumenta monto_actual de la meta
+  if (especial === 'ahorro') {
+    const meta_id = document.getElementById('rg-meta-id')?.value || null;
+    if (!meta_id) { showSnackbar('Selecciona una meta', 'error'); return; }
+
+    const { data: meta, error: errMeta } = await db.from('metas_ahorro').select('nombre, monto_actual').eq('id', meta_id).maybeSingle();
+    if (errMeta || !meta) { showSnackbar('No se pudo cargar la meta', 'error'); return; }
+
+    const gastoPayload = {
+      usuario_id: usuarioId,
+      descripcion: descripcion || `Aporte a ${meta.nombre}`,
+      monto,
+      categoria_id,
+      cuenta_id,
+      fecha,
+    };
+    const { error } = await db.from('gastos').insert(gastoPayload);
+    if (error) { showSnackbar('Error al guardar', 'error'); return; }
+
+    await db.from('metas_ahorro')
+      .update({ monto_actual: Number(meta.monto_actual || 0) + monto })
+      .eq('id', meta_id);
+
+    window._gastoEspecial = null;
+    closeModal();
+    showSnackbar('Aporte a meta registrado ✓', 'success');
+    await loadDashboard();
+    if (typeof loadMetas === 'function') await loadMetas();
+    loadGastos();
+    return;
+  }
+
+  // Flujo especial: Pago de deuda → NO crea gasto (pagos_deuda ya se descuenta del saldo)
+  if (especial === 'pago_deuda') {
+    const deuda_id = document.getElementById('rg-deuda-id')?.value || null;
+    if (!deuda_id) { showSnackbar('Selecciona una deuda', 'error'); return; }
+    if (!cuenta_id) { showSnackbar('Selecciona una cuenta', 'error'); return; }
+
+    const { data: deuda, error: errDeuda } = await db.from('deudas').select('monto_actual, tipo_deuda').eq('id', deuda_id).maybeSingle();
+    if (errDeuda || !deuda) { showSnackbar('No se pudo cargar la deuda', 'error'); return; }
+    if (monto > Number(deuda.monto_actual)) { showSnackbar('El pago excede el saldo de la deuda', 'error'); return; }
+
+    const { error: errPago } = await db.from('pagos_deuda').insert({
+      deuda_id,
+      usuario_id: usuarioId,
+      cuenta_id,
+      monto,
+      nota: descripcion,
+      fecha,
+    });
+    if (errPago) { showSnackbar('Error al registrar el pago', 'error'); return; }
+
+    if (deuda.tipo_deuda === 'tabla') {
+      const { data: proximoPago } = await db.from('pagos_programados')
+        .select('id')
+        .eq('deuda_id', deuda_id)
+        .eq('pagado', false)
+        .order('fecha_vencimiento')
+        .limit(1)
+        .maybeSingle();
+      if (proximoPago) {
+        await db.from('pagos_programados').update({
+          pagado: true,
+          fecha_pago: fecha,
+          monto_pagado: monto
+        }).eq('id', proximoPago.id);
+      }
+    }
+
+    const nuevoMonto = Number(deuda.monto_actual) - monto;
+    await db.from('deudas').update({
+      monto_actual: nuevoMonto,
+      activa: nuevoMonto > 0,
+      ultimo_pago: fecha,
+      monto_ultimo_pago: monto,
+    }).eq('id', deuda_id);
+
+    window._gastoEspecial = null;
+    closeModal();
+    showSnackbar(nuevoMonto === 0 ? 'Deuda saldada' : 'Pago registrado ✓', 'success');
+    await loadDashboard();
+    if (typeof loadDeudas === 'function') await loadDeudas();
+    return;
+  }
+
+  // Flujo normal
   const gastoPayload = {
     usuario_id: usuarioId,
     descripcion,
@@ -4594,10 +5224,7 @@ function openAgregarDeuda() {
   renderLucideIcons();
 }
 
-let tipoDeudaSeleccionado = null;
-
 function selectTipoDeuda(tipo) {
-  tipoDeudaSeleccionado = tipo;
   openFormularioNuevaDeuda(tipo);
 }
 
@@ -4760,6 +5387,7 @@ async function guardarNuevaDeuda(tipo) {
 }
 
 function openAgregarPagosProgramados(deudaId, acreedor) {
+  filasPagesProgramados = [];
   let filasHTML = `
     <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;max-height:400px;overflow-y:auto" id="pagos-programados-lista">
     </div>
@@ -4856,49 +5484,111 @@ async function guardarTablaPagesProgramados(deudaId) {
 
 // Agregar Meta
 async function openAgregarMeta() {
-  db.from('cuentas').select('id, nombre').eq('usuario_id', (await getUsuarioId())).eq('activa', true).then(({ data: cuentas }) => {
-    const cuentasOptions = (cuentas || []).map(cuenta => `<option value="${cuenta.id}">${cuenta.nombre}</option>`).join('');
+  const usuarioId = await getUsuarioId();
+  const { data: cuentas } = await db.from('cuentas').select('id, nombre').eq('usuario_id', usuarioId).eq('activa', true);
+  const cuentasOptions = (cuentas || []).map(cuenta => `<option value="${cuenta.id}">${cuenta.nombre}</option>`).join('');
 
-    openModal('Nueva meta de ahorro', `
-      <div class="form-group">
-        <label class="form-label">Emoji</label>
-        <input class="form-input" id="nm-emoji" type="text" placeholder="🎯" style="max-width:80px" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Nombre de la meta</label>
-        <input class="form-input" id="nm-nombre" type="text" placeholder="Ej: Capital para cachuchas" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">¿Cuánto necesitas?</label>
-        <div class="input-money-wrap"><span class="currency-prefix">$</span>
-        <input class="form-input" id="nm-monto" type="number" placeholder="0.00" min="0" /></div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">¿En qué cuenta ahorrarás?</label>
-        <select class="form-select" id="meta-cuenta-id">
-          ${cuentasOptions}
-        </select>
-      </div>
-      <button class="btn btn-primary" onclick="guardarNuevaMeta()">Guardar meta</button>
-    `);
-  });
+  window._nuevaMetaIcono = 'target';
+  window._nuevaMetaIconPanelOpen = false;
+  window._nuevaMetaDraft = { nombre: '', monto: '', cuenta_id: '' };
+  window._nuevaMetaCuentasOptions = cuentasOptions;
+
+  renderAgregarMetaModal();
 }
 
+function renderAgregarMetaModal() {
+  const icono = window._nuevaMetaIcono || 'target';
+  const panelAbierto = window._nuevaMetaIconPanelOpen;
+  const draft = window._nuevaMetaDraft || { nombre: '', monto: '', cuenta_id: '' };
+
+  openModal('Nueva meta de ahorro', `
+    <div class="form-group">
+      <label class="form-label">Icono</label>
+      <div class="custom-form-row" style="align-items:center">
+        <button type="button" class="emoji-picker-btn" onclick="toggleNuevaMetaIconPanel()">
+          <i data-lucide="${icono}"></i>
+        </button>
+        <span style="font-size:13px;color:var(--text-secondary);margin-left:10px">Toca el icono para cambiarlo</span>
+      </div>
+      ${panelAbierto ? `
+        <div class="icon-panel" style="margin-top:10px">
+          <div class="icon-grid">
+            ${TODOS_ICONOS.map(ic => `
+              <div class="icon-grid-item${icono === ic ? ' selected' : ''}" onclick="selectNuevaMetaIcono('${ic}')">
+                <i data-lucide="${ic}"></i>
+              </div>`).join('')}
+          </div>
+        </div>
+      ` : ''}
+    </div>
+    <div class="form-group">
+      <label class="form-label">Nombre de la meta</label>
+      <input class="form-input" id="nm-nombre" type="text" placeholder="Ej: Capital para cachuchas" value="${draft.nombre}" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">¿Cuánto necesitas?</label>
+      <div class="input-money-wrap"><span class="currency-prefix">$</span>
+      <input class="form-input" id="nm-monto" type="number" placeholder="0.00" min="0" value="${draft.monto}" /></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">¿En qué cuenta ahorrarás?</label>
+      <select class="form-select" id="meta-cuenta-id">
+        <option value="">Sin cuenta vinculada</option>
+        ${window._nuevaMetaCuentasOptions}
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="guardarNuevaMeta()">Guardar meta</button>
+  `);
+
+  const selCuenta = document.getElementById('meta-cuenta-id');
+  if (selCuenta && draft.cuenta_id) selCuenta.value = draft.cuenta_id;
+}
+
+window.toggleNuevaMetaIconPanel = function() {
+  window._nuevaMetaDraft = {
+    nombre: document.getElementById('nm-nombre')?.value || '',
+    monto: document.getElementById('nm-monto')?.value || '',
+    cuenta_id: document.getElementById('meta-cuenta-id')?.value || ''
+  };
+  window._nuevaMetaIconPanelOpen = !window._nuevaMetaIconPanelOpen;
+  renderAgregarMetaModal();
+};
+
+window.selectNuevaMetaIcono = function(ic) {
+  window._nuevaMetaDraft = {
+    nombre: document.getElementById('nm-nombre')?.value || '',
+    monto: document.getElementById('nm-monto')?.value || '',
+    cuenta_id: document.getElementById('meta-cuenta-id')?.value || ''
+  };
+  window._nuevaMetaIcono = ic;
+  window._nuevaMetaIconPanelOpen = false;
+  renderAgregarMetaModal();
+};
+
 async function guardarNuevaMeta() {
-  const emoji = document.getElementById('nm-emoji').value.trim() || '🎯';
+  const emoji = window._nuevaMetaIcono || 'target';
   const nombre = document.getElementById('nm-nombre').value.trim();
   const monto_objetivo = parseFloat(document.getElementById('nm-monto').value);
   const cuenta_id = document.getElementById('meta-cuenta-id')?.value || null;
-  if (!nombre || !monto_objetivo) { showSnackbar('Completa nombre y monto', 'error'); return; }
+  if (!nombre || Number.isNaN(monto_objetivo) || monto_objetivo <= 0) {
+    showSnackbar('Completa nombre y monto', 'error');
+    return;
+  }
 
-  await db.from('metas_ahorro').insert({
+  const { error } = await db.from('metas_ahorro').insert({
     usuario_id: (await getUsuarioId()),
-    emoji, nombre, monto_objetivo, cuenta_id
+    emoji, nombre, monto_objetivo, cuenta_id, activa: true
   });
+
+  if (error) {
+    showSnackbar('No se pudo crear la meta', 'error');
+    return;
+  }
 
   closeModal();
   showSnackbar('Meta creada ✓', 'success');
   await loadMetas();
+  await loadDashboard();
 }
 
 // ---- SWIPE NAVIGATION ----
