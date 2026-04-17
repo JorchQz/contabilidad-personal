@@ -832,33 +832,33 @@ const TODOS_ICONOS = [
 
 function renderStep2nuevo() {
   const TIPOS_INGRESO = [
-    'Salario / Nómina',
-    'Honorarios / Freelance',
-    'Negocio propio',
-    'Horas extra',
-    'Renta de inmueble',
-    'Beca / Apoyo gobierno',
-    'Pensión / Retiro',
-    'Mesada / Apoyo familiar',
+    { nombre: 'Salario / Nómina', icono: 'briefcase' },
+    { nombre: 'Honorarios / Freelance', icono: 'laptop' },
+    { nombre: 'Negocio propio', icono: 'store' },
+    { nombre: 'Horas extra', icono: 'clock' },
+    { nombre: 'Renta de inmueble', icono: 'building-2' },
+    { nombre: 'Beca / Apoyo gobierno', icono: 'graduation-cap' },
+    { nombre: 'Pensión / Retiro', icono: 'landmark' },
+    { nombre: 'Mesada / Apoyo familiar', icono: 'users' },
   ];
 
   setHeader('¿Cómo recibes dinero?', 'Selecciona todas las que apliquen.');
 
   function render(showIconPanel = false, panelForIndex = null) {
-    const customItems = onboardingData.tiposIngreso.filter(x => !TIPOS_INGRESO.includes(x.nombre));
+    const customItems = onboardingData.tiposIngreso.filter(x => !TIPOS_INGRESO.some(t => t.nombre === x.nombre));
     
     const itemsHtml = `
       <div class="income-list">
-        ${TIPOS_INGRESO.map(nombre => {
-          const selected = onboardingData.tiposIngreso.some(x => x.nombre === nombre);
+        ${TIPOS_INGRESO.map(item => {
+          const selected = onboardingData.tiposIngreso.some(x => x.nombre === item.nombre);
           return `
-            <div class="item-row${selected ? ' selected' : ''}" onclick="toggleTipoIngreso('${nombre}')">
-              <span>${nombre}</span>
+            <div class="income-option${selected ? ' selected' : ''}" onclick="toggleTipoIngreso('${item.nombre}','${item.icono}', this)">
+              <span>${item.nombre}</span>
             </div>`;
         }).join('')}
         
         ${customItems.map((item, idx) => `
-          <div class="item-row selected">
+          <div class="income-option selected">
             <span>${item.nombre}</span>
             <button class="btn-remove" onclick="removeTipoIngresoCustom(${idx})" style="margin-left:auto">✕</button>
           </div>`).join('')}
@@ -913,14 +913,15 @@ function renderStep2nuevo() {
   `);
 }
 
-window.toggleTipoIngreso = function(nombre) {
-  const idx = onboardingData.tiposIngreso.findIndex(x => x.nombre === nombre);
-  if (idx >= 0) {
-    onboardingData.tiposIngreso.splice(idx, 1);
+window.toggleTipoIngreso = function(nombre, icono, elemento) {
+  const index = onboardingData.tiposIngreso.findIndex(t => t.nombre === nombre);
+  if (index === -1) {
+    onboardingData.tiposIngreso.push({ nombre, icono });
+    elemento.classList.add('selected');
   } else {
-    onboardingData.tiposIngreso.push({ nombre, icono: 'briefcase' });
+    onboardingData.tiposIngreso.splice(index, 1);
+    elemento.classList.remove('selected');
   }
-  if (window._renderStep2Body) window._renderStep2Body();
 };
 
 window.showCustomIngresoForm = function() {
@@ -985,6 +986,25 @@ const CATEGORIA_ICONOS = {
 };
 
 function renderStep3nuevo() {
+  const GASTOS_FIJOS_SUGERIDOS = [
+    { nombre: 'Renta',              icono: 'home' },
+    { nombre: 'Hipoteca',           icono: 'building-2' },
+    { nombre: 'Luz / CFE',          icono: 'zap' },
+    { nombre: 'Agua',               icono: 'droplets' },
+    { nombre: 'Gas',                icono: 'flame' },
+    { nombre: 'Internet',           icono: 'wifi' },
+    { nombre: 'Teléfono celular',   icono: 'smartphone' },
+    { nombre: 'Netflix',            icono: 'tv' },
+    { nombre: 'Spotify',            icono: 'music' },
+    { nombre: 'Disney+',            icono: 'clapperboard' },
+    { nombre: 'Seguro médico',      icono: 'shield' },
+    { nombre: 'Gimnasio',           icono: 'dumbbell' },
+    { nombre: 'Colegiatura',        icono: 'graduation-cap' },
+    { nombre: 'Seguro de auto',     icono: 'car' },
+    { nombre: 'Tarjeta de crédito', icono: 'credit-card' },
+    { nombre: 'Préstamo personal',  icono: 'banknote' },
+  ];
+
   const GRUPOS = [
     { titulo: 'Hogar', items: ['Renta', 'Luz / CFE', 'Agua', 'Gas', 'Internet', 'Teléfono celular'] },
     { titulo: 'Alimentación', items: ['Despensa', 'Restaurantes', 'Antojitos / snacks', 'Delivery / pedidos'] },
@@ -996,80 +1016,145 @@ function renderStep3nuevo() {
     { titulo: 'Familia y otros', items: ['Hijos', 'Padres / familia', 'Mascotas', 'Regalos', 'Otros'] },
   ];
 
-  setHeader('¿En qué sueles gastar?', 'Elige categorías y define si alguna es gasto fijo.');
+  setHeader('¿En qué sueles gastar?', 'Configura tus gastos fijos y elige tus categorías.');
 
-  window._fixedPanelOpen = null;
+  window._showFijoCustomForm = false;
+  window._fijoCustomNombre = '';
+  window._fijoCustomIcono = 'receipt';
+  window._showFijoIconPanel = false;
+
   window._showCustomCatForm = false;
-  window._showCatIconPanel = false;
   window._selectedCatIcono = 'plus';
   window._customCatNombre = '';
-  window._customCatEsFijo = false;
-  window._customCatFrecuencia = 'mensual';
-  window._customCatDiaPago = null;
-  window._customCatDiaSemana = null;
-  window._customCatMonto = null;
+  window._showCatIconPanel = false;
 
   function render() {
+    const fijosNombres = new Set(onboardingData.gastosFijos.map(f => f.nombre));
     const predefinedNames = GRUPOS.flatMap(g => g.items);
     const customCats = onboardingData.categorias.filter(x => !predefinedNames.includes(x.nombre));
-    const fixedIdx = window._fixedPanelOpen;
-    const fixedCat = Number.isInteger(fixedIdx) ? onboardingData.categorias[fixedIdx] : null;
 
-    const fixedDateField = fixedCat && fixedCat.es_fijo
-      ? (fixedCat.frecuencia === 'semanal'
-        ? `
-            <select class="form-select" id="fijo-dia-semana" onchange="updateCategoriaFijo(${fixedIdx})">
-              <option value="0" ${fixedCat.dia_semana === 0 ? 'selected' : ''}>Domingo</option>
-              <option value="1" ${fixedCat.dia_semana === 1 ? 'selected' : ''}>Lunes</option>
-              <option value="2" ${fixedCat.dia_semana === 2 ? 'selected' : ''}>Martes</option>
-              <option value="3" ${fixedCat.dia_semana === 3 ? 'selected' : ''}>Miércoles</option>
-              <option value="4" ${fixedCat.dia_semana === 4 ? 'selected' : ''}>Jueves</option>
-              <option value="5" ${fixedCat.dia_semana === 5 ? 'selected' : ''}>Viernes</option>
-              <option value="6" ${fixedCat.dia_semana === 6 ? 'selected' : ''}>Sábado</option>
-            </select>
-          `
-        : `
-            <input
-              class="form-input"
-              id="fijo-dia-pago"
-              type="number"
-              min="1"
-              max="${fixedCat.frecuencia === 'quincenal' ? 15 : 31}"
-              value="${fixedCat.dia_pago ?? ''}"
-              placeholder="${fixedCat.frecuencia === 'quincenal' ? 'Día (1-15)' : 'Día del mes (1-31)'}"
-              onchange="updateCategoriaFijo(${fixedIdx})"
-            />
-          `)
-      : '';
+    // ---- Sección 1: Gastos Fijos ----
+    const sugeridosHtml = `
+      <div class="fijo-sugeridos-wrap">
+        ${GASTOS_FIJOS_SUGERIDOS.map(s => {
+          const added = fijosNombres.has(s.nombre);
+          return `<button class="fijo-sugerido-chip${added ? ' added' : ''}" onclick="toggleGastoFijoSugerido('${s.nombre}','${s.icono}')">
+            <i data-lucide="${s.icono}"></i>
+            <span>${s.nombre}</span>
+          </button>`;
+        }).join('')}
+      </div>
+    `;
 
-    const customDateField = window._customCatEsFijo
-      ? (window._customCatFrecuencia === 'semanal'
-        ? `
-            <select class="form-select" id="custom-fijo-dia-semana" onchange="updateCustomFijoFields()">
-              <option value="0" ${window._customCatDiaSemana === 0 ? 'selected' : ''}>Domingo</option>
-              <option value="1" ${window._customCatDiaSemana === 1 ? 'selected' : ''}>Lunes</option>
-              <option value="2" ${window._customCatDiaSemana === 2 ? 'selected' : ''}>Martes</option>
-              <option value="3" ${window._customCatDiaSemana === 3 ? 'selected' : ''}>Miércoles</option>
-              <option value="4" ${window._customCatDiaSemana === 4 ? 'selected' : ''}>Jueves</option>
-              <option value="5" ${window._customCatDiaSemana === 5 ? 'selected' : ''}>Viernes</option>
-              <option value="6" ${window._customCatDiaSemana === 6 ? 'selected' : ''}>Sábado</option>
-            </select>
-          `
-        : `
-            <input
-              class="form-input"
-              id="custom-fijo-dia-pago"
-              type="number"
-              min="1"
-              max="${window._customCatFrecuencia === 'quincenal' ? 15 : 31}"
-              value="${window._customCatDiaPago ?? ''}"
-              placeholder="${window._customCatFrecuencia === 'quincenal' ? 'Día (1-15)' : 'Día del mes (1-31)'}"
-              onchange="updateCustomFijoFields()"
-            />
-          `)
-      : '';
+    const fijosAddedHtml = onboardingData.gastosFijos.length > 0 ? `
+      <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
+        ${onboardingData.gastosFijos.map((f, idx) => {
+          const diaField = f.frecuencia === 'semanal'
+            ? `<select class="form-select" id="gf-dia-${idx}" onchange="updateGastoFijo(${idx})">
+                <option value="0" ${f.dia_semana === 0 ? 'selected':''}>Domingo</option>
+                <option value="1" ${f.dia_semana === 1 ? 'selected':''}>Lunes</option>
+                <option value="2" ${f.dia_semana === 2 ? 'selected':''}>Martes</option>
+                <option value="3" ${f.dia_semana === 3 ? 'selected':''}>Miércoles</option>
+                <option value="4" ${f.dia_semana === 4 ? 'selected':''}>Jueves</option>
+                <option value="5" ${f.dia_semana === 5 ? 'selected':''}>Viernes</option>
+                <option value="6" ${f.dia_semana === 6 ? 'selected':''}>Sábado</option>
+               </select>`
+            : `<input class="form-input" id="gf-dia-${idx}" type="number" min="1" max="${f.frecuencia === 'quincenal' ? 15 : 31}" value="${f.dia_pago ?? ''}" placeholder="${f.frecuencia === 'quincenal' ? 'Día (1–15)' : 'Día del mes'}" onchange="updateGastoFijo(${idx})" />`;
+          return `
+            <div class="fijo-card">
+              <div class="fijo-card-header">
+                <div class="fijo-card-name">
+                  <i data-lucide="${f.icono}"></i>
+                  <span>${f.nombre}</span>
+                </div>
+                <button class="btn-remove" onclick="removeGastoFijo(${idx})">✕</button>
+              </div>
+              <div class="fijo-card-fields">
+                <div class="input-money-wrap">
+                  <span class="currency-prefix">$</span>
+                  <input class="form-input" id="gf-monto-${idx}" type="number" min="0" value="${f.monto ?? ''}" placeholder="Monto" onchange="updateGastoFijo(${idx})" />
+                </div>
+                <select class="form-select" id="gf-freq-${idx}" onchange="updateGastoFijo(${idx})">
+                  <option value="semanal"  ${f.frecuencia === 'semanal'  ? 'selected':''}>Semanal</option>
+                  <option value="quincenal"${f.frecuencia === 'quincenal'? 'selected':''}>Quincenal</option>
+                  <option value="mensual"  ${f.frecuencia === 'mensual'  ? 'selected':''}>Mensual</option>
+                </select>
+                ${diaField}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    ` : '';
+
+    const fijoCustomFormHtml = window._showFijoCustomForm ? `
+      <div class="custom-form" style="margin-top:14px">
+        <div class="custom-form-row">
+          <button class="emoji-picker-btn" onclick="toggleFijoIconPanel()">
+            <i data-lucide="${window._fijoCustomIcono}"></i>
+          </button>
+          <input class="form-input" id="fijo-custom-nombre" value="${window._fijoCustomNombre || ''}" placeholder="Nombre del gasto fijo" oninput="window._fijoCustomNombre=this.value" />
+        </div>
+        ${window._showFijoIconPanel ? `
+          <div class="icon-panel" style="margin-top:12px">
+            <div class="icon-grid">
+              ${TODOS_ICONOS.map(ic => `
+                <div class="icon-grid-item${ic === window._fijoCustomIcono ? ' selected' : ''}" onclick="selectFijoIcono('${ic}')">
+                  <i data-lucide="${ic}"></i>
+                </div>`).join('')}
+            </div>
+          </div>
+        ` : ''}
+        <button class="btn btn-secondary" style="margin-top:12px;width:100%" onclick="addGastoFijoCustom()">+ Agregar</button>
+      </div>
+    ` : `
+      <button class="btn-add-item" style="margin-top:14px" onclick="showFijoCustomForm()">
+        <span>+</span> Agregar personalizado
+      </button>
+    `;
+
+    // ---- Sección 2: Categorías ----
+    const catCustomFormHtml = window._showCustomCatForm ? `
+      <div class="custom-form" style="margin-top:20px">
+        <div class="custom-form-row">
+          <button class="emoji-picker-btn" onclick="toggleCatIconPanel()">
+            ${window._selectedCatIcono === 'plus' ? '+' : `<i data-lucide="${window._selectedCatIcono}"></i>`}
+          </button>
+          <input class="form-input" id="cat3-nombre" value="${window._customCatNombre || ''}" placeholder="Nombre de la categoría" oninput="window._customCatNombre=this.value" />
+        </div>
+        ${window._showCatIconPanel ? `
+          <div class="icon-panel" style="margin-top:12px">
+            <div class="icon-grid">
+              ${TODOS_ICONOS.map(ic => `
+                <div class="icon-grid-item${ic === window._selectedCatIcono ? ' selected' : ''}" onclick="selectCatIcono('${ic}')">
+                  <i data-lucide="${ic}"></i>
+                </div>`).join('')}
+            </div>
+          </div>
+        ` : ''}
+        <button class="btn btn-secondary" style="margin-top:12px;width:100%" onclick="addCategoria3Custom()">+ Agregar</button>
+      </div>
+    ` : `
+      <button class="btn-add-item" style="margin-top:20px" onclick="showCustomCat3Form()">
+        <span>+</span> Agregar categoría propia
+      </button>
+    `;
 
     document.getElementById('onboarding-body').innerHTML = `
+      <div class="step-section-header">
+        <div class="step-section-title">Gastos fijos</div>
+        <div class="step-section-subtitle">Los que pagas sí o sí cada periodo. Añade monto y cuándo vencen.</div>
+      </div>
+      ${sugeridosHtml}
+      ${fijosAddedHtml}
+      ${fijoCustomFormHtml}
+
+      <div class="step-section-divider"></div>
+
+      <div class="step-section-header">
+        <div class="step-section-title">Categorías de gasto</div>
+        <div class="step-section-subtitle">Para etiquetar tus gastos del día a día.</div>
+      </div>
       <div class="category-list">
         ${GRUPOS.map(grupo => `
           <div class="category-group">
@@ -1087,7 +1172,6 @@ function renderStep3nuevo() {
             </div>
           </div>
         `).join('')}
-
         ${customCats.length > 0 ? `
           <div class="category-group">
             <div class="category-group-title">Personalizadas</div>
@@ -1102,93 +1186,7 @@ function renderStep3nuevo() {
           </div>
         ` : ''}
       </div>
-
-      ${onboardingData.categorias.length > 0 ? `
-        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border-light)">
-          <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:10px">Seleccionadas</div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px">
-            ${onboardingData.categorias.map((cat, idx) => `
-              <button class="category-chip${cat.es_fijo ? ' is-fixed' : ''}" onclick="toggleFixedPanel(${idx})">
-                ${cat.nombre}${cat.es_fijo ? '<span style="font-size:11px;margin-left:6px">Fijo</span>' : ''}
-              </button>
-            `).join('')}
-          </div>
-        </div>
-      ` : ''}
-
-      ${fixedCat ? `
-        <div style="margin-top:16px;padding:16px;background:var(--accent-soft);border:1.5px solid var(--border);border-radius:var(--radius-sm)">
-          <div style="font-weight:600;margin-bottom:12px">¿Es un gasto fijo?</div>
-          <div style="display:flex;gap:8px;margin-bottom:12px">
-            <button class="btn ${fixedCat.es_fijo ? 'btn-primary' : 'btn-ghost'}" onclick="setCategoriaFijo(${fixedIdx},true)">Sí</button>
-            <button class="btn ${!fixedCat.es_fijo ? 'btn-primary' : 'btn-ghost'}" onclick="setCategoriaFijo(${fixedIdx},false)">No</button>
-          </div>
-          ${fixedCat.es_fijo ? `
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-              <select class="form-select" id="fijo-freq" onchange="updateCategoriaFijo(${fixedIdx})">
-                <option value="semanal" ${fixedCat.frecuencia === 'semanal' ? 'selected' : ''}>Semanal</option>
-                <option value="quincenal" ${fixedCat.frecuencia === 'quincenal' ? 'selected' : ''}>Quincenal</option>
-                <option value="mensual" ${fixedCat.frecuencia === 'mensual' ? 'selected' : ''}>Mensual</option>
-              </select>
-              ${fixedDateField}
-              <div class="input-money-wrap" style="grid-column:1/-1">
-                <span class="currency-prefix">$</span>
-                <input class="form-input" id="fijo-monto" type="number" min="0" value="${fixedCat.monto_fijo ?? ''}" placeholder="Monto aproximado" onchange="updateCategoriaFijo(${fixedIdx})" />
-              </div>
-            </div>
-          ` : ''}
-        </div>
-      ` : ''}
-
-      ${window._showCustomCatForm ? `
-        <div class="custom-form" style="margin-top:20px">
-          <div class="custom-form-row">
-            <button class="emoji-picker-btn" onclick="toggleCatIconPanel()">
-              ${window._selectedCatIcono === 'plus' ? '+' : `<i data-lucide="${window._selectedCatIcono}"></i>`}
-            </button>
-            <input class="form-input" id="cat3-nombre" value="${window._customCatNombre || ''}" placeholder="Nombre de la categoría" style="margin:0" oninput="updateCustomCatName(this.value)" />
-          </div>
-
-          ${window._showCatIconPanel ? `
-            <div class="icon-panel" style="margin-top:12px">
-              <div class="icon-grid">
-                ${TODOS_ICONOS.map(ic => `
-                  <div class="icon-grid-item${ic === window._selectedCatIcono ? ' selected' : ''}" onclick="selectCatIcono('${ic}')">
-                    <i data-lucide="${ic}"></i>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          ` : ''}
-
-          <div style="font-weight:600;margin:12px 0 8px">¿Es gasto fijo?</div>
-          <div style="display:flex;gap:8px;margin-bottom:12px">
-            <button class="btn ${window._customCatEsFijo ? 'btn-primary' : 'btn-ghost'}" onclick="setCustomCatFijo(true)">Sí</button>
-            <button class="btn ${!window._customCatEsFijo ? 'btn-primary' : 'btn-ghost'}" onclick="setCustomCatFijo(false)">No</button>
-          </div>
-
-          ${window._customCatEsFijo ? `
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-              <select class="form-select" id="custom-fijo-freq" onchange="updateCustomFijoFields()">
-                <option value="semanal" ${window._customCatFrecuencia === 'semanal' ? 'selected' : ''}>Semanal</option>
-                <option value="quincenal" ${window._customCatFrecuencia === 'quincenal' ? 'selected' : ''}>Quincenal</option>
-                <option value="mensual" ${window._customCatFrecuencia === 'mensual' ? 'selected' : ''}>Mensual</option>
-              </select>
-              ${customDateField}
-              <div class="input-money-wrap" style="grid-column:1/-1">
-                <span class="currency-prefix">$</span>
-                <input class="form-input" id="custom-fijo-monto" type="number" min="0" value="${window._customCatMonto ?? ''}" placeholder="Monto aproximado" onchange="updateCustomFijoFields()" />
-              </div>
-            </div>
-          ` : ''}
-
-          <button class="btn btn-secondary" style="margin-top:12px;width:100%" onclick="addCategoria3Custom()">+ Agregar</button>
-        </div>
-      ` : `
-        <button class="btn-add-item" style="margin-top:20px" onclick="showCustomCat3Form()">
-          <span>+</span> Agregar categoría propia
-        </button>
-      `}
+      ${catCustomFormHtml}
     `;
 
     lucide.createIcons();
@@ -1203,65 +1201,80 @@ function renderStep3nuevo() {
   `);
 }
 
+// ---- Gastos Fijos (onboarding) ----
+window.toggleGastoFijoSugerido = function(nombre, icono) {
+  const idx = onboardingData.gastosFijos.findIndex(f => f.nombre === nombre);
+  if (idx >= 0) {
+    onboardingData.gastosFijos.splice(idx, 1);
+  } else {
+    onboardingData.gastosFijos.push({ nombre, icono, monto: null, frecuencia: 'mensual', dia_pago: null, dia_semana: null });
+  }
+  if (window._renderStep3Body) window._renderStep3Body();
+};
+
+window.removeGastoFijo = function(idx) {
+  onboardingData.gastosFijos.splice(idx, 1);
+  if (window._renderStep3Body) window._renderStep3Body();
+};
+
+window.updateGastoFijo = function(idx) {
+  const f = onboardingData.gastosFijos[idx];
+  if (!f) return;
+  const prevFreq = f.frecuencia;
+
+  f.frecuencia = document.getElementById(`gf-freq-${idx}`)?.value || 'mensual';
+  const monto = parseFloat(document.getElementById(`gf-monto-${idx}`)?.value);
+  f.monto = Number.isFinite(monto) ? monto : null;
+
+  if (f.frecuencia === 'semanal') {
+    const diaSemana = parseInt(document.getElementById(`gf-dia-${idx}`)?.value, 10);
+    f.dia_semana = Number.isInteger(diaSemana) ? diaSemana : null;
+    f.dia_pago = null;
+  } else {
+    const diaPago = parseInt(document.getElementById(`gf-dia-${idx}`)?.value, 10);
+    f.dia_pago = Number.isInteger(diaPago) ? diaPago : null;
+    f.dia_semana = null;
+  }
+
+  if (f.frecuencia !== prevFreq && window._renderStep3Body) window._renderStep3Body();
+};
+
+window.showFijoCustomForm = function() {
+  window._showFijoCustomForm = true;
+  window._fijoCustomNombre = '';
+  window._fijoCustomIcono = 'receipt';
+  window._showFijoIconPanel = false;
+  if (window._renderStep3Body) window._renderStep3Body();
+};
+
+window.toggleFijoIconPanel = function() {
+  window._showFijoIconPanel = !window._showFijoIconPanel;
+  if (window._renderStep3Body) window._renderStep3Body();
+};
+
+window.selectFijoIcono = function(icono) {
+  window._fijoCustomIcono = icono;
+  window._showFijoIconPanel = false;
+  if (window._renderStep3Body) window._renderStep3Body();
+};
+
+window.addGastoFijoCustom = function() {
+  const nombre = (window._fijoCustomNombre || document.getElementById('fijo-custom-nombre')?.value || '').trim();
+  if (!nombre) { showSnackbar('Escribe el nombre del gasto fijo', 'error'); return; }
+  onboardingData.gastosFijos.push({ nombre, icono: window._fijoCustomIcono || 'receipt', monto: null, frecuencia: 'mensual', dia_pago: null, dia_semana: null });
+  window._showFijoCustomForm = false;
+  window._fijoCustomNombre = '';
+  if (window._renderStep3Body) window._renderStep3Body();
+};
+
+// ---- Categorías (onboarding) ----
 window.toggleCategoria3 = function(nombre) {
   const idx = onboardingData.categorias.findIndex(x => x.nombre === nombre);
   if (idx >= 0) {
     onboardingData.categorias.splice(idx, 1);
   } else {
-    onboardingData.categorias.push({
-      nombre,
-      icono: CATEGORIA_ICONOS[nombre] || 'package',
-      tipo: 'gasto',
-      es_fijo: false,
-      frecuencia: null,
-      dia_pago: null,
-      dia_semana: null,
-      monto_fijo: null
-    });
+    onboardingData.categorias.push({ nombre, icono: CATEGORIA_ICONOS[nombre] || 'package', tipo: 'gasto' });
   }
-  window._fixedPanelOpen = null;
-  if (window._renderStep3Body) window._renderStep3Body();
-};
-
-window.toggleFixedPanel = function(idx) {
-  window._fixedPanelOpen = window._fixedPanelOpen === idx ? null : idx;
-  if (window._renderStep3Body) window._renderStep3Body();
-};
-
-window.setCategoriaFijo = function(idx, isFijo) {
-  const cat = onboardingData.categorias[idx];
-  if (!cat) return;
-  cat.es_fijo = isFijo;
-  if (isFijo && !cat.frecuencia) cat.frecuencia = 'mensual';
-  if (!isFijo) {
-    cat.frecuencia = null;
-    cat.dia_pago = null;
-    cat.dia_semana = null;
-    cat.monto_fijo = null;
-  }
-  if (window._renderStep3Body) window._renderStep3Body();
-};
-
-window.updateCategoriaFijo = function(idx) {
-  const cat = onboardingData.categorias[idx];
-  if (!cat) return;
-
-  const frecuencia = document.getElementById('fijo-freq')?.value || 'mensual';
-  const monto = parseFloat(document.getElementById('fijo-monto')?.value);
-
-  cat.frecuencia = frecuencia;
-  cat.monto_fijo = Number.isFinite(monto) ? monto : null;
-
-  if (frecuencia === 'semanal') {
-    const diaSemana = parseInt(document.getElementById('fijo-dia-semana')?.value, 10);
-    cat.dia_semana = Number.isInteger(diaSemana) ? diaSemana : null;
-    cat.dia_pago = null;
-  } else {
-    const diaPago = parseInt(document.getElementById('fijo-dia-pago')?.value, 10);
-    cat.dia_pago = Number.isInteger(diaPago) ? diaPago : null;
-    cat.dia_semana = null;
-  }
-
   if (window._renderStep3Body) window._renderStep3Body();
 };
 
@@ -1270,11 +1283,6 @@ window.showCustomCat3Form = function() {
   window._showCatIconPanel = false;
   window._selectedCatIcono = 'plus';
   window._customCatNombre = '';
-  window._customCatEsFijo = false;
-  window._customCatFrecuencia = 'mensual';
-  window._customCatDiaPago = null;
-  window._customCatDiaSemana = null;
-  window._customCatMonto = null;
   if (window._renderStep3Body) window._renderStep3Body();
 };
 
@@ -1289,60 +1297,13 @@ window.selectCatIcono = function(icono) {
   if (window._renderStep3Body) window._renderStep3Body();
 };
 
-window.updateCustomCatName = function(value) {
-  window._customCatNombre = value;
-};
-
-window.setCustomCatFijo = function(isFijo) {
-  window._customCatEsFijo = isFijo;
-  if (!isFijo) {
-    window._customCatDiaPago = null;
-    window._customCatDiaSemana = null;
-    window._customCatMonto = null;
-  }
-  if (window._renderStep3Body) window._renderStep3Body();
-};
-
-window.updateCustomFijoFields = function() {
-  window._customCatFrecuencia = document.getElementById('custom-fijo-freq')?.value || 'mensual';
-
-  const monto = parseFloat(document.getElementById('custom-fijo-monto')?.value);
-  window._customCatMonto = Number.isFinite(monto) ? monto : null;
-
-  if (window._customCatFrecuencia === 'semanal') {
-    const diaSemana = parseInt(document.getElementById('custom-fijo-dia-semana')?.value, 10);
-    window._customCatDiaSemana = Number.isInteger(diaSemana) ? diaSemana : null;
-    window._customCatDiaPago = null;
-  } else {
-    const diaPago = parseInt(document.getElementById('custom-fijo-dia-pago')?.value, 10);
-    window._customCatDiaPago = Number.isInteger(diaPago) ? diaPago : null;
-    window._customCatDiaSemana = null;
-  }
-
-  if (window._renderStep3Body) window._renderStep3Body();
-};
-
 window.addCategoria3Custom = function() {
-  const nombre = (window._customCatNombre || '').trim();
+  const nombre = (window._customCatNombre || document.getElementById('cat3-nombre')?.value || '').trim();
+  if (!nombre) { showSnackbar('Escribe el nombre de la categoría', 'error'); return; }
   const icono = window._selectedCatIcono === 'plus' ? 'package' : (window._selectedCatIcono || 'package');
-
-  if (!nombre) {
-    showSnackbar('Escribe el nombre de la categoría', 'error');
-    return;
-  }
-
-  onboardingData.categorias.push({
-    nombre,
-    icono,
-    tipo: 'gasto',
-    es_fijo: window._customCatEsFijo,
-    frecuencia: window._customCatEsFijo ? window._customCatFrecuencia : null,
-    dia_pago: window._customCatEsFijo ? window._customCatDiaPago : null,
-    dia_semana: window._customCatEsFijo ? window._customCatDiaSemana : null,
-    monto_fijo: window._customCatEsFijo ? window._customCatMonto : null
-  });
-
+  onboardingData.categorias.push({ nombre, icono, tipo: 'gasto' });
   window._showCustomCatForm = false;
+  window._customCatNombre = '';
   if (window._renderStep3Body) window._renderStep3Body();
 };
 
@@ -1971,7 +1932,7 @@ async function finishOnboarding() {
       await db.from('categorias').insert(cats_ingreso);
     }
 
-    // 3. Insertar categorías de gasto
+    // 3. Insertar categorías de gasto (variables)
     if (onboardingData.categorias.length > 0) {
       const cats_gasto = onboardingData.categorias.map(c => ({
         nombre: c.nombre,
@@ -1983,15 +1944,20 @@ async function finishOnboarding() {
       await db.from('categorias').insert(cats_gasto);
     }
 
-    // Insertar gastos fijos desde categorías con es_fijo=true
-    const categoriasConFijo = onboardingData.categorias.filter(c => c.es_fijo === true);
-    if (categoriasConFijo.length > 0) {
-      const fijos = categoriasConFijo.map(c => ({
-        descripcion: c.nombre,
-        monto: c.monto_fijo || 0,
-        frecuencia: c.frecuencia || 'mensual',
-        dia_pago: c.dia_pago ?? null,
-        dia_semana: c.dia_semana ?? null,
+    // Insertar gastos fijos y sus categorías (para el desplegable de registro)
+    if (onboardingData.gastosFijos.length > 0) {
+      const nombresVars = new Set(onboardingData.categorias.map(c => c.nombre));
+      const catsFijos = onboardingData.gastosFijos
+        .filter(f => !nombresVars.has(f.nombre))
+        .map(f => ({ nombre: f.nombre, emoji: f.icono, tipo: 'gasto', usuario_id: userId, es_default: false }));
+      if (catsFijos.length > 0) await db.from('categorias').insert(catsFijos);
+
+      const fijos = onboardingData.gastosFijos.map(f => ({
+        descripcion: f.nombre,
+        monto: f.monto || 0,
+        frecuencia: f.frecuencia || 'mensual',
+        dia_pago: f.dia_pago ?? null,
+        dia_semana: f.dia_semana ?? null,
         usuario_id: userId,
         categoria_id: null
       }));

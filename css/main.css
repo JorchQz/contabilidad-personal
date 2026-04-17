@@ -267,7 +267,7 @@ html, body {
   gap: 8px;
 }
 
-.item-row {
+.income-option {
   display: flex;
   align-items: center;
   padding: 14px 16px;
@@ -278,15 +278,37 @@ html, body {
   transition: all var(--transition);
   font-size: 15px;
   font-weight: 500;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  outline: none;
 }
 
-.item-row:hover {
+@media (hover: hover) {
+  .income-option:hover {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+  }
+}
+
+.income-option.selected {
   border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.income-option:focus,
+.income-option:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.income-option:active {
   background: var(--bg-hover);
 }
 
-.item-row.selected {
-  border-color: var(--accent);
+.income-option.selected:active {
   background: var(--accent-soft);
 }
 
@@ -1343,6 +1365,107 @@ html, body {
 .category-chip.is-fixed {
   border-color: var(--accent);
   background: var(--accent-soft);
+}
+
+/* ---- ONBOARDING: GASTOS FIJOS ---- */
+.step-section-header {
+  margin-bottom: 12px;
+}
+.step-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.step-section-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.step-section-divider {
+  height: 1px;
+  background: var(--border-light);
+  margin: 24px 0 20px;
+}
+
+.fijo-sugeridos-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fijo-sugerido-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition: all var(--transition);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+}
+.fijo-sugerido-chip i {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+@media (hover: hover) {
+  .fijo-sugerido-chip:hover {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+  }
+}
+.fijo-sugerido-chip.added {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.fijo-card {
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+.fijo-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.fijo-card-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.fijo-card-name i {
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.fijo-card-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+@media (max-width: 360px) {
+  .fijo-card-fields {
+    grid-template-columns: 1fr 1fr;
+  }
+  .fijo-card-fields .input-money-wrap {
+    grid-column: 1 / -1;
+  }
 }
 
 .icon-picker-grid {
