@@ -686,6 +686,9 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  letter-spacing: 0.1px;
+}
+
 .btn svg,
 .btn i,
 .btn span,
