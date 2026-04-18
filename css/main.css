@@ -108,7 +108,7 @@
 }
 
 html, body {
-  height: 100%;
+  min-height: 100%;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
@@ -686,7 +686,19 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  letter-spacing: 0.1px;
+.btn svg,
+.btn i,
+.btn span,
+button svg,
+button i,
+button span,
+.income-option svg,
+.income-option i,
+.income-option span,
+.nav-item svg,
+.nav-item i,
+.nav-item span {
+  pointer-events: none;
 }
 
 .btn:active { transform: scale(0.98); }
