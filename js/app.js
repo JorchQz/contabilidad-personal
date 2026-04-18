@@ -867,7 +867,6 @@ function setFooter(html) {
   footer.innerHTML = html;
   // Re-inicializar touch events para todos los botones del footer
   footer.querySelectorAll('button, .btn').forEach(btn => {
-    btn.style.touchAction = 'manipulation';
     btn.style.webkitTapHighlightColor = 'transparent';
   });
 }

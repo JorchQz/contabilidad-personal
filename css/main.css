@@ -274,7 +274,6 @@ html, body {
   pointer-events: auto;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
 }
 
 /* Neutraliza mt-8 cuando el botón vive en el footer del onboarding (el gap ya lo maneja) */
@@ -299,7 +298,6 @@ html, body {
   font-size: 15px;
   font-weight: 500;
   -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
@@ -1462,7 +1460,6 @@ button span,
   font-weight: 600;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
 }
 .fijo-grupo-title {
   display: inline-flex;
