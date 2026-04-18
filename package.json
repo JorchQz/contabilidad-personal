@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "lucide": "^1.8.0"
+    "lucide": "^1.8.0",
+    "puppeteer-core": "^24.41.0"
   }
 }
