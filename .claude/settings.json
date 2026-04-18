@@ -4,7 +4,8 @@
       "Bash(node --check js/app.js)",
       "Bash(node -c js/app.js)",
       "Bash(node --check js/router.js)",
-      "Bash(node --check js/supabase.js)"
+      "Bash(node --check js/supabase.js)",
+      "Bash(node -e ' *)"
     ]
   }
 }
