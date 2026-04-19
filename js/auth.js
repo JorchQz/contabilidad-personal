@@ -1,7 +1,7 @@
 // js/auth.js — Módulo de Autenticación
 import { db } from './supabase.js';
-import { renderLucideIcons } from './app.js';
-import { renderApp, renderOnboarding } from './app.js';
+import { renderLucideIcons, renderApp } from './app.js';
+import { renderOnboarding } from './onboarding.js';
 
 export function renderAuth() {
   const app = document.getElementById('app');
