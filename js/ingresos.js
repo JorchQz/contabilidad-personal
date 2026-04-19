@@ -12,10 +12,10 @@ import {
   setCatState,
   getCurrentCatId,
   loadDashboard,
-  loadDeudas,
   getPagosPendientes,
 } from './app.js';
 import { loadCuentas } from './cuentas.js';
+import { loadDeudas } from './deudas.js';
 
 let currentIngresoTipo = 'otro';
 

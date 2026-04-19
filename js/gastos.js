@@ -9,12 +9,12 @@ import {
   openModal,
   closeModal,
   loadDashboard,
-  loadDeudas,
-  loadMetas,
   actualizarBotonCategoriaSelector,
   setCatState,
   getCurrentCatId
 } from './app.js';
+import { loadDeudas } from './deudas.js';
+import { loadMetas } from './metas.js';
 
 // ---- CATÁLOGO DE GASTOS FIJOS ----
 export const GASTOS_FIJOS_CATALOGO = [
