@@ -5,6 +5,8 @@ import {
   openModal, closeModal, openActionSheet, loadDashboard
 } from './app.js';
 
+let currentEditDeudaId = null;
+
 export async function loadDeudas() {
   const uid = (await getUsuarioId());
   const { data: deudas } = await db.from('deudas').select('*').eq('usuario_id', uid).eq('activa', true).order('created_at');
@@ -159,6 +161,8 @@ function renderCamposFechaEditarDeuda() {
 }
 
 async function openEditarDeuda(deudaId) {
+  currentEditDeudaId = deudaId;
+
   const { data: deuda, error } = await db
     .from('deudas')
     .select('id, acreedor, monto_actual, tipo_pago, dia_pago, dia_semana, monto_pago, tipo_deuda')
@@ -167,6 +171,7 @@ async function openEditarDeuda(deudaId) {
     .maybeSingle();
 
   if (error || !deuda) {
+    currentEditDeudaId = null;
     showSnackbar('No se pudo cargar la deuda', 'error');
     return;
   }
@@ -205,7 +210,7 @@ async function openEditarDeuda(deudaId) {
     </div>
     ${formFrecuencia}
     ${esTabla ? '<p class="form-hint" style="margin-bottom:8px">Esta deuda tiene una tabla de pagos programados.</p>' : ''}
-    <button class="btn btn-primary" onclick="guardarEdicionDeuda('${deuda.id}', ${esTabla})">Guardar cambios</button>
+    <button class="btn btn-primary" onclick="guardarEdicionDeuda(${esTabla})">Guardar cambios</button>
   `);
 
   if (!esTabla) {
@@ -227,7 +232,7 @@ async function openEditarDeuda(deudaId) {
   renderLucideIcons();
 }
 
-async function guardarEdicionDeuda(deudaId, esTabla = false) {
+async function guardarEdicionDeuda(esTabla = false) {
   const acreedor = document.getElementById('ed-acreedor')?.value.trim();
   const monto_actual = parseFloat(document.getElementById('ed-monto')?.value);
 
@@ -276,6 +281,9 @@ async function guardarEdicionDeuda(deudaId, esTabla = false) {
     payload.dia_semana = dia_semana;
     payload.monto_pago = monto_pago;
   }
+
+  const deudaId = currentEditDeudaId;
+  currentEditDeudaId = null;
 
   const { error } = await db
     .from('deudas')

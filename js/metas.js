@@ -8,6 +8,8 @@ import {
 import { getSaldoCuentaEspecifica } from './balance.js';
 import { loadCuentas } from './cuentas.js';
 
+let currentEditMetaId = null;
+
 const TODOS_ICONOS = [
   'briefcase','laptop','store','clock','building-2','graduation-cap',
   'landmark','users','home','zap','droplets','flame','wifi','smartphone',
@@ -78,7 +80,7 @@ export async function loadMetas() {
 
 function openMetaActions(metaId) {
   openActionSheet('Opciones de meta', [
-    { label: 'Editar', icon: 'pencil', fullWidth: true, onClick: `openEditarMeta('${metaId}')` },
+    { label: 'Editar', icon: 'pencil', fullWidth: true, onClick: `openAgregarMeta('${metaId}')` },
     { label: 'Eliminar', icon: 'trash-2', onClick: `eliminarMeta('${metaId}')`, danger: true }
   ]);
 }
@@ -202,137 +204,6 @@ async function guardarAbonoMeta(metaId) {
   await loadCuentas();
 }
 
-async function openEditarMeta(metaId) {
-  const [
-    { data: meta, error },
-    { data: cuentas }
-  ] = await Promise.all([
-    db
-      .from('metas_ahorro')
-      .select('id, nombre, emoji, monto_objetivo, cuenta_id')
-      .eq('id', metaId)
-      .eq('usuario_id', (await getUsuarioId()))
-      .maybeSingle(),
-    db.from('cuentas').select('id, nombre').eq('usuario_id', (await getUsuarioId())).eq('activa', true)
-  ]);
-
-  if (error || !meta) {
-    showSnackbar('No se pudo cargar la meta', 'error');
-    return;
-  }
-
-  const cuentasOptions = (cuentas || []).map(cuenta => `<option value="${cuenta.id}" ${cuenta.id === meta.cuenta_id ? 'selected' : ''}>${cuenta.nombre}</option>`).join('');
-  const sinCuentaSelected = !meta.cuenta_id ? 'selected' : '';
-  const iconoInicial = (meta.emoji && /^[a-z][a-z0-9-]*$/.test(meta.emoji)) ? meta.emoji : 'target';
-
-  window._editMetaIcono = iconoInicial;
-  window._editMetaIconPanelOpen = false;
-  window._editMetaMeta = { ...meta, cuentasOptions, sinCuentaSelected };
-
-  renderEditarMetaModal();
-}
-
-function renderEditarMetaModal() {
-  const meta = window._editMetaMeta;
-  const icono = window._editMetaIcono;
-  const panelAbierto = window._editMetaIconPanelOpen;
-
-  openModal('Editar meta', `
-    <div class="form-group">
-      <label class="form-label">Icono</label>
-      <div class="custom-form-row" style="align-items:center">
-        <button type="button" class="emoji-picker-btn" onclick="toggleEditMetaIconPanel()">
-          <i data-lucide="${icono}"></i>
-        </button>
-        <span style="font-size:13px;color:var(--text-secondary);margin-left:10px">Toca el icono para cambiarlo</span>
-      </div>
-      ${panelAbierto ? `
-        <div class="icon-panel" style="margin-top:10px">
-          <div class="icon-grid">
-            ${TODOS_ICONOS.map(ic => `
-              <div class="icon-grid-item${icono === ic ? ' selected' : ''}" onclick="selectEditMetaIcono('${ic}')">
-                <i data-lucide="${ic}"></i>
-              </div>`).join('')}
-          </div>
-        </div>
-      ` : ''}
-    </div>
-    <div class="form-group">
-      <label class="form-label">Nombre</label>
-      <input class="form-input" id="em-nombre" type="text" value="${meta.nombre || ''}" />
-    </div>
-    <div class="form-group">
-      <label class="form-label">Monto objetivo</label>
-      <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="em-monto" type="number" min="0" value="${Number(meta.monto_objetivo || 0)}" /></div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">¿En qué cuenta ahorrarás?</label>
-      <select class="form-select" id="meta-cuenta-id">
-        <option value="" ${meta.sinCuentaSelected}>Sin cuenta vinculada</option>
-        ${meta.cuentasOptions}
-      </select>
-    </div>
-    <button class="btn btn-primary" onclick="guardarEdicionMeta('${meta.id}')">Guardar cambios</button>
-  `);
-}
-
-window.toggleEditMetaIconPanel = function() {
-  const nombre = document.getElementById('em-nombre')?.value;
-  const monto = document.getElementById('em-monto')?.value;
-  const cuenta = document.getElementById('meta-cuenta-id')?.value;
-  if (nombre !== undefined) window._editMetaMeta.nombre = nombre;
-  if (monto !== undefined) window._editMetaMeta.monto_objetivo = monto;
-  window._editMetaIconPanelOpen = !window._editMetaIconPanelOpen;
-  renderEditarMetaModal();
-  if (cuenta !== undefined) {
-    const sel = document.getElementById('meta-cuenta-id');
-    if (sel) sel.value = cuenta;
-  }
-};
-
-window.selectEditMetaIcono = function(ic) {
-  const nombre = document.getElementById('em-nombre')?.value;
-  const monto = document.getElementById('em-monto')?.value;
-  const cuenta = document.getElementById('meta-cuenta-id')?.value;
-  if (nombre !== undefined) window._editMetaMeta.nombre = nombre;
-  if (monto !== undefined) window._editMetaMeta.monto_objetivo = monto;
-  window._editMetaIcono = ic;
-  window._editMetaIconPanelOpen = false;
-  renderEditarMetaModal();
-  if (cuenta !== undefined) {
-    const sel = document.getElementById('meta-cuenta-id');
-    if (sel) sel.value = cuenta;
-  }
-};
-
-async function guardarEdicionMeta(metaId) {
-  const emoji = window._editMetaIcono || 'target';
-  const nombre = document.getElementById('em-nombre')?.value.trim();
-  const monto_objetivo = parseFloat(document.getElementById('em-monto')?.value);
-  const cuenta_id = document.getElementById('meta-cuenta-id')?.value || null;
-
-  if (!nombre || Number.isNaN(monto_objetivo) || monto_objetivo <= 0) {
-    showSnackbar('Completa nombre y monto objetivo', 'error');
-    return;
-  }
-
-  const { error } = await db
-    .from('metas_ahorro')
-    .update({ emoji, nombre, monto_objetivo, cuenta_id: cuenta_id || null })
-    .eq('id', metaId)
-    .eq('usuario_id', (await getUsuarioId()));
-
-  if (error) {
-    showSnackbar('No se pudo actualizar la meta', 'error');
-    return;
-  }
-
-  closeModal();
-  showSnackbar('Meta actualizada ✓', 'success');
-  await loadMetas();
-  await loadDashboard();
-}
 
 async function eliminarMeta(metaId) {
   if (!window.confirm('¿Eliminar esta meta?')) return;
@@ -354,29 +225,55 @@ async function eliminarMeta(metaId) {
   await loadDashboard();
 }
 
-async function openAgregarMeta() {
+async function openAgregarMeta(metaId = null) {
   const usuarioId = await getUsuarioId();
   const { data: cuentas } = await db.from('cuentas').select('id, nombre').eq('usuario_id', usuarioId).eq('activa', true);
-  const cuentasOptions = (cuentas || []).map(cuenta => `<option value="${cuenta.id}">${cuenta.nombre}</option>`).join('');
 
-  window._nuevaMetaIcono = 'target';
-  window._nuevaMetaIconPanelOpen = false;
-  window._nuevaMetaDraft = { nombre: '', monto: '', cuenta_id: '' };
-  window._nuevaMetaCuentasOptions = cuentasOptions;
+  currentEditMetaId = metaId || null;
 
-  renderAgregarMetaModal();
+  let draft = { nombre: '', monto: '', cuenta_id: '' };
+  let iconoInicial = 'target';
+
+  if (metaId) {
+    const { data: meta, error } = await db
+      .from('metas_ahorro')
+      .select('id, nombre, emoji, monto_objetivo, cuenta_id')
+      .eq('id', metaId)
+      .eq('usuario_id', usuarioId)
+      .maybeSingle();
+
+    if (error || !meta) {
+      currentEditMetaId = null;
+      showSnackbar('No se pudo cargar la meta', 'error');
+      return;
+    }
+
+    draft = { nombre: meta.nombre || '', monto: meta.monto_objetivo != null ? Number(meta.monto_objetivo) : '', cuenta_id: meta.cuenta_id || '' };
+    iconoInicial = (meta.emoji && /^[a-z][a-z0-9-]*$/.test(meta.emoji)) ? meta.emoji : 'target';
+  }
+
+  const cuentasOptions = (cuentas || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+
+  window._metaIcono = iconoInicial;
+  window._metaIconPanelOpen = false;
+  window._metaDraft = draft;
+  window._metaCuentasOptions = cuentasOptions;
+
+  renderMetaModal();
 }
 
-function renderAgregarMetaModal() {
-  const icono = window._nuevaMetaIcono || 'target';
-  const panelAbierto = window._nuevaMetaIconPanelOpen;
-  const draft = window._nuevaMetaDraft || { nombre: '', monto: '', cuenta_id: '' };
+function renderMetaModal() {
+  const icono = window._metaIcono || 'target';
+  const panelAbierto = window._metaIconPanelOpen;
+  const draft = window._metaDraft || { nombre: '', monto: '', cuenta_id: '' };
+  const titulo = currentEditMetaId ? 'Editar meta' : 'Nueva meta de ahorro';
+  const btnLabel = currentEditMetaId ? 'Guardar cambios' : 'Guardar meta';
 
-  openModal('Nueva meta de ahorro', `
+  openModal(titulo, `
     <div class="form-group">
       <label class="form-label">Icono</label>
       <div class="custom-form-row" style="align-items:center">
-        <button type="button" class="emoji-picker-btn" onclick="toggleNuevaMetaIconPanel()">
+        <button type="button" class="emoji-picker-btn" onclick="toggleMetaIconPanel()">
           <i data-lucide="${icono}"></i>
         </button>
         <span style="font-size:13px;color:var(--text-secondary);margin-left:10px">Toca el icono para cambiarlo</span>
@@ -385,7 +282,7 @@ function renderAgregarMetaModal() {
         <div class="icon-panel" style="margin-top:10px">
           <div class="icon-grid">
             ${TODOS_ICONOS.map(ic => `
-              <div class="icon-grid-item${icono === ic ? ' selected' : ''}" onclick="selectNuevaMetaIcono('${ic}')">
+              <div class="icon-grid-item${icono === ic ? ' selected' : ''}" onclick="selectMetaIcono('${ic}')">
                 <i data-lucide="${ic}"></i>
               </div>`).join('')}
           </div>
@@ -405,69 +302,82 @@ function renderAgregarMetaModal() {
       <label class="form-label">¿En qué cuenta ahorrarás?</label>
       <select class="form-select" id="meta-cuenta-id">
         <option value="">Sin cuenta vinculada</option>
-        ${window._nuevaMetaCuentasOptions}
+        ${window._metaCuentasOptions}
       </select>
     </div>
-    <button class="btn btn-primary" onclick="guardarNuevaMeta()">Guardar meta</button>
+    <button class="btn btn-primary" onclick="guardarMeta()">${btnLabel}</button>
   `);
 
   const selCuenta = document.getElementById('meta-cuenta-id');
   if (selCuenta && draft.cuenta_id) selCuenta.value = draft.cuenta_id;
 }
 
-window.toggleNuevaMetaIconPanel = function() {
-  window._nuevaMetaDraft = {
+window.toggleMetaIconPanel = function() {
+  window._metaDraft = {
     nombre: document.getElementById('nm-nombre')?.value || '',
     monto: document.getElementById('nm-monto')?.value || '',
     cuenta_id: document.getElementById('meta-cuenta-id')?.value || ''
   };
-  window._nuevaMetaIconPanelOpen = !window._nuevaMetaIconPanelOpen;
-  renderAgregarMetaModal();
+  window._metaIconPanelOpen = !window._metaIconPanelOpen;
+  renderMetaModal();
 };
 
-window.selectNuevaMetaIcono = function(ic) {
-  window._nuevaMetaDraft = {
+window.selectMetaIcono = function(ic) {
+  window._metaDraft = {
     nombre: document.getElementById('nm-nombre')?.value || '',
     monto: document.getElementById('nm-monto')?.value || '',
     cuenta_id: document.getElementById('meta-cuenta-id')?.value || ''
   };
-  window._nuevaMetaIcono = ic;
-  window._nuevaMetaIconPanelOpen = false;
-  renderAgregarMetaModal();
+  window._metaIcono = ic;
+  window._metaIconPanelOpen = false;
+  renderMetaModal();
 };
 
-async function guardarNuevaMeta() {
-  const emoji = window._nuevaMetaIcono || 'target';
-  const nombre = document.getElementById('nm-nombre').value.trim();
-  const monto_objetivo = parseFloat(document.getElementById('nm-monto').value);
+async function guardarMeta() {
+  const emoji = window._metaIcono || 'target';
+  const nombre = document.getElementById('nm-nombre')?.value.trim();
+  const monto_objetivo = parseFloat(document.getElementById('nm-monto')?.value);
   const cuenta_id = document.getElementById('meta-cuenta-id')?.value || null;
+
   if (!nombre || Number.isNaN(monto_objetivo) || monto_objetivo <= 0) {
     showSnackbar('Completa nombre y monto', 'error');
     return;
   }
 
-  const { error } = await db.from('metas_ahorro').insert({
-    usuario_id: (await getUsuarioId()),
-    emoji, nombre, monto_objetivo, cuenta_id, activa: true
-  });
+  const usuarioId = await getUsuarioId();
 
-  if (error) {
-    showSnackbar('No se pudo crear la meta', 'error');
-    return;
+  if (currentEditMetaId) {
+    const metaId = currentEditMetaId;
+    currentEditMetaId = null;
+
+    const { error } = await db
+      .from('metas_ahorro')
+      .update({ emoji, nombre, monto_objetivo, cuenta_id: cuenta_id || null })
+      .eq('id', metaId)
+      .eq('usuario_id', usuarioId);
+
+    if (error) { showSnackbar('No se pudo actualizar la meta', 'error'); return; }
+    closeModal();
+    showSnackbar('Meta actualizada ✓', 'success');
+  } else {
+    const { error } = await db.from('metas_ahorro').insert({
+      usuario_id: usuarioId,
+      emoji, nombre, monto_objetivo, cuenta_id, activa: true
+    });
+
+    if (error) { showSnackbar('No se pudo crear la meta', 'error'); return; }
+    closeModal();
+    showSnackbar('Meta creada ✓', 'success');
   }
 
-  closeModal();
-  showSnackbar('Meta creada ✓', 'success');
   await loadMetas();
   await loadDashboard();
 }
 
 window.openMenuMeta = openMenuMeta;
-window.openEditarMeta = openEditarMeta;
 window.eliminarMeta = eliminarMeta;
-window.guardarEdicionMeta = guardarEdicionMeta;
 window.openAgregarMeta = openAgregarMeta;
-window.guardarNuevaMeta = guardarNuevaMeta;
+window.guardarMeta = guardarMeta;
 window.renderMetaAbonoHint = renderMetaAbonoHint;
 window.guardarAbonoMeta = guardarAbonoMeta;
 window.openAbonarMeta = openAbonarMeta;
