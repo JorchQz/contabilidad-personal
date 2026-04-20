@@ -32,6 +32,7 @@ import {
   toggleCamposPrestamo,
   setCurrentIngresoTipo
 } from './ingresos.js';
+import { loadPresupuestos } from './presupuestos.js';
 
 // NOTA PARA EL DESARROLLADOR — ejecutar en Supabase SQL Editor antes de usar pago único:
 // ALTER TABLE deudas DROP CONSTRAINT IF EXISTS deudas_tipo_pago_check;
@@ -156,6 +157,7 @@ const fabConfig = {
   metas: [
     { icon: 'plus', label: 'Nueva meta', action: 'openAgregarMeta()' }
   ],
+  presupuestos: null,
   fijos: [
     { icon: 'plus', label: 'Nuevo fijo', action: 'openAgregarGastoFijo()' }
   ],
@@ -855,6 +857,7 @@ window.resetApp = resetApp;
 window.closeFabMenu = closeFabMenu;
 window.showPage = showPage;
 window.updateFab = updateFab;
+window.loadPresupuestos = loadPresupuestos;
 
 // ---- RENDER APP PRINCIPAL ----
 export async function renderApp() {
@@ -867,6 +870,7 @@ export async function renderApp() {
     <div id="page-cuentas" class="page"></div>
     <div id="page-deudas" class="page"></div>
     <div id="page-metas" class="page"></div>
+    <div id="page-presupuestos" class="page"></div>
     <div id="page-fijos" class="page"></div>
     <div id="page-ajustes" class="page"></div>
   `;
@@ -878,6 +882,7 @@ export async function renderApp() {
   await loadCuentas();
   await loadDeudas();
   await loadMetas();
+  await loadPresupuestos();
   await loadFijos();
   loadGastos();
   await loadIngresos();

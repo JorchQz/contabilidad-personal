@@ -1,6 +1,6 @@
 // js/router.js — Navegación entre páginas (ES module)
 
-const PAGES = ['dashboard', 'gastos', 'ingresos', 'deudas', 'metas', 'fijos', 'cuentas', 'ajustes'];
+const PAGES = ['dashboard', 'gastos', 'ingresos', 'deudas', 'metas', 'presupuestos', 'fijos', 'cuentas', 'ajustes'];
 
 export function showPage(pageId) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -22,6 +22,7 @@ export function showPage(pageId) {
 
   if (window.lucide) lucide.createIcons();
   if (typeof window.updateFab === 'function') window.updateFab(pageId);
+  if (pageId === 'presupuestos' && typeof window.loadPresupuestos === 'function') window.loadPresupuestos();
   window.scrollTo(0, 0);
 }
 
@@ -32,6 +33,7 @@ export function renderNav() {
     { id: 'ingresos', icon: `<i data-lucide="trending-up"></i>`, label: 'Ingresos' },
     { id: 'deudas', icon: `<i data-lucide="credit-card"></i>`, label: 'Deudas' },
     { id: 'metas', icon: `<i data-lucide="target"></i>`, label: 'Metas' },
+    { id: 'presupuestos', icon: `<i data-lucide="pie-chart"></i>`, label: 'Presupuestos' },
     { id: 'fijos', icon: `<i data-lucide="pin"></i>`, label: 'Fijos' },
     { id: 'cuentas', icon: `<i data-lucide="wallet"></i>`, label: 'Cuentas' },
     { id: 'ajustes', icon: `<i data-lucide="settings"></i>`, label: 'Ajustes' }
