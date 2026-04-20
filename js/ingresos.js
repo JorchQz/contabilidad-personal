@@ -12,8 +12,8 @@ import {
   setCatState,
   getCurrentCatId,
   loadDashboard,
-  getPagosPendientes,
 } from './app.js';
+import { getPagosPendientes } from './balance.js';
 import { loadCuentas } from './cuentas.js';
 import { loadDeudas } from './deudas.js';
 

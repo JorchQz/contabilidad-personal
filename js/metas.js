@@ -3,8 +3,9 @@ import { db, getUsuarioId } from './supabase.js';
 import {
   formatMXN, showSnackbar, renderLucideIcons,
   openModal, closeModal, openActionSheet,
-  renderEmojiOrIcon, getSaldoCuentaEspecifica, loadDashboard
+  renderEmojiOrIcon, loadDashboard
 } from './app.js';
+import { getSaldoCuentaEspecifica } from './balance.js';
 import { loadCuentas } from './cuentas.js';
 
 const TODOS_ICONOS = [
