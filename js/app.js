@@ -33,6 +33,7 @@ import {
   setCurrentIngresoTipo
 } from './ingresos.js';
 import { loadPresupuestos } from './presupuestos.js';
+import { renderGraficaGastos } from './graficas.js';
 
 // NOTA PARA EL DESARROLLADOR — ejecutar en Supabase SQL Editor antes de usar pago único:
 // ALTER TABLE deudas DROP CONSTRAINT IF EXISTS deudas_tipo_pago_check;
@@ -435,6 +436,14 @@ export async function loadDashboard() {
       </div>
     </div>
 
+    <div style="padding: 0 16px; margin-bottom: 16px">
+      <p class="section-title">Gastos del mes por categoría</p>
+      <div class="card" style="padding:16px;position:relative">
+        <canvas id="gastosChart" style="max-height:280px"></canvas>
+        <p class="graficas-empty form-hint" style="display:none;text-align:center;margin:0">Sin gastos registrados este mes</p>
+      </div>
+    </div>
+
     <div style="padding: 0 16px; margin-bottom: 8px">
       <p class="section-title">Pagos próximos</p>
       ${proximaFechaCobro ? `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Para tu cobro del ${proximaFechaCobro.toLocaleDateString('es-MX', { day: 'numeric', month: 'long' })}</div>` : ''}
@@ -482,6 +491,9 @@ export async function loadDashboard() {
 
   renderLucideIcons();
   if (window.lucide) lucide.createIcons();
+
+  const canvas = document.getElementById('gastosChart');
+  if (canvas) renderGraficaGastos(canvas);
 }
 
 function setFabMainIcon(isOpen) {
