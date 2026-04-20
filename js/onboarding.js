@@ -45,6 +45,31 @@ export function renderOnboarding() {
       <div class="onboarding-footer" id="onboarding-footer"></div>
     </div>
   `;
+
+  // Listener delegado persistente — sobrevive cualquier innerHTML en los hijos
+  document.getElementById('onboarding-body').addEventListener('click', e => {
+    // Step 1: tarjetas de tipo de ingreso
+    const incomeCard = e.target.closest('.income-option[data-nombre]');
+    if (incomeCard) {
+      const nombre = incomeCard.dataset.nombre;
+      const icono = incomeCard.dataset.icono || 'briefcase';
+      const index = onboardingData.tiposIngreso.findIndex(t => t.nombre === nombre);
+      if (index === -1) {
+        onboardingData.tiposIngreso.push({ nombre, icono });
+        incomeCard.classList.add('selected');
+      } else {
+        onboardingData.tiposIngreso.splice(index, 1);
+        incomeCard.classList.remove('selected');
+      }
+      return;
+    }
+    // Step 3: chips de gastos fijos sugeridos
+    const fijoChip = e.target.closest('.fijo-sugerido-chip');
+    if (fijoChip) {
+      window.toggleGastoFijoSugerido(fijoChip);
+    }
+  });
+
   renderStep(1);
 }
 
@@ -111,7 +136,9 @@ function renderStep2nuevo() {
         ${TIPOS_INGRESO_DEFAULT.map(item => {
           const selected = onboardingData.tiposIngreso.some(x => x.nombre === item.nombre);
           return `
-            <div class="income-option${selected ? ' selected' : ''}" onclick="toggleTipoIngreso('${item.nombre}','${item.icono}', this)">
+            <div class="income-option${selected ? ' selected' : ''}"
+                 data-nombre="${item.nombre.replace(/"/g, '&quot;')}"
+                 data-icono="${item.icono}">
               <span>${item.nombre}</span>
             </div>`;
         }).join('')}
@@ -225,9 +252,9 @@ function renderStep3nuevo() {
                   ${grupo.items.map(it => {
                     const added = fijosNombres.has(it.nombre);
                     const meta = JSON.stringify({ nombre: it.nombre, icono: it.icono, frecuencia: it.frecuencia || 'mensual', montoVariable: !!it.montoVariable }).replace(/"/g, '&quot;');
-                    return `<button class="fijo-sugerido-chip${added ? ' added' : ''}" onclick="toggleGastoFijoSugerido(this)" data-item="${meta}">
-                      <i data-lucide="${it.icono}"></i>
-                      <span>${it.nombre}</span>
+                    return `<button class="fijo-sugerido-chip${added ? ' added' : ''}" data-item="${meta}" type="button">
+                      <i data-lucide="${it.icono}" style="pointer-events:none"></i>
+                      <span style="pointer-events:none">${it.nombre}</span>
                     </button>`;
                   }).join('')}
                 </div>

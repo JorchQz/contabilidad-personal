@@ -34,6 +34,7 @@ import {
 } from './ingresos.js';
 import { loadPresupuestos } from './presupuestos.js';
 import { renderGraficaGastos } from './graficas.js';
+import { exportarDatosCSV } from './export.js';
 
 // NOTA PARA EL DESARROLLADOR — ejecutar en Supabase SQL Editor antes de usar pago único:
 // ALTER TABLE deudas DROP CONSTRAINT IF EXISTS deudas_tipo_pago_check;
@@ -711,6 +712,14 @@ async function loadAjustes() {
         <div style="font-weight:600">JM Finance v1.0</div>
       </div>
 
+      <div class="card" style="margin-bottom:12px">
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Exportar datos</div>
+        <button class="btn btn-secondary" onclick="exportarDatosCSV()" style="width:100%">
+          <i data-lucide="download" style="width:16px;height:16px;pointer-events:none"></i>
+          <span>Descargar Historial (CSV)</span>
+        </button>
+      </div>
+
       <button class="btn btn-danger" onclick="resetApp()">Resetear datos (desarrollo)</button>
     </div>
   `;
@@ -864,6 +873,7 @@ window.togglePagoPendienteExpand = togglePagoPendienteExpand;
 window.abrirPagoPendienteDeuda = abrirPagoPendienteDeuda;
 window.openMarcarPagoFijo = openMarcarPagoFijo;
 window.confirmarMarcarPagoFijo = confirmarMarcarPagoFijo;
+window.exportarDatosCSV = exportarDatosCSV;
 window.toggleTheme = toggleTheme;
 window.resetApp = resetApp;
 window.closeFabMenu = closeFabMenu;
