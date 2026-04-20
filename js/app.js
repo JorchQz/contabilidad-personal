@@ -1,5 +1,6 @@
 // js/app.js — Inicialización y onboarding
 import { db, getUsuarioId } from './supabase.js';
+import { showPage, renderNav, initSwipeNavigation } from './router.js';
 import {
   calcularCuentasConSaldo,
   getCuentaIcon,
@@ -852,46 +853,8 @@ window.confirmarMarcarPagoFijo = confirmarMarcarPagoFijo;
 window.toggleTheme = toggleTheme;
 window.resetApp = resetApp;
 window.closeFabMenu = closeFabMenu;
-
-// ---- SWIPE NAVIGATION ----
-let _swipeInitialized = false;
-
-function initSwipeNavigation() {
-  if (_swipeInitialized) return;
-  _swipeInitialized = true;
-
-  const PAGES_ORDER = ['dashboard', 'gastos', 'ingresos', 'deudas', 'metas', 'fijos', 'cuentas', 'ajustes'];
-
-  let touchStartX = 0;
-  let touchStartY = 0;
-
-  document.addEventListener('touchstart', (e) => {
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-  }, { passive: true });
-
-  document.addEventListener('touchend', (e) => {
-    const dx = e.changedTouches[0].clientX - touchStartX;
-    const dy = e.changedTouches[0].clientY - touchStartY;
-
-    if (Math.abs(dx) < 50) return;
-    if (Math.abs(dy) > Math.abs(dx)) return;
-
-    const target = e.target;
-    if (target.closest('.bottom-nav')) return;
-    if (target.closest('.category-grid')) return;
-
-    const currentPage = document.querySelector('.page.active')?.id?.replace('page-', '');
-    const currentIndex = PAGES_ORDER.indexOf(currentPage);
-    if (currentIndex === -1) return;
-
-    if (dx < 0 && currentIndex < PAGES_ORDER.length - 1) {
-      showPage(PAGES_ORDER[currentIndex + 1]);
-    } else if (dx > 0 && currentIndex > 0) {
-      showPage(PAGES_ORDER[currentIndex - 1]);
-    }
-  }, { passive: true });
-}
+window.showPage = showPage;
+window.updateFab = updateFab;
 
 // ---- RENDER APP PRINCIPAL ----
 export async function renderApp() {

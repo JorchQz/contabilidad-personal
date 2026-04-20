@@ -1,8 +1,8 @@
-// js/router.js — Navegación entre páginas
+// js/router.js — Navegación entre páginas (ES module)
 
 const PAGES = ['dashboard', 'gastos', 'ingresos', 'deudas', 'metas', 'fijos', 'cuentas', 'ajustes'];
 
-function showPage(pageId) {
+export function showPage(pageId) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
@@ -20,16 +20,12 @@ function showPage(pageId) {
     });
   }
 
-  if (window.lucide) {
-    lucide.createIcons();
-  }
-
-  if (typeof updateFab === 'function') updateFab(pageId);
-
+  if (window.lucide) lucide.createIcons();
+  if (typeof window.updateFab === 'function') window.updateFab(pageId);
   window.scrollTo(0, 0);
 }
 
-function renderNav() {
+export function renderNav() {
   const navItems = [
     { id: 'dashboard', icon: `<i data-lucide="layout-dashboard"></i>`, label: 'Inicio' },
     { id: 'gastos', icon: `<i data-lucide="clock"></i>`, label: 'Gastos' },
@@ -51,8 +47,42 @@ function renderNav() {
   `).join('');
 
   document.getElementById('app').appendChild(nav);
+  if (window.lucide) lucide.createIcons();
+}
 
-  if (window.lucide) {
-    lucide.createIcons();
-  }
+let _swipeInitialized = false;
+
+export function initSwipeNavigation() {
+  if (_swipeInitialized) return;
+  _swipeInitialized = true;
+
+  let touchStartX = 0;
+  let touchStartY = 0;
+
+  document.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  document.addEventListener('touchend', (e) => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+
+    if (Math.abs(dx) < 50) return;
+    if (Math.abs(dy) > Math.abs(dx)) return;
+
+    const target = e.target;
+    if (target.closest('.bottom-nav')) return;
+    if (target.closest('.category-grid')) return;
+
+    const currentPage = document.querySelector('.page.active')?.id?.replace('page-', '');
+    const currentIndex = PAGES.indexOf(currentPage);
+    if (currentIndex === -1) return;
+
+    if (dx < 0 && currentIndex < PAGES.length - 1) {
+      showPage(PAGES[currentIndex + 1]);
+    } else if (dx > 0 && currentIndex > 0) {
+      showPage(PAGES[currentIndex - 1]);
+    }
+  }, { passive: true });
 }
