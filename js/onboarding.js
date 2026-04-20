@@ -89,6 +89,11 @@ function renderStep(step) {
   steps[step]?.();
 }
 
+function onboardingBack() {
+  if (currentStep <= 1) return;
+  renderStep(currentStep - 1);
+}
+
 function updateStepIndicator() {
   const indicator = document.getElementById('step-indicator');
   indicator.innerHTML = Array.from({ length: TOTAL_STEPS }, (_, i) => {
@@ -366,7 +371,7 @@ function renderStep3nuevo() {
 
   setFooter(`
     <button class="btn btn-primary" onclick="nextStep3nuevo()">Continuar →</button>
-    <button class="btn btn-ghost mt-8" onclick="renderStep(2)">← Atrás</button>
+    <button class="btn btn-ghost mt-8" onclick="onboardingBack()">← Atrás</button>
   `);
 }
 
@@ -410,7 +415,7 @@ function renderStep4() {
   renderStep4Body();
   setFooter(`
     <button class="btn btn-primary" onclick="nextStep4()">Continuar →</button>
-    <button class="btn btn-ghost mt-8" onclick="renderStep(2)">← Atrás</button>
+    <button class="btn btn-ghost mt-8" onclick="onboardingBack()">← Atrás</button>
   `);
 }
 
@@ -494,7 +499,7 @@ function renderStep5() {
   renderStep5Body();
   setFooter(`
     <button class="btn btn-primary" onclick="nextStep5()">Continuar →</button>
-    <button class="btn btn-ghost mt-8" onclick="renderStep(3)">← Atrás</button>
+    <button class="btn btn-ghost mt-8" onclick="onboardingBack()">← Atrás</button>
   `);
 }
 
@@ -712,7 +717,7 @@ function renderStep6() {
   renderStep6Body();
   setFooter(`
     <button class="btn btn-primary" onclick="nextStep6()">Continuar →</button>
-    <button class="btn btn-ghost mt-8" onclick="renderStep(4)">← Atrás</button>
+    <button class="btn btn-ghost mt-8" onclick="onboardingBack()">← Atrás</button>
   `);
 }
 
@@ -871,7 +876,7 @@ function renderStep6resumen() {
 
   setFooter(`
     <button class="btn btn-success" id="btn-finish" onclick="finishOnboarding()">¡Listo, empecemos! 🚀</button>
-    <button class="btn btn-ghost mt-8" onclick="renderStep(5)">← Atrás</button>
+    <button class="btn btn-ghost mt-8" onclick="onboardingBack()">← Atrás</button>
   `);
 
   renderLucideIcons();
@@ -1002,6 +1007,7 @@ async function finishOnboarding() {
 
 // ---- EXPONER AL ENTORNO GLOBAL (onclick en HTML dinámico) ----
 window.renderStep           = renderStep;
+window.onboardingBack       = onboardingBack;
 window.renderStep6Body      = renderStep6Body;
 
 window.toggleTipoIngreso = function(nombre, icono, elemento) {
