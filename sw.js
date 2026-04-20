@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jm-finance-v1';
+const CACHE_NAME = 'jm-finance-v2';
 
 const STATIC_ASSETS = [
   '/',
