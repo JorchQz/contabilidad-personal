@@ -184,6 +184,8 @@ export const GASTOS_VARIABLES_INDEX = (() => {
   return idx;
 })();
 
+let currentEditGastoId = null;
+
 // ---- HELPERS EXCLUSIVOS DE GASTOS ----
 function getCategoriaGastoIcon(nombre) {
   const map = {
@@ -652,6 +654,7 @@ export async function loadGastos() {
 
 function openMenuGasto(gastoId) {
   openActionSheet('Opciones de gasto', [
+    { label: 'Editar', icon: 'pencil', onClick: `openRegistrarGasto('${gastoId}')` },
     { label: 'Eliminar', onClick: `eliminarGasto('${gastoId}')`, danger: true }
   ]);
 }
@@ -881,22 +884,54 @@ export async function toggleCamposGastoEspecial() {
   contenedor.innerHTML = '';
 }
 
-// ---- REGISTRAR GASTO ----
-async function openRegistrarGasto() {
-  const { data: cuentas } = await db.from('cuentas').select('*').eq('usuario_id', (await getUsuarioId())).eq('activa', true);
+// ---- REGISTRAR / EDITAR GASTO ----
+async function openRegistrarGasto(gastoId = null) {
+  const uid = await getUsuarioId();
+  const { data: cuentas } = await db.from('cuentas').select('*').eq('usuario_id', uid).eq('activa', true);
 
+  currentEditGastoId = gastoId || null;
   setCatState(null, null, 'gasto');
   window._gastoEspecial = null;
 
-  openModal('Registrar gasto', `
+  let titulo = 'Registrar gasto';
+  let descValue = '';
+  let montoValue = '';
+  let fechaValue = new Date().toISOString().split('T')[0];
+  let cuentaDefault = '';
+
+  if (gastoId) {
+    const { data: gasto } = await db.from('gastos')
+      .select('*, categorias(id, nombre, emoji)')
+      .eq('id', gastoId)
+      .eq('usuario_id', uid)
+      .maybeSingle();
+
+    if (!gasto) { showSnackbar('No se pudo cargar el gasto', 'error'); return; }
+
+    titulo = 'Editar gasto';
+    descValue = gasto.descripcion || '';
+    montoValue = gasto.monto != null ? Number(gasto.monto) : '';
+    fechaValue = gasto.fecha || fechaValue;
+    cuentaDefault = gasto.cuenta_id || '';
+
+    if (gasto.categoria_id && gasto.categorias) {
+      setCatState(
+        gasto.categoria_id,
+        { id: gasto.categoria_id, nombre: gasto.categorias.nombre, emoji: gasto.categorias.emoji },
+        'gasto'
+      );
+    }
+  }
+
+  openModal(titulo, `
     <div class="form-group">
       <label class="form-label">Descripción</label>
-      <input class="form-input" id="rg-desc" type="text" placeholder="¿En qué gastaste?" />
+      <input class="form-input" id="rg-desc" type="text" placeholder="¿En qué gastaste?" value="${descValue}" />
     </div>
     <div class="form-group">
       <label class="form-label">Monto</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="rg-monto" type="number" placeholder="0.00" min="0" /></div>
+      <input class="form-input" id="rg-monto" type="number" placeholder="0.00" min="0" value="${montoValue}" /></div>
     </div>
     <div class="form-group">
       <label class="form-label">Categoría</label>
@@ -906,14 +941,14 @@ async function openRegistrarGasto() {
     <div class="form-group">
       <label class="form-label">Cuenta</label>
       <select class="form-select" id="rg-cuenta">
-        ${(cuentas || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+        ${(cuentas || []).map(c => `<option value="${c.id}" ${c.id === cuentaDefault ? 'selected' : ''}>${c.nombre}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
       <label class="form-label">Fecha</label>
-      <input class="form-input" id="rg-fecha" type="date" value="${new Date().toISOString().split('T')[0]}" />
+      <input class="form-input" id="rg-fecha" type="date" value="${fechaValue}" />
     </div>
-    <button class="btn btn-primary" onclick="guardarGasto()">Guardar gasto</button>
+    <button class="btn btn-primary" onclick="guardarGasto()">${gastoId ? 'Guardar cambios' : 'Guardar gasto'}</button>
   `);
 
   actualizarBotonCategoriaSelector();
@@ -930,6 +965,22 @@ async function guardarGasto() {
   if (!monto || monto <= 0) { showSnackbar('Ingresa un monto válido', 'error'); return; }
   if (!categoria_id) { showSnackbar('Selecciona una categoría', 'error'); return; }
   if (!especial && !descripcion) { showSnackbar('Escribe una descripción', 'error'); return; }
+
+  if (currentEditGastoId) {
+    const { error } = await db.from('gastos')
+      .update({ descripcion, monto, categoria_id, cuenta_id, fecha })
+      .eq('id', currentEditGastoId)
+      .eq('usuario_id', usuarioId);
+
+    currentEditGastoId = null;
+    window._gastoEspecial = null;
+    if (error) { showSnackbar('Error al actualizar', 'error'); return; }
+    closeModal();
+    showSnackbar('Gasto actualizado ✓', 'success');
+    await loadDashboard();
+    loadGastos();
+    return;
+  }
 
   if (cuenta_id) {
     const [
