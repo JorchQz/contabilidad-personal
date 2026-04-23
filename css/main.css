@@ -308,8 +308,13 @@ html, body {
 }
 
 .income-option.selected {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.income-option.active {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.05);
 }
 
 .income-option:focus,

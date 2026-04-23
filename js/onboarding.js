@@ -123,8 +123,8 @@ const TIPOS_INGRESO_DEFAULT = [
   { nombre: 'Salario / Nómina', icono: 'briefcase' },
   { nombre: 'Honorarios / Freelance', icono: 'laptop' },
   { nombre: 'Negocio propio', icono: 'store' },
-  { nombre: 'Horas extra', icono: 'clock' },
-  { nombre: 'Renta de inmueble', icono: 'building-2' },
+  { nombre: 'Inversiones / Rendimientos', icono: 'trending-up' },
+  { nombre: 'Renta de inmueble', icono: 'home' },
   { nombre: 'Beca / Apoyo gobierno', icono: 'graduation-cap' },
   { nombre: 'Pensión / Retiro', icono: 'landmark' },
   { nombre: 'Mesada / Apoyo familiar', icono: 'users' },
@@ -144,7 +144,10 @@ function renderStep2nuevo() {
             <div class="income-option${selected ? ' selected' : ''}"
                  data-nombre="${item.nombre.replace(/"/g, '&quot;')}"
                  data-icono="${item.icono}">
-              <span>${item.nombre}</span>
+              <span class="income-option-icon" aria-hidden="true" style="display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-right:10px">
+                <i data-lucide="${item.icono}" style="width:18px;height:18px;stroke-width:1.75"></i>
+              </span>
+              <span class="income-option-text">${item.nombre}</span>
             </div>`;
         }).join('')}
 
