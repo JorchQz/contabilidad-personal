@@ -179,7 +179,10 @@ function renderStep2nuevo() {
         </div>
         ` : ''}
 
-        <button class="btn btn-secondary" style="margin-top:12px; width:100%" onclick="addTipoIngresoCustom()">+ Agregar</button>
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <button class="btn-cancel-custom" onclick="cancelCustomIngresoForm()">Cancelar</button>
+          <button class="btn btn-secondary" style="flex:1" onclick="addTipoIngresoCustom()">+ Agregar</button>
+        </div>
       </div>
     `;
 
@@ -373,8 +376,10 @@ function renderStep3nuevo() {
   render();
 
   setFooter(`
-    <button class="btn btn-primary" onclick="nextStep3nuevo()">Continuar →</button>
-    <button class="btn btn-ghost mt-8" onclick="onboardingBack()">← Atrás</button>
+    <div class="footer-nav-row">
+      <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
+      <button class="btn btn-primary" onclick="nextStep3nuevo()">Continuar →</button>
+    </div>
   `);
 }
 
@@ -417,8 +422,10 @@ function renderStep4() {
   setHeader(headerTitle, 'Registra tus cuentas activas — efectivo, débito, lo que uses.');
   renderStep4Body();
   setFooter(`
-    <button class="btn btn-primary" onclick="nextStep4()">Continuar →</button>
-    <button class="btn btn-ghost mt-8" onclick="onboardingBack()">← Atrás</button>
+    <div class="footer-nav-row">
+      <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
+      <button class="btn btn-primary" onclick="nextStep4()">Continuar →</button>
+    </div>
   `);
 }
 
@@ -501,8 +508,10 @@ function renderStep5() {
   setHeader('¿Qué debes actualmente?', 'Registra tus deudas para tener el panorama completo y hacer un plan de pago.');
   renderStep5Body();
   setFooter(`
-    <button class="btn btn-primary" onclick="nextStep5()">Continuar →</button>
-    <button class="btn btn-ghost mt-8" onclick="onboardingBack()">← Atrás</button>
+    <div class="footer-nav-row">
+      <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
+      <button class="btn btn-primary" onclick="nextStep5()">Continuar →</button>
+    </div>
   `);
 }
 
@@ -719,8 +728,10 @@ function renderStep6() {
   setHeader('¿Para qué quieres ahorrar?', 'Define tus metas. Las iremos completando juntos poco a poco.');
   renderStep6Body();
   setFooter(`
-    <button class="btn btn-primary" onclick="nextStep6()">Continuar →</button>
-    <button class="btn btn-ghost mt-8" onclick="onboardingBack()">← Atrás</button>
+    <div class="footer-nav-row">
+      <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
+      <button class="btn btn-primary" onclick="nextStep6()">Continuar →</button>
+    </div>
   `);
 }
 
@@ -878,8 +889,10 @@ function renderStep6resumen() {
   `;
 
   setFooter(`
-    <button class="btn btn-success" id="btn-finish" onclick="finishOnboarding()">¡Listo, empecemos! 🚀</button>
-    <button class="btn btn-ghost mt-8" onclick="onboardingBack()">← Atrás</button>
+    <div class="footer-nav-row">
+      <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
+      <button class="btn btn-success" id="btn-finish" onclick="finishOnboarding()">¡Listo, empecemos! 🚀</button>
+    </div>
   `);
 
   renderLucideIcons();
@@ -1027,6 +1040,13 @@ window.toggleTipoIngreso = function(nombre, icono, elemento) {
 window.showCustomIngresoForm = function() {
   window._showCustomForm = true;
   window._tipoIngresoSelectedIcono = 'plus';
+  if (window._renderStep2Body) window._renderStep2Body(false);
+};
+
+window.cancelCustomIngresoForm = function() {
+  window._showCustomForm = false;
+  window._tipoIngresoSelectedIcono = 'plus';
+  window._showIconPanel = false;
   if (window._renderStep2Body) window._renderStep2Body(false);
 };
 

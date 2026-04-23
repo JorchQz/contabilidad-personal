@@ -278,6 +278,28 @@ html, body {
 /* Neutraliza mt-8 cuando el botón vive en el footer del onboarding (el gap ya lo maneja) */
 .onboarding-footer .btn.mt-8 { margin-top: 0; }
 
+.footer-nav-row {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  width: 100%;
+}
+
+.footer-nav-row .btn {
+  width: auto;
+}
+
+.footer-nav-row .btn-ghost {
+  flex: 1;
+  border: 1.5px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.footer-nav-row .btn-primary,
+.footer-nav-row .btn-success {
+  flex: 2;
+}
+
 /* ---- INCOME LIST & ITEMS ---- */
 .income-list {
   display: flex;
@@ -293,7 +315,7 @@ html, body {
   border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all var(--transition);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   font-size: 15px;
   font-weight: 500;
   -webkit-tap-highlight-color: transparent;
@@ -321,10 +343,6 @@ html, body {
 .income-option:focus-visible {
   outline: none;
   box-shadow: none;
-}
-
-.income-option:active {
-  background: var(--bg-hover);
 }
 
 .income-option.selected:active {
@@ -649,6 +667,25 @@ html, body {
   border-color: var(--accent);
   color: var(--accent);
   background: var(--accent-soft);
+}
+
+.btn-cancel-custom {
+  background: transparent;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 16px;
+  color: var(--text-secondary);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-cancel-custom:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 /* ---- MINI FORM ---- */
