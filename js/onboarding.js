@@ -1015,7 +1015,7 @@ function renderGastosDiariosBody(customFormOpen = false) {
       <div style="background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:8px">
         <button type="button" onclick="toggleGdCategoria('${catKey}')"
           style="width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;background:none;border:none;cursor:pointer;font-family:var(--font-body);text-align:left">
-          <i class="${grupo.icono}" style="font-size:20px;color:var(--accent);flex-shrink:0"></i>
+          <i class="${grupo.icono}" style="font-size:20px;color:${isOpen || count > 0 ? 'var(--accent)' : 'var(--text-muted)'};flex-shrink:0"></i>
           <span style="font-weight:600;font-size:14px;flex:1">${grupo.categoria}</span>
           ${count > 0 ? `<span style="background:var(--accent);color:#fff;border-radius:9999px;min-width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;padding:0 5px">${count}</span>` : ''}
           <i class="bx ${isOpen ? 'bx-chevron-up' : 'bx-chevron-down'}" style="font-size:20px;color:var(--text-muted)"></i>
