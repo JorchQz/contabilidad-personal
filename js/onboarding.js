@@ -424,16 +424,12 @@ function renderStep4() {
   const headerTitle = primerNombre ? `¿Dónde tienes tu dinero, ${primerNombre}?` : '¿Dónde tienes tu dinero?';
   setHeader(headerTitle, 'Registra tus cuentas activas — efectivo, débito, lo que uses.');
   renderStep4Body();
-  window._selectedBancoTipo = 'efectivo';
-  window._selectedBancoIcono = 'banknote';
-  const form = document.getElementById('form-cuenta-banco');
-  if (form) {
-    form.style.display = 'block';
-    document.getElementById('c-nombre').value = 'Efectivo';
-    document.getElementById('c-nombre').readOnly = true;
-    document.getElementById('c-saldo').value = '';
-    document.getElementById('btn-cancelar-cuenta').style.display = 'none';
-    document.getElementById('c-saldo').focus();
+  const efectivoYaAgregado = onboardingData.cuentas.some(c => c.tipo === 'efectivo');
+  if (!efectivoYaAgregado) {
+    window._selectedBancoTipo = 'efectivo';
+    window._selectedBancoIcono = 'banknote';
+    document.getElementById('btn-add-otra-cuenta').style.display = 'none';
+    _abrirFormCuenta({ nombre: 'Efectivo', readOnly: true, sinCancelar: true, focusSaldo: true });
   }
   setFooter(`
     <div class="footer-nav-row">
@@ -443,7 +439,7 @@ function renderStep4() {
   `);
 }
 
-function renderStep4Body(opciones = {}) {
+function renderStep4Body() {
   const TIPO_LABELS = { efectivo: 'Efectivo', debito: 'Débito / Banco', negocio: 'Negocio/Digital', otro: 'Otro' };
   const efectivoAgregado = onboardingData.cuentas.some(c => c.tipo === 'efectivo');
 
@@ -456,26 +452,28 @@ function renderStep4Body(opciones = {}) {
             <div class="item-row-name">${c.nombre}</div>
             <div class="item-row-detail">${TIPO_LABELS[c.tipo] || 'Cuenta'} · Saldo: ${formatMXN(c.saldo_inicial)}</div>
           </div>
-          <button class="item-row-delete" onclick="removeCuenta(${i})"><i data-lucide="x" style="width:18px;height:18px;stroke-width:1.75"></i></button>
+          ${c.tipo !== 'efectivo' ? `<button class="item-row-delete" onclick="removeCuenta(${i})"><i data-lucide="x" style="width:18px;height:18px;stroke-width:1.75"></i></button>` : ''}
         </div>
       `).join('')}
     </div>
 
-    <div id="banco-search-wrap" style="${efectivoAgregado ? '' : 'display:none'}position:relative;margin-bottom:8px">
-      <i data-lucide="search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-muted);pointer-events:none;z-index:1"></i>
-      <input class="form-input" id="banco-search" style="padding-left:36px" placeholder="Buscar o crear cuenta..." onfocus="mostrarInstituciones()" oninput="filtrarBancos(this.value)" autocomplete="off" />
-    </div>
-
-    <div id="banco-resultados" class="banco-resultados-list" style="display:none"></div>
+    <button id="btn-add-otra-cuenta" class="btn-add-item" style="${efectivoAgregado ? '' : 'display:none'}margin-top:4px" onclick="mostrarBuscadorCuenta()">
+      <span>+</span> Agregar otra cuenta
+    </button>
 
     <div id="form-cuenta-banco" style="display:none">
       <div class="mini-form">
-        <input class="form-input" id="c-nombre" placeholder="Nombre de la cuenta" style="margin-bottom:8px" />
-        <div class="input-money-wrap" style="margin-bottom:8px">
+        <div id="cuenta-search-row" style="display:none;position:relative;margin-bottom:8px">
+          <i data-lucide="search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-muted);pointer-events:none;z-index:1"></i>
+          <input class="form-input" id="banco-search" style="padding-left:36px" placeholder="Buscar o crear cuenta..." onfocus="mostrarInstituciones()" oninput="filtrarBancos(this.value)" autocomplete="off" />
+        </div>
+        <div id="banco-resultados" class="banco-resultados-list" style="display:none;margin-bottom:4px"></div>
+        <input class="form-input" id="c-nombre" placeholder="Nombre de la cuenta" style="display:none;margin-bottom:8px" />
+        <div id="cuenta-saldo-wrap" class="input-money-wrap" style="display:none;margin-bottom:8px">
           <span class="currency-prefix">$</span>
           <input class="form-input" id="c-saldo" type="number" placeholder="Saldo actual (0)" min="0" />
         </div>
-        <div id="form-cuenta-actions" style="display:flex;gap:8px">
+        <div id="form-cuenta-actions" style="display:none;gap:8px">
           <button class="btn-cancel-custom" id="btn-cancelar-cuenta" onclick="cancelarFormCuenta()">Cancelar</button>
           <button class="btn btn-secondary" style="flex:1" onclick="addCuenta()">+ Agregar</button>
         </div>
@@ -484,6 +482,24 @@ function renderStep4Body(opciones = {}) {
   `;
 
   renderLucideIcons();
+}
+
+function _abrirFormCuenta({ nombre = '', readOnly = false, sinCancelar = false, focusSaldo = false } = {}) {
+  document.getElementById('form-cuenta-banco').style.display = 'block';
+  document.getElementById('cuenta-search-row').style.display = 'none';
+  document.getElementById('banco-resultados').style.display = 'none';
+  const cNombre = document.getElementById('c-nombre');
+  cNombre.style.display = 'block';
+  cNombre.value = nombre;
+  cNombre.readOnly = readOnly;
+  document.getElementById('cuenta-saldo-wrap').style.display = 'flex';
+  document.getElementById('c-saldo').value = '';
+  const actions = document.getElementById('form-cuenta-actions');
+  actions.style.display = 'flex';
+  document.getElementById('btn-cancelar-cuenta').style.display = sinCancelar ? 'none' : '';
+  if (focusSaldo) document.getElementById('c-saldo').focus();
+  else if (!readOnly) cNombre.focus();
+  else document.getElementById('c-saldo').focus();
 }
 
 function ordenarInstitucionesConEfectivoPrimero(items) {
@@ -502,15 +518,10 @@ function addCuenta() {
   const icono = window._selectedBancoIcono || 'credit-card';
   const saldo = parseFloat(document.getElementById('c-saldo')?.value) || 0;
   if (!nombre) { showSnackbar('Escribe el nombre de la cuenta', 'error'); return; }
-  const esEfectivo = tipo === 'efectivo';
   onboardingData.cuentas.push({ nombre, tipo, icono, saldo_inicial: saldo });
   window._selectedBancoTipo = null;
   window._selectedBancoIcono = null;
   renderStep4Body();
-  if (esEfectivo) {
-    const wrap = document.getElementById('banco-search-wrap');
-    if (wrap) { wrap.style.display = ''; requestAnimationFrame(() => document.getElementById('banco-search')?.focus()); }
-  }
 }
 
 function removeCuenta(i) {
@@ -544,62 +555,76 @@ function renderStep5Body(showForm = false) {
   const selectorTipoHtml = `
     <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:16px">
       <button onclick="selectTipoDeudaOnboarding('simple')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'simple' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
-        <div style="font-size:20px;margin-bottom:6px">💳</div>
+        <i data-lucide="credit-card" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block"></i>
         <div style="font-weight:600;font-size:14px">Simple</div>
         <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Monto fijo, fecha fija</div>
       </button>
       <button onclick="selectTipoDeudaOnboarding('variable')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'variable' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
-        <div style="font-size:20px;margin-bottom:6px">📊</div>
+        <i data-lucide="trending-down" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block"></i>
         <div style="font-weight:600;font-size:14px">Variable</div>
         <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Monto cambia cada pago</div>
       </button>
       <button onclick="selectTipoDeudaOnboarding('tabla')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'tabla' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
-        <div style="font-size:20px;margin-bottom:6px">📋</div>
+        <i data-lucide="calendar" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block"></i>
         <div style="font-weight:600;font-size:14px">Con tabla</div>
         <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Pagos programados</div>
       </button>
     </div>
   `;
 
+  const cuotaLabel = tipoDeuda === 'variable' ? 'Pago estimado (Opcional)' : 'Cuota fija (Opcional)';
+
   const formularioSimpleVariable = `
-    <div class="form-group" style="margin-bottom:8px">
-      <label class="form-label">¿A quién le debes?</label>
-      <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Caja Popular, mamá, etc." />
-    </div>
-    <div class="form-group" style="margin-bottom:8px">
-      <label class="form-label">Monto total</label>
-      <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" /></div>
-    </div>
-    <div class="form-group" style="margin-bottom:8px">
-      <label class="form-label">Frecuencia de pago</label>
-      <select class="form-select" id="d-freq" onchange="renderCamposDeudaOnboarding()">
-        <option value="unico">Pago único</option>
-        <option value="semanal">Semanal</option>
-        <option value="quincenal">Quincenal</option>
-        <option value="mensual">Mensual</option>
-        <option value="libre">Sin fecha fija</option>
-      </select>
-    </div>
-    <div class="form-group" id="d-fecha-campos" style="margin-bottom:8px"></div>
-    <div class="form-group" style="margin-bottom:8px">
-      <label class="form-label">Pago por cuota (opcional)</label>
-      <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="d-cuota" type="number" placeholder="0.00" min="0" /></div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
+      <div class="form-group">
+        <label class="form-label">¿A quién le debes?</label>
+        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Caja Popular, mamá…" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Monto total</label>
+        <div class="input-money-wrap">
+          <span class="currency-prefix">$</span>
+          <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Frecuencia de pago</label>
+        <div style="display:flex;gap:8px">
+          <select class="form-select" id="d-freq" onchange="renderCamposDeudaOnboarding()" style="flex:1">
+            <option value="unico">Único</option>
+            <option value="semanal">Semanal</option>
+            <option value="quincenal">Quincenal</option>
+            <option value="mensual" selected>Mensual</option>
+            <option value="libre">Libre</option>
+          </select>
+          <div id="d-fecha-campos" style="flex:1"></div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">${cuotaLabel}</label>
+        <div class="input-money-wrap">
+          <span class="currency-prefix">$</span>
+          <input class="form-input" id="d-cuota" type="number" placeholder="0.00" min="0" />
+        </div>
+      </div>
     </div>
   `;
 
   const formularioTabla = `
-    <div class="form-group" style="margin-bottom:8px">
-      <label class="form-label">¿A quién le debes?</label>
-      <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Caja Popular, mamá, etc." />
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
+      <div class="form-group">
+        <label class="form-label">¿A quién le debes?</label>
+        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Caja Popular, mamá…" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Monto total</label>
+        <div class="input-money-wrap">
+          <span class="currency-prefix">$</span>
+          <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" />
+        </div>
+      </div>
+      <p class="form-hint">Podrás agregar los pagos programados después.</p>
     </div>
-    <div class="form-group" style="margin-bottom:8px">
-      <label class="form-label">Monto total</label>
-      <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" /></div>
-    </div>
-    <p class="form-hint" style="margin-bottom:8px">Podrás agregar los pagos programados después</p>
   `;
 
   document.getElementById('onboarding-body').innerHTML = `
@@ -644,34 +669,25 @@ function renderCamposDeudaOnboarding() {
   if (!campos) return;
 
   if (tipo === 'unico') {
-    campos.innerHTML = `
-      <label class="form-label">Fecha de pago</label>
-      <input class="form-input" id="d-fecha-pago" type="date" />
-    `;
+    campos.innerHTML = `<input class="form-input" id="d-fecha-pago" type="date" style="width:100%" />`;
     return;
   }
   if (tipo === 'semanal') {
     campos.innerHTML = `
-      <label class="form-label">Día de la semana</label>
-      <select class="form-select" id="d-dia-semana">
-        <option value="0">Domingo</option><option value="1">Lunes</option>
-        <option value="2">Martes</option><option value="3">Miércoles</option>
-        <option value="4">Jueves</option><option value="5">Viernes</option>
-        <option value="6">Sábado</option>
+      <select class="form-select" id="d-dia-semana" style="width:100%">
+        <option value="0">Dom</option><option value="1">Lun</option>
+        <option value="2">Mar</option><option value="3">Mié</option>
+        <option value="4">Jue</option><option value="5">Vie</option>
+        <option value="6">Sáb</option>
       </select>`;
     return;
   }
   if (tipo === 'quincenal') {
-    campos.innerHTML = `
-      <label class="form-label">Quincena de pago</label>
-      <input class="form-input" id="d-quincena" type="number" min="1" max="2" placeholder="1 o 2" />
-      <p class="form-hint" style="margin-top:6px">Los pagos quincenales son el día 15 y último día del mes. Ingresa en qué quincena: 1 = cobra el 15, 2 = cobra el último día</p>`;
+    campos.innerHTML = `<input class="form-input" id="d-quincena" type="number" min="1" max="2" placeholder="1 ó 2" style="width:100%" />`;
     return;
   }
   if (tipo === 'mensual') {
-    campos.innerHTML = `
-      <label class="form-label">Día del mes</label>
-      <input class="form-input" id="d-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />`;
+    campos.innerHTML = `<input class="form-input" id="d-dia-pago" type="number" min="1" max="31" placeholder="Día 1-31" style="width:100%" />`;
     return;
   }
   campos.innerHTML = '';
@@ -1229,12 +1245,12 @@ window.mostrarInstituciones = function() {
 
 window.filtrarBancos = function(q) {
   const resultadosDiv = document.getElementById('banco-resultados');
-  const formDiv = document.getElementById('form-cuenta-banco');
   const qRaw = (q || '').trim();
   const qNorm = qRaw.toLowerCase();
 
-  formDiv.style.display = 'none';
-  document.getElementById('c-nombre') && (document.getElementById('c-nombre').value = '');
+  document.getElementById('c-nombre').style.display = 'none';
+  document.getElementById('cuenta-saldo-wrap').style.display = 'none';
+  document.getElementById('form-cuenta-actions').style.display = 'none';
 
   const filtered = qNorm
     ? INSTITUCIONES.filter(inst => inst.nombre.toLowerCase().includes(qNorm))
@@ -1267,43 +1283,36 @@ window.seleccionarBancoIdx = function(idx) {
   if (!inst) return;
   window._selectedBancoTipo = inst.tipo;
   window._selectedBancoIcono = inst.icono;
-  document.getElementById('banco-resultados').style.display = 'none';
-  document.getElementById('form-cuenta-banco').style.display = 'block';
-  document.getElementById('c-nombre').value = inst.nombre;
-  document.getElementById('c-nombre').readOnly = true;
-  document.getElementById('c-saldo').focus();
+  document.getElementById('cuenta-search-row').style.display = 'none';
+  document.getElementById('banco-search').value = '';
+  _abrirFormCuenta({ nombre: inst.nombre, readOnly: true, focusSaldo: true });
 };
 
 window.seleccionarBancoCustom = function() {
   const q = document.getElementById('banco-search')?.value.trim() || '';
   window._selectedBancoTipo = 'otro';
   window._selectedBancoIcono = 'credit-card';
-  document.getElementById('banco-resultados').style.display = 'none';
-  document.getElementById('form-cuenta-banco').style.display = 'block';
-  document.getElementById('c-nombre').value = q;
-  document.getElementById('c-nombre').readOnly = false;
-  document.getElementById('c-nombre').focus();
-};
-
-window.seleccionarCuentaPersonalizada = function() {
-  window._selectedBancoTipo = 'otro';
-  window._selectedBancoIcono = 'credit-card';
-  document.getElementById('banco-resultados').style.display = 'none';
+  document.getElementById('cuenta-search-row').style.display = 'none';
   document.getElementById('banco-search').value = '';
-  const form = document.getElementById('form-cuenta-banco');
-  form.style.display = 'block';
-  document.getElementById('c-nombre').value = '';
-  document.getElementById('c-nombre').readOnly = false;
-  document.getElementById('c-saldo').value = '';
-  document.getElementById('c-nombre').focus();
+  _abrirFormCuenta({ nombre: q, readOnly: false });
 };
 
 window.cancelarFormCuenta = function() {
   window._selectedBancoTipo = null;
   window._selectedBancoIcono = null;
   document.getElementById('form-cuenta-banco').style.display = 'none';
+  document.getElementById('btn-add-otra-cuenta').style.display = '';
+};
+
+window.mostrarBuscadorCuenta = function() {
+  document.getElementById('btn-add-otra-cuenta').style.display = 'none';
+  document.getElementById('form-cuenta-banco').style.display = 'block';
+  document.getElementById('cuenta-search-row').style.display = 'block';
   document.getElementById('banco-resultados').style.display = 'none';
-  document.getElementById('banco-search').value = '';
+  document.getElementById('c-nombre').style.display = 'none';
+  document.getElementById('cuenta-saldo-wrap').style.display = 'none';
+  document.getElementById('form-cuenta-actions').style.display = 'none';
+  requestAnimationFrame(() => document.getElementById('banco-search')?.focus());
 };
 
 window.addCuenta       = addCuenta;
