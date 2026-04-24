@@ -842,7 +842,7 @@ function renderStep6Body(showForm = false) {
       ${onboardingData.metas.map((m, i) => `
         <div class="item-row">
           <div class="item-row-emoji" style="display:flex;align-items:center;justify-content:center">
-            <i class="bx bx-target-lock" style="font-size:20px;color:var(--accent)"></i>
+            <i data-lucide="${m.icono || 'target'}" style="width:20px;height:20px;stroke-width:1.75;color:var(--accent)"></i>
           </div>
           <div class="item-row-info">
             <div class="item-row-name">${m.nombre}</div>
@@ -861,7 +861,22 @@ function renderStep6Body(showForm = false) {
     ${showForm ? `
     <div class="mini-form">
       <div class="form-group" style="margin-bottom:10px">
-        <input class="form-input" id="m-nombre" placeholder="Nombre de la meta" />
+        <div class="custom-form-row">
+          <button class="emoji-picker-btn" onclick="toggleMetaIconPanel()">
+            <i data-lucide="${window._metaIcono || 'target'}"></i>
+          </button>
+          <input class="form-input" id="m-nombre" placeholder="Nombre de la meta" />
+        </div>
+        ${window._showMetaIconPanel ? `
+        <div class="icon-panel" style="margin-top:8px">
+          <div class="icon-grid">
+            ${TODOS_ICONOS.map(ic => `
+              <div class="icon-grid-item${ic === window._metaIcono ? ' selected' : ''}" onclick="selectIconoMeta('${ic}')">
+                <i data-lucide="${ic}"></i>
+              </div>`).join('')}
+          </div>
+        </div>
+        ` : ''}
       </div>
       <div class="form-group" style="margin-bottom:8px">
         <label class="form-label">Monto a ahorrar</label>
@@ -942,7 +957,9 @@ function addMeta() {
   const fecha_limite    = document.getElementById('m-fecha-limite')?.value || null;
   const frecuencia_ahorro = document.getElementById('m-frecuencia')?.value || null;
   if (!nombre || !monto_objetivo) { showSnackbar('Completa nombre y monto', 'error'); return; }
-  onboardingData.metas.push({ icono: 'bx bx-target-lock', nombre, monto_objetivo, cuenta_nombre, fecha_limite, frecuencia_ahorro });
+  onboardingData.metas.push({ icono: window._metaIcono || 'target', nombre, monto_objetivo, cuenta_nombre, fecha_limite, frecuencia_ahorro });
+  window._metaIcono = 'target';
+  window._showMetaIconPanel = false;
   renderStep6Body(false);
 }
 
@@ -1557,6 +1574,17 @@ window.addDeuda        = addDeuda;
 window.removeDeuda     = removeDeuda;
 window.nextStep5       = nextStep5;
 
+
+window.toggleMetaIconPanel = function() {
+  window._showMetaIconPanel = !window._showMetaIconPanel;
+  renderStep6Body(true);
+};
+
+window.selectIconoMeta = function(icono) {
+  window._metaIcono = icono;
+  window._showMetaIconPanel = false;
+  renderStep6Body(true);
+};
 
 window.addMeta         = addMeta;
 window.removeMeta      = removeMeta;
