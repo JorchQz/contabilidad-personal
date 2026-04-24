@@ -396,7 +396,6 @@ function nextStep3nuevo() {
 
 // ---- STEP 3: Cuentas ----
 const INSTITUCIONES = [
-  { nombre: 'Efectivo',              tipo: 'efectivo', icono: 'banknote' },
   { nombre: 'BBVA',                  tipo: 'debito',   icono: 'building-2' },
   { nombre: 'Banamex / Citibanamex', tipo: 'debito',   icono: 'building-2' },
   { nombre: 'Santander',             tipo: 'debito',   icono: 'building-2' },
@@ -411,6 +410,8 @@ const INSTITUCIONES = [
   { nombre: 'Hey Banco',             tipo: 'debito',   icono: 'smartphone' },
   { nombre: 'Klar',                  tipo: 'debito',   icono: 'smartphone' },
   { nombre: 'Spin by OXXO',          tipo: 'debito',   icono: 'smartphone' },
+  { nombre: 'Ualá',                  tipo: 'debito',   icono: 'smartphone' },
+  { nombre: 'PayPal',                tipo: 'negocio',  icono: 'globe' },
   { nombre: 'Stori',                 tipo: 'debito',   icono: 'smartphone' },
   { nombre: 'Vexi',                  tipo: 'debito',   icono: 'smartphone' },
   { nombre: 'Bitso',                 tipo: 'otro',     icono: 'coins' },
@@ -423,6 +424,17 @@ function renderStep4() {
   const headerTitle = primerNombre ? `¿Dónde tienes tu dinero, ${primerNombre}?` : '¿Dónde tienes tu dinero?';
   setHeader(headerTitle, 'Registra tus cuentas activas — efectivo, débito, lo que uses.');
   renderStep4Body();
+  window._selectedBancoTipo = 'efectivo';
+  window._selectedBancoIcono = 'banknote';
+  const form = document.getElementById('form-cuenta-banco');
+  if (form) {
+    form.style.display = 'block';
+    document.getElementById('c-nombre').value = 'Efectivo';
+    document.getElementById('c-nombre').readOnly = true;
+    document.getElementById('c-saldo').value = '';
+    document.getElementById('btn-cancelar-cuenta').style.display = 'none';
+    document.getElementById('c-saldo').focus();
+  }
   setFooter(`
     <div class="footer-nav-row">
       <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
@@ -431,8 +443,9 @@ function renderStep4() {
   `);
 }
 
-function renderStep4Body() {
+function renderStep4Body(opciones = {}) {
   const TIPO_LABELS = { efectivo: 'Efectivo', debito: 'Débito / Banco', negocio: 'Negocio/Digital', otro: 'Otro' };
+  const efectivoAgregado = onboardingData.cuentas.some(c => c.tipo === 'efectivo');
 
   document.getElementById('onboarding-body').innerHTML = `
     <div class="item-list" id="cuentas-list">
@@ -448,9 +461,9 @@ function renderStep4Body() {
       `).join('')}
     </div>
 
-    <div style="position:relative;margin-bottom:8px">
+    <div id="banco-search-wrap" style="${efectivoAgregado ? '' : 'display:none'}position:relative;margin-bottom:8px">
       <i data-lucide="search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-muted);pointer-events:none;z-index:1"></i>
-      <input class="form-input" id="banco-search" style="padding-left:36px" placeholder="Buscar banco..." onfocus="mostrarInstituciones()" oninput="filtrarBancos(this.value)" autocomplete="off" />
+      <input class="form-input" id="banco-search" style="padding-left:36px" placeholder="Buscar o crear cuenta..." onfocus="mostrarInstituciones()" oninput="filtrarBancos(this.value)" autocomplete="off" />
     </div>
 
     <div id="banco-resultados" class="banco-resultados-list" style="display:none"></div>
@@ -462,7 +475,10 @@ function renderStep4Body() {
           <span class="currency-prefix">$</span>
           <input class="form-input" id="c-saldo" type="number" placeholder="Saldo actual (0)" min="0" />
         </div>
-        <button class="btn btn-secondary" onclick="addCuenta()">+ Agregar</button>
+        <div id="form-cuenta-actions" style="display:flex;gap:8px">
+          <button class="btn-cancel-custom" id="btn-cancelar-cuenta" onclick="cancelarFormCuenta()">Cancelar</button>
+          <button class="btn btn-secondary" style="flex:1" onclick="addCuenta()">+ Agregar</button>
+        </div>
       </div>
     </div>
   `;
@@ -486,10 +502,15 @@ function addCuenta() {
   const icono = window._selectedBancoIcono || 'credit-card';
   const saldo = parseFloat(document.getElementById('c-saldo')?.value) || 0;
   if (!nombre) { showSnackbar('Escribe el nombre de la cuenta', 'error'); return; }
+  const esEfectivo = tipo === 'efectivo';
   onboardingData.cuentas.push({ nombre, tipo, icono, saldo_inicial: saldo });
   window._selectedBancoTipo = null;
   window._selectedBancoIcono = null;
   renderStep4Body();
+  if (esEfectivo) {
+    const wrap = document.getElementById('banco-search-wrap');
+    if (wrap) { wrap.style.display = ''; requestAnimationFrame(() => document.getElementById('banco-search')?.focus()); }
+  }
 }
 
 function removeCuenta(i) {
@@ -1225,16 +1246,15 @@ window.filtrarBancos = function(q) {
   resultadosDiv.style.display = 'block';
 
   let html = ordered.map((inst, idx) => `
-    <div class="banco-result-item ${inst.nombre === 'Efectivo' ? 'featured' : ''}" onclick="seleccionarBancoIdx(${idx})">
+    <div class="banco-result-item" onclick="seleccionarBancoIdx(${idx})">
       <i data-lucide="${inst.icono}" style="width:16px;height:16px;color:var(--text-secondary);pointer-events:none"></i>
       <span>${inst.nombre}</span>
-      ${inst.nombre === 'Efectivo' ? '<span class="banco-pill">Recomendado</span>' : ''}
     </div>`).join('');
 
-  if (ordered.length === 0 && qNorm) {
+  if (qRaw) {
     html += `<div class="banco-result-item accent" onclick="seleccionarBancoCustom()">
       <i data-lucide="plus" style="width:16px;height:16px;pointer-events:none"></i>
-      <span>Agregar "${qRaw}" como cuenta</span>
+      <span>+ Crear cuenta "${qRaw}"</span>
     </div>`;
   }
 
@@ -1250,7 +1270,8 @@ window.seleccionarBancoIdx = function(idx) {
   document.getElementById('banco-resultados').style.display = 'none';
   document.getElementById('form-cuenta-banco').style.display = 'block';
   document.getElementById('c-nombre').value = inst.nombre;
-  document.getElementById('c-nombre').focus();
+  document.getElementById('c-nombre').readOnly = true;
+  document.getElementById('c-saldo').focus();
 };
 
 window.seleccionarBancoCustom = function() {
@@ -1260,7 +1281,29 @@ window.seleccionarBancoCustom = function() {
   document.getElementById('banco-resultados').style.display = 'none';
   document.getElementById('form-cuenta-banco').style.display = 'block';
   document.getElementById('c-nombre').value = q;
+  document.getElementById('c-nombre').readOnly = false;
   document.getElementById('c-nombre').focus();
+};
+
+window.seleccionarCuentaPersonalizada = function() {
+  window._selectedBancoTipo = 'otro';
+  window._selectedBancoIcono = 'credit-card';
+  document.getElementById('banco-resultados').style.display = 'none';
+  document.getElementById('banco-search').value = '';
+  const form = document.getElementById('form-cuenta-banco');
+  form.style.display = 'block';
+  document.getElementById('c-nombre').value = '';
+  document.getElementById('c-nombre').readOnly = false;
+  document.getElementById('c-saldo').value = '';
+  document.getElementById('c-nombre').focus();
+};
+
+window.cancelarFormCuenta = function() {
+  window._selectedBancoTipo = null;
+  window._selectedBancoIcono = null;
+  document.getElementById('form-cuenta-banco').style.display = 'none';
+  document.getElementById('banco-resultados').style.display = 'none';
+  document.getElementById('banco-search').value = '';
 };
 
 window.addCuenta       = addCuenta;
