@@ -1170,7 +1170,7 @@ function renderStep6resumen() {
   setFooter(`
     <div class="footer-nav-row">
       <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
-      <button class="btn btn-success" id="btn-finish" onclick="finishOnboarding()"><i class="bx bx-send" style="font-size:16px;vertical-align:middle;margin-right:6px"></i>¡Listo, empecemos!</button>
+      <button class="btn btn-success" id="btn-finish" onclick="finishOnboarding()">¡Listo, empecemos!</button>
     </div>
   `);
 
