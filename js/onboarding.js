@@ -1102,7 +1102,7 @@ function renderStep6resumen() {
   setHeader('Todo listo, revisa tu configuración', 'Si algo no está bien, regresa a corregirlo.');
 
   const totalGastosFijos = onboardingData.gastosFijos.length;
-  const sectionStyle = 'background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:12px';
+  const sectionStyle = 'background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:12px;position:relative';
 
   const renderList = (items, emptyText = 'Ninguna', formatter = item => item) => {
     if (!items || items.length === 0) return `<p class="form-hint">${emptyText}</p>`;
@@ -1111,27 +1111,21 @@ function renderStep6resumen() {
 
   document.getElementById('onboarding-body').innerHTML = `
     <div style="${sectionStyle}">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
-        <strong>Ingresos</strong>
-        <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="renderStep(1)">Editar</button>
-      </div>
+      <button class="btn btn-ghost" style="position:absolute;top:10px;right:12px;padding:4px 10px;font-size:12px" onclick="renderStep(1)">Editar</button>
+      <strong style="display:block;margin-bottom:10px">Ingresos</strong>
       ${renderList(onboardingData.tiposIngreso, 'Ninguno', item => item.nombre)}
     </div>
 
     <div style="${sectionStyle}">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
-        <strong>Gastos fijos</strong>
-        <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="renderStep(2)">Editar</button>
-      </div>
+      <button class="btn btn-ghost" style="position:absolute;top:10px;right:12px;padding:4px 10px;font-size:12px" onclick="renderStep(2)">Editar</button>
+      <strong style="display:block;margin-bottom:10px">Gastos fijos</strong>
       <p class="form-hint" style="margin-bottom:8px">${totalGastosFijos} ${totalGastosFijos === 1 ? 'gasto fijo' : 'gastos fijos'}</p>
       ${renderList(onboardingData.gastosFijos, 'Ninguno', item => `${item.nombre}${item.monto_variable ? ' · variable' : (item.monto ? ` · ${formatMXN(item.monto)}` : '')}`)}
     </div>
 
     <div style="${sectionStyle}">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
-        <strong>Cuentas</strong>
-        <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="renderStep(3)">Editar</button>
-      </div>
+      <button class="btn btn-ghost" style="position:absolute;top:10px;right:12px;padding:4px 10px;font-size:12px" onclick="renderStep(3)">Editar</button>
+      <strong style="display:block;margin-bottom:10px">Cuentas</strong>
       ${onboardingData.cuentas.length === 0 ? '<p class="form-hint">Ninguna</p>' : onboardingData.cuentas.map(c => `
         <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light)">
           <span>${c.nombre}</span>
@@ -1141,10 +1135,8 @@ function renderStep6resumen() {
     </div>
 
     <div style="${sectionStyle}">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
-        <strong>Deudas</strong>
-        <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="renderStep(4)">Editar</button>
-      </div>
+      <button class="btn btn-ghost" style="position:absolute;top:10px;right:12px;padding:4px 10px;font-size:12px" onclick="renderStep(4)">Editar</button>
+      <strong style="display:block;margin-bottom:10px">Deudas</strong>
       ${onboardingData.deudas.length === 0 ? '<p class="form-hint">Ninguna</p>' : onboardingData.deudas.map(d => `
         <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light)">
           <span>${d.acreedor}</span>
@@ -1154,16 +1146,20 @@ function renderStep6resumen() {
     </div>
 
     <div style="${sectionStyle}">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
-        <strong>Metas</strong>
-        <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="renderStep(5)">Editar</button>
-      </div>
+      <button class="btn btn-ghost" style="position:absolute;top:10px;right:12px;padding:4px 10px;font-size:12px" onclick="renderStep(5)">Editar</button>
+      <strong style="display:block;margin-bottom:10px">Metas</strong>
       ${onboardingData.metas.length === 0 ? '<p class="form-hint">Ninguna</p>' : onboardingData.metas.map(m => `
         <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light)">
           <span>${m.nombre}</span>
           <span style="color:var(--text-secondary)">${formatMXN(m.monto_objetivo || 0)}</span>
         </div>
       `).join('')}
+    </div>
+
+    <div style="${sectionStyle}">
+      <button class="btn btn-ghost" style="position:absolute;top:10px;right:12px;padding:4px 10px;font-size:12px" onclick="renderStep(6)">Editar</button>
+      <strong style="display:block;margin-bottom:10px">Gastos diarios</strong>
+      ${renderList(onboardingData.gastosDiarios, 'Ninguno', item => item.subcategoria || item.categoria)}
     </div>
   `;
 
