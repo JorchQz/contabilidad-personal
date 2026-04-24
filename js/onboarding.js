@@ -812,10 +812,10 @@ function nextStep5() {
 // ---- CATÁLOGO GASTOS DIARIOS ----
 const GASTOS_DIARIOS_CATALOGO = [
   { categoria: 'Alimentación',    icono: 'bx bx-restaurant',  items: ['Súper / Despensa', 'Restaurantes', 'Antojitos / Café', 'Delivery'] },
-  { categoria: 'Transporte',      icono: 'bx bx-car',         items: ['Transporte público', 'Gasolina', 'Uber / Didi', 'Estacionamiento'] },
-  { categoria: 'Hogar',           icono: 'bx bx-home-alt',    items: ['Limpieza', 'Mascotas', 'Mantenimiento'] },
+  { categoria: 'Transporte',      icono: 'bx bx-car',         items: ['Transporte público', 'Gasolina', 'Uber / Didi', 'Estacionamiento', 'Mecánico / Mantenimiento'] },
+  { categoria: 'Hogar',           icono: 'bx bx-home-alt',    items: ['Limpieza', 'Mascotas / Veterinario', 'Reparaciones'] },
   { categoria: 'Entretenimiento', icono: 'bx bx-party',       items: ['Salidas', 'Cine / Eventos', 'Hobbies'] },
-  { categoria: 'Salud y Cuidado', icono: 'bx bx-heart',       items: ['Farmacia / Medicinas', 'Peluquería', 'Ropa', 'Gimnasio'] },
+  { categoria: 'Salud y Cuidado', icono: 'bx bx-heart',       items: ['Farmacia / Consultas', 'Peluquería', 'Ropa'] },
   { categoria: 'Educación',       icono: 'bx bx-book',        items: ['Material escolar', 'Cursos'] },
   { categoria: 'Otros',           icono: 'bx bx-grid-alt',    items: ['Regalos', 'Gastos hormiga'] },
 ];

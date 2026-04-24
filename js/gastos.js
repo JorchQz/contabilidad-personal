@@ -23,7 +23,7 @@ export const GASTOS_FIJOS_CATALOGO = [
     items: [
       { nombre: 'Renta',          icono: 'home',       frecuencia: 'mensual' },
       { nombre: 'Hipoteca',       icono: 'building-2', frecuencia: 'mensual' },
-      { nombre: 'Mantenimiento',  icono: 'wrench',     frecuencia: 'mensual', montoVariable: true },
+      { nombre: 'Cuota de mantenimiento', icono: 'wrench', frecuencia: 'mensual', montoVariable: true },
       { nombre: 'Predial',        icono: 'landmark',   frecuencia: 'anual' },
     ],
   },
@@ -32,6 +32,7 @@ export const GASTOS_FIJOS_CATALOGO = [
     items: [
       { nombre: 'Luz / CFE',        icono: 'zap',        frecuencia: 'bimestral', montoVariable: true },
       { nombre: 'Agua',             icono: 'droplets',   frecuencia: 'mensual',   montoVariable: true },
+      { nombre: 'Gas',              icono: 'flame',      frecuencia: 'mensual',   montoVariable: true },
       { nombre: 'Internet',         icono: 'wifi',       frecuencia: 'mensual' },
       { nombre: 'Teléfono celular', icono: 'smartphone', frecuencia: 'mensual' },
     ],
@@ -51,26 +52,16 @@ export const GASTOS_FIJOS_CATALOGO = [
   {
     titulo: 'Salud y bienestar', icono: 'shield',
     items: [
-      { nombre: 'Seguro médico',  icono: 'shield',       frecuencia: 'anual' },
-      { nombre: 'Gimnasio',       icono: 'dumbbell',     frecuencia: 'mensual' },
-      { nombre: 'Gastos Médicos', icono: 'stethoscope',  frecuencia: 'mensual', montoVariable: true },
-      { nombre: 'Medicamentos',   icono: 'pill',         frecuencia: 'mensual', montoVariable: true },
-      { nombre: 'Terapia',        icono: 'heart-pulse',  frecuencia: 'mensual' },
+      { nombre: 'Seguro médico', icono: 'shield',      frecuencia: 'anual' },
+      { nombre: 'Gimnasio',      icono: 'dumbbell',    frecuencia: 'mensual' },
+      { nombre: 'Terapia',       icono: 'heart-pulse', frecuencia: 'mensual' },
     ],
   },
   {
     titulo: 'Auto', icono: 'car',
     items: [
-      { nombre: 'Seguro de auto',       icono: 'car',    frecuencia: 'anual' },
-      { nombre: 'Mecánico / Repuestos', icono: 'wrench', frecuencia: 'mensual', montoVariable: true },
-      { nombre: 'Tenencia / Refrendo',  icono: 'file-text', frecuencia: 'anual' },
-    ],
-  },
-  {
-    titulo: 'Mascotas', icono: 'dog',
-    items: [
-      { nombre: 'Alimento',    icono: 'dog',         frecuencia: 'mensual' },
-      { nombre: 'Veterinario', icono: 'stethoscope', frecuencia: 'mensual', montoVariable: true },
+      { nombre: 'Seguro de auto',      icono: 'car',       frecuencia: 'anual' },
+      { nombre: 'Tenencia / Refrendo', icono: 'file-text', frecuencia: 'anual' },
     ],
   },
   {
