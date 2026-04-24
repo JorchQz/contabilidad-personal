@@ -85,7 +85,9 @@ function updateThemeToggleUI() {
   const isLight = document.documentElement.getAttribute('data-theme') === 'light';
 
   if (label) {
-    label.textContent = isLight ? '☀️  Modo claro' : '🌙  Modo oscuro';
+    label.innerHTML = isLight
+      ? `<i class="bx bx-sun" style="font-size:16px;vertical-align:middle;margin-right:4px"></i> Modo claro`
+      : `<i class="bx bx-moon" style="font-size:16px;vertical-align:middle;margin-right:4px"></i> Modo oscuro`;
   }
 
   if (sw) {
@@ -700,7 +702,7 @@ async function loadAjustes() {
 
       <div class="theme-toggle" onclick="toggleTheme()" style="margin-bottom:12px">
         <div class="theme-toggle-label">
-          <span id="theme-label">🌙  Modo oscuro</span>
+          <span id="theme-label"><i class="bx bx-moon" style="font-size:16px;vertical-align:middle;margin-right:4px"></i> Modo oscuro</span>
         </div>
         <div class="toggle-switch" id="theme-switch">
           <div class="toggle-knob"></div>

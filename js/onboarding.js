@@ -10,11 +10,12 @@ let onboardingData = {
   cuentas: [],
   deudas: [],
   gastosFijos: [],
-  metas: []
+  metas: [],
+  gastosDiarios: []
 };
 
 let currentStep = 1;
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 7;
 
 // ---- ICONOS ----
 const TODOS_ICONOS = [
@@ -31,6 +32,12 @@ const TODOS_ICONOS = [
   'refresh-cw','check-circle','alert-circle','info','plus-circle',
   'minus-circle','arrow-right','arrow-left','percent','tag','box'
 ];
+
+function renderIcono(icono, size = 18) {
+  return (icono && icono.startsWith('bx'))
+    ? `<i class="${icono}" style="font-size:${size}px;pointer-events:none"></i>`
+    : `<i data-lucide="${icono || 'circle'}" style="width:${size}px;height:${size}px;stroke-width:1.75;pointer-events:none"></i>`;
+}
 
 // ---- NÚCLEO ----
 export function renderOnboarding() {
@@ -83,7 +90,8 @@ function renderStep(step) {
     3: renderStep4,
     4: renderStep5,
     5: renderStep6,
-    6: renderStep6resumen
+    6: renderStepGastosDiarios,
+    7: renderStep6resumen
   };
 
   steps[step]?.();
@@ -191,7 +199,7 @@ function renderStep2nuevo() {
       <div style="margin-top:20px">
         ${window._showCustomForm ? customFormHtml : `
           <button class="btn-add-item" onclick="showCustomIngresoForm()">
-            <span>+</span> Agregar personalizado
+            <i class="bx bx-plus"></i> Agregar personalizado
           </button>
         `}
       </div>
@@ -224,7 +232,7 @@ function renderStep3nuevo() {
 
   window._showFijoCustomForm = false;
   window._fijoCustomNombre = '';
-  window._fijoCustomIcono = 'receipt';
+  window._fijoCustomIcono = 'smile';
   window._showFijoIconPanel = false;
 
   if (!(window._fijoGruposAbiertos instanceof Set)) {
@@ -264,7 +272,7 @@ function renderStep3nuevo() {
                     const added = fijosNombres.has(it.nombre);
                     const meta = JSON.stringify({ nombre: it.nombre, icono: it.icono, frecuencia: it.frecuencia || 'mensual', montoVariable: !!it.montoVariable }).replace(/"/g, '&quot;');
                     return `<button class="fijo-sugerido-chip${added ? ' added' : ''}" data-item="${meta}" type="button">
-                      <i data-lucide="${it.icono}" style="pointer-events:none"></i>
+                      ${renderIcono(it.icono)}
                       <span style="pointer-events:none">${it.nombre}</span>
                     </button>`;
                   }).join('')}
@@ -305,7 +313,7 @@ function renderStep3nuevo() {
             <div class="fijo-card">
               <div class="fijo-card-header">
                 <div class="fijo-card-name">
-                  <i data-lucide="${f.icono}"></i>
+                  ${renderIcono(f.icono)}
                   <span>${f.nombre}</span>
                 </div>
                 <button class="btn-remove" onclick="removeGastoFijo(${idx})">✕</button>
@@ -358,7 +366,7 @@ function renderStep3nuevo() {
       </div>
     ` : `
       <button class="btn-add-item" style="margin-top:14px" onclick="showFijoCustomForm()">
-        <span>+</span> Agregar personalizado
+        <i class="bx bx-plus"></i> Agregar personalizado
       </button>
     `;
 
@@ -553,26 +561,33 @@ function renderStep5Body(showForm = false) {
   const tipoDeuda = window._onboardingTipoDeuda || null;
 
   const selectorTipoHtml = `
-    <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
       <button onclick="selectTipoDeudaOnboarding('simple')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'simple' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
         <i data-lucide="credit-card" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block"></i>
         <div style="font-weight:600;font-size:14px">Simple</div>
-        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Monto fijo, fecha fija</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Fijo<br>Fecha: Fija</div>
       </button>
       <button onclick="selectTipoDeudaOnboarding('variable')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'variable' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
         <i data-lucide="trending-down" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block"></i>
         <div style="font-weight:600;font-size:14px">Variable</div>
-        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Monto cambia cada pago</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Cambia<br>Fecha: Fija</div>
       </button>
       <button onclick="selectTipoDeudaOnboarding('tabla')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'tabla' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
         <i data-lucide="calendar" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block"></i>
         <div style="font-weight:600;font-size:14px">Con tabla</div>
-        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Pagos programados</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Cambia<br>Fecha: Cambia</div>
+      </button>
+      <button onclick="selectTipoDeudaOnboarding('flexible')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'flexible' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
+        <i data-lucide="wallet" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block"></i>
+        <div style="font-weight:600;font-size:14px">Flexible</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Libre<br>Fecha: Libre</div>
       </button>
     </div>
   `;
 
-  const cuotaLabel = tipoDeuda === 'variable' ? 'Pago estimado (Opcional)' : 'Cuota fija (Opcional)';
+  const esSimple = tipoDeuda === 'simple';
+  const cuotaLabel = esSimple ? 'Cuota fija' : 'Pago promedio (Opcional) - Para presupuestar';
+  const cuotaRequired = esSimple ? 'required' : '';
 
   const formularioSimpleVariable = `
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
@@ -595,13 +610,37 @@ function renderStep5Body(showForm = false) {
             <option value="semanal">Semanal</option>
             <option value="quincenal">Quincenal</option>
             <option value="mensual" selected>Mensual</option>
-            <option value="libre">Libre</option>
+            ${(tipoDeuda === 'simple' || tipoDeuda === 'variable') ? '' : '<option value="libre">Libre</option>'}
           </select>
           <div id="d-fecha-campos" style="flex:1"></div>
         </div>
+        <div id="d-freq-hint"></div>
       </div>
       <div class="form-group">
         <label class="form-label">${cuotaLabel}</label>
+        <div class="input-money-wrap">
+          <span class="currency-prefix">$</span>
+          <input class="form-input" id="d-cuota" type="number" placeholder="0.00" min="0" ${cuotaRequired} />
+        </div>
+      </div>
+    </div>
+  `;
+
+  const formularioFlexible = `
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
+      <div class="form-group">
+        <label class="form-label">¿A quién le debes?</label>
+        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Amigo, familiar…" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Monto total</label>
+        <div class="input-money-wrap">
+          <span class="currency-prefix">$</span>
+          <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Pago estimado (Opcional)</label>
         <div class="input-money-wrap">
           <span class="currency-prefix">$</span>
           <input class="form-input" id="d-cuota" type="number" placeholder="0.00" min="0" />
@@ -645,7 +684,7 @@ function renderStep5Body(showForm = false) {
     ${showForm ? `
     <div class="mini-form">
       ${selectorTipoHtml}
-      ${tipoDeuda ? (tipoDeuda === 'tabla' ? formularioTabla : formularioSimpleVariable) : `<p class="form-hint" style="margin-bottom:8px">Selecciona el tipo de deuda para continuar</p>`}
+      ${tipoDeuda ? (tipoDeuda === 'tabla' ? formularioTabla : tipoDeuda === 'flexible' ? formularioFlexible : formularioSimpleVariable) : `<p class="form-hint" style="margin-bottom:8px">Selecciona el tipo de deuda para continuar</p>`}
       ${tipoDeuda ? `<button class="btn btn-secondary" onclick="addDeuda()">+ Agregar</button>` : ''}
     </div>
     ` : `
@@ -659,6 +698,9 @@ function renderStep5Body(showForm = false) {
   if (showForm && (tipoDeuda === 'simple' || tipoDeuda === 'variable')) {
     renderCamposDeudaOnboarding();
   }
+  if (showForm && tipoDeuda === 'flexible') {
+    // sin campos de fecha — formulario completo desde el HTML estático
+  }
 
   renderLucideIcons();
 }
@@ -666,7 +708,9 @@ function renderStep5Body(showForm = false) {
 function renderCamposDeudaOnboarding() {
   const tipo = document.getElementById('d-freq')?.value;
   const campos = document.getElementById('d-fecha-campos');
+  const hint = document.getElementById('d-freq-hint');
   if (!campos) return;
+  if (hint) hint.innerHTML = '';
 
   if (tipo === 'unico') {
     campos.innerHTML = `<input class="form-input" id="d-fecha-pago" type="date" style="width:100%" />`;
@@ -675,19 +719,24 @@ function renderCamposDeudaOnboarding() {
   if (tipo === 'semanal') {
     campos.innerHTML = `
       <select class="form-select" id="d-dia-semana" style="width:100%">
-        <option value="0">Dom</option><option value="1">Lun</option>
-        <option value="2">Mar</option><option value="3">Mié</option>
-        <option value="4">Jue</option><option value="5">Vie</option>
-        <option value="6">Sáb</option>
+        <option value="1">Lunes</option>
+        <option value="2">Martes</option>
+        <option value="3">Miércoles</option>
+        <option value="4">Jueves</option>
+        <option value="5">Viernes</option>
+        <option value="6">Sábado</option>
+        <option value="0">Domingo</option>
       </select>`;
     return;
   }
   if (tipo === 'quincenal') {
-    campos.innerHTML = `<input class="form-input" id="d-quincena" type="number" min="1" max="2" placeholder="1 ó 2" style="width:100%" />`;
+    campos.innerHTML = '';
+    if (hint) hint.innerHTML = `<p class="text-xs text-gray-500 mt-1 block" style="color:var(--text-secondary);font-size:12px;margin-top:6px">Los pagos se programarán los días 15 y último del mes.</p>`;
     return;
   }
   if (tipo === 'mensual') {
-    campos.innerHTML = `<input class="form-input" id="d-dia-pago" type="number" min="1" max="31" placeholder="Día 1-31" style="width:100%" />`;
+    const opciones = Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('');
+    campos.innerHTML = `<select class="form-select" id="d-dia-pago" style="width:100%">${opciones}</select>`;
     return;
   }
   campos.innerHTML = '';
@@ -760,10 +809,19 @@ function nextStep5() {
   renderStep(5);
 }
 
+// ---- CATÁLOGO GASTOS DIARIOS ----
+const GASTOS_DIARIOS_CATALOGO = [
+  { categoria: 'Alimentación',    icono: 'bx bx-restaurant',  items: ['Súper / Despensa', 'Restaurantes', 'Antojitos / Café', 'Delivery'] },
+  { categoria: 'Transporte',      icono: 'bx bx-car',         items: ['Transporte público', 'Gasolina', 'Uber / Didi', 'Estacionamiento'] },
+  { categoria: 'Hogar',           icono: 'bx bx-home-alt',    items: ['Limpieza', 'Mascotas', 'Mantenimiento'] },
+  { categoria: 'Entretenimiento', icono: 'bx bx-party',       items: ['Salidas', 'Cine / Eventos', 'Hobbies'] },
+  { categoria: 'Salud y Cuidado', icono: 'bx bx-heart',       items: ['Farmacia / Medicinas', 'Peluquería', 'Ropa', 'Gimnasio'] },
+  { categoria: 'Educación',       icono: 'bx bx-book',        items: ['Material escolar', 'Cursos'] },
+  { categoria: 'Otros',           icono: 'bx bx-grid-alt',    items: ['Regalos', 'Gastos hormiga'] },
+];
+
 // ---- STEP 5: Metas ----
 function renderStep6() {
-  window._metaSelectedIcono = window._metaSelectedIcono || 'target';
-  window._metaIconPanelOpen = false;
   setHeader('¿Para qué quieres ahorrar?', 'Define tus metas. Las iremos completando juntos poco a poco.');
   renderStep6Body();
   setFooter(`
@@ -774,7 +832,7 @@ function renderStep6() {
   `);
 }
 
-function renderStep6Body(showForm = false, selectedIcono = 'target') {
+function renderStep6Body(showForm = false) {
   const cuentasOptions = onboardingData.cuentas.map(c =>
     `<option value="${c.nombre}">${c.nombre}</option>`
   ).join('');
@@ -783,10 +841,17 @@ function renderStep6Body(showForm = false, selectedIcono = 'target') {
     <div class="item-list">
       ${onboardingData.metas.map((m, i) => `
         <div class="item-row">
-          <div class="item-row-emoji"><i data-lucide="${m.icono || 'target'}" style="width:18px;height:18px;stroke-width:1.75"></i></div>
+          <div class="item-row-emoji" style="display:flex;align-items:center;justify-content:center">
+            <i class="bx bx-target-lock" style="font-size:20px;color:var(--accent)"></i>
+          </div>
           <div class="item-row-info">
             <div class="item-row-name">${m.nombre}</div>
-            <div class="item-row-detail">Meta: ${formatMXN(m.monto_objetivo)}${m.cuenta_nombre ? ` · ${m.cuenta_nombre}` : ''}</div>
+            <div class="item-row-detail">
+              ${formatMXN(m.monto_objetivo)}
+              ${m.frecuencia_ahorro && m.frecuencia_ahorro !== 'libre' ? ` · ${m.frecuencia_ahorro}` : ''}
+              ${m.cuenta_nombre ? ` · ${m.cuenta_nombre}` : ''}
+              ${m.fecha_limite ? ` · hasta ${new Date(m.fecha_limite + 'T00:00:00').toLocaleDateString('es-MX')}` : ''}
+            </div>
           </div>
           <button class="item-row-delete" onclick="removeMeta(${i})"><i data-lucide="x" style="width:18px;height:18px;stroke-width:1.75"></i></button>
         </div>
@@ -795,26 +860,31 @@ function renderStep6Body(showForm = false, selectedIcono = 'target') {
 
     ${showForm ? `
     <div class="mini-form">
-      <div class="custom-form-row" style="margin-bottom:10px">
-        <button class="emoji-picker-btn" onclick="toggleMetaIconPanel()">
-          ${window._metaSelectedIcono ? `<i data-lucide="${window._metaSelectedIcono}"></i>` : '+'}
-        </button>
-        <input class="form-input" id="m-nombre" placeholder="Nombre de la meta" style="margin:0" />
+      <div class="form-group" style="margin-bottom:10px">
+        <input class="form-input" id="m-nombre" placeholder="Nombre de la meta" />
       </div>
-      ${window._metaIconPanelOpen ? `
-        <div class="icon-panel" style="margin-bottom:10px">
-          <div class="icon-grid">
-            ${TODOS_ICONOS.map(ic => `
-              <div class="icon-grid-item${selectedIcono === ic ? ' selected' : ''}" onclick="selectIconoMeta('${ic}')">
-                <i data-lucide="${ic}"></i>
-              </div>`).join('')}
-          </div>
+      <div class="form-group" style="margin-bottom:8px">
+        <label class="form-label">Monto a ahorrar</label>
+        <div class="input-money-wrap">
+          <span class="currency-prefix">$</span>
+          <input class="form-input" id="m-monto" type="number" placeholder="0.00" min="0" oninput="calcularAhorroMeta()" />
         </div>
-      ` : ''}
-      <div class="input-money-wrap" style="margin-bottom:8px">
-        <span class="currency-prefix">$</span>
-        <input class="form-input" id="m-monto" type="number" placeholder="¿Cuánto necesitas?" min="0" />
       </div>
+      <div class="form-group" style="margin-bottom:8px">
+        <label class="form-label">Fecha límite</label>
+        <input class="form-input" id="m-fecha-limite" type="date" onchange="calcularAhorroMeta()" />
+      </div>
+      <div class="form-group" style="margin-bottom:8px">
+        <label class="form-label">Frecuencia de ahorro</label>
+        <select class="form-select" id="m-frecuencia" onchange="calcularAhorroMeta()">
+          <option value="diaria">Diaria</option>
+          <option value="semanal">Semanal</option>
+          <option value="quincenal">Quincenal</option>
+          <option value="mensual" selected>Mensual</option>
+          <option value="libre">Libre (sin fecha fija)</option>
+        </select>
+      </div>
+      <p id="m-calculo-sugerido" style="font-size:13px;color:var(--accent);margin-bottom:10px;min-height:18px;font-weight:500"></p>
       ${onboardingData.cuentas.length > 0 ? `
       <div class="form-group" style="margin-bottom:8px">
         <label class="form-label">¿En qué cuenta ahorrarás?</label>
@@ -836,15 +906,43 @@ function renderStep6Body(showForm = false, selectedIcono = 'target') {
   renderLucideIcons();
 }
 
+window.calcularAhorroMeta = function() {
+  const monto     = parseFloat(document.getElementById('m-monto')?.value);
+  const fechaStr  = document.getElementById('m-fecha-limite')?.value;
+  const frecuencia = document.getElementById('m-frecuencia')?.value;
+  const resultado = document.getElementById('m-calculo-sugerido');
+  if (!resultado) return;
+
+  if (!monto || monto <= 0 || !fechaStr || frecuencia === 'libre') {
+    resultado.textContent = '';
+    return;
+  }
+
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const limite = new Date(fechaStr + 'T00:00:00');
+  if (limite <= hoy) { resultado.textContent = ''; return; }
+
+  const dias = Math.ceil((limite - hoy) / 86400000);
+  const divisores = { diaria: 1, semanal: 7, quincenal: 15, mensual: 30 };
+  const singular  = { diaria: 'día',      semanal: 'semana',   quincenal: 'quincena', mensual: 'mes' };
+  const plural    = { diaria: 'días',     semanal: 'semanas',  quincenal: 'quincenas',mensual: 'meses' };
+  const periodos  = Math.ceil(dias / (divisores[frecuencia] || 30));
+  if (periodos <= 0) { resultado.textContent = ''; return; }
+
+  const cuota     = monto / periodos;
+  const labelPer  = periodos === 1 ? singular[frecuencia] : plural[frecuencia];
+  resultado.textContent = `Deberás ahorrar ${formatMXN(cuota)} cada ${singular[frecuencia]} (${periodos} ${labelPer}).`;
+};
+
 function addMeta() {
-  const icono = window._metaSelectedIcono || 'target';
-  const nombre = document.getElementById('m-nombre')?.value.trim();
-  const monto_objetivo = parseFloat(document.getElementById('m-monto')?.value);
-  const cuenta_nombre = document.getElementById('m-cuenta-nombre')?.value || null;
+  const nombre          = document.getElementById('m-nombre')?.value.trim();
+  const monto_objetivo  = parseFloat(document.getElementById('m-monto')?.value);
+  const cuenta_nombre   = document.getElementById('m-cuenta-nombre')?.value || null;
+  const fecha_limite    = document.getElementById('m-fecha-limite')?.value || null;
+  const frecuencia_ahorro = document.getElementById('m-frecuencia')?.value || null;
   if (!nombre || !monto_objetivo) { showSnackbar('Completa nombre y monto', 'error'); return; }
-  onboardingData.metas.push({ icono, nombre, monto_objetivo, cuenta_nombre });
-  window._metaSelectedIcono = 'target';
-  window._metaIconPanelOpen = false;
+  onboardingData.metas.push({ icono: 'bx bx-target-lock', nombre, monto_objetivo, cuenta_nombre, fecha_limite, frecuencia_ahorro });
   renderStep6Body(false);
 }
 
@@ -857,7 +955,132 @@ function nextStep6() {
   renderStep(6);
 }
 
-// ---- STEP 6: Resumen ----
+// ---- STEP 6: Gastos Diarios ----
+function renderStepGastosDiarios() {
+  window._gdCategoriasAbiertas = window._gdCategoriasAbiertas || new Set();
+  setHeader('¿En qué gastas día a día?', 'Selecciona los gastos variables que tienes con más frecuencia.');
+  renderGastosDiariosBody();
+  setFooter(`
+    <div class="footer-nav-row">
+      <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
+      <button class="btn btn-primary" onclick="nextStepGastosDiarios()">Continuar →</button>
+    </div>
+  `);
+}
+
+function renderGastosDiariosBody(customFormOpen = false) {
+  const sel = onboardingData.gastosDiarios;
+  const abiertos = window._gdCategoriasAbiertas || new Set();
+
+  const acuerdeonHTML = GASTOS_DIARIOS_CATALOGO.map(grupo => {
+    const isOpen = abiertos.has(grupo.categoria);
+    const count  = sel.filter(g => g.categoria === grupo.categoria).length;
+    const catKey = grupo.categoria.replace(/'/g, "\\'");
+    const icoKey = grupo.icono.replace(/'/g, "\\'");
+
+    const subcatsHTML = isOpen
+      ? `<div style="display:flex;flex-wrap:wrap;gap:8px;padding:4px 14px 14px">` +
+        grupo.items.map(item => {
+          const active  = sel.some(g => g.categoria === grupo.categoria && g.subcategoria === item);
+          const itemKey = item.replace(/'/g, "\\'");
+          return `<button type="button"
+            onclick="toggleGdSubcategoria('${catKey}','${icoKey}','${itemKey}')"
+            style="padding:7px 14px;border-radius:9999px;font-size:13px;font-family:var(--font-body);cursor:pointer;transition:all 150ms ease;
+              background:${active ? 'var(--accent)' : 'var(--bg-elevated)'};
+              color:${active ? '#fff' : 'var(--text)'};
+              border:1.5px solid ${active ? 'var(--accent)' : 'var(--border)'}">
+            ${item}
+          </button>`;
+        }).join('') + `</div>`
+      : '';
+
+    return `
+      <div style="background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:8px">
+        <button type="button" onclick="toggleGdCategoria('${catKey}')"
+          style="width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;background:none;border:none;cursor:pointer;font-family:var(--font-body);text-align:left">
+          <i class="${grupo.icono}" style="font-size:20px;color:var(--accent);flex-shrink:0"></i>
+          <span style="font-weight:600;font-size:14px;flex:1">${grupo.categoria}</span>
+          ${count > 0 ? `<span style="background:var(--accent);color:#fff;border-radius:9999px;min-width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;padding:0 5px">${count}</span>` : ''}
+          <i class="bx ${isOpen ? 'bx-chevron-up' : 'bx-chevron-down'}" style="font-size:20px;color:var(--text-muted)"></i>
+        </button>
+        ${isOpen ? `<div style="padding-bottom:8px">${subcatsHTML}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  const categoriasOpts = GASTOS_DIARIOS_CATALOGO
+    .map(g => `<option value="${g.categoria}">${g.categoria}</option>`).join('');
+
+  const customFormHTML = customFormOpen ? `
+    <div class="mini-form" style="margin-top:4px">
+      <div class="form-group">
+        <label class="form-label">Nombre del gasto</label>
+        <input class="form-input" id="gd-custom-nombre" type="text" placeholder="Ej. Netflix, Veterinario…" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Categoría padre</label>
+        <select class="form-select" id="gd-custom-cat">${categoriasOpts}</select>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="guardarGdCustom()">+ Agregar</button>
+        <button class="btn btn-ghost" onclick="renderGastosDiariosBody(false)">Cancelar</button>
+      </div>
+    </div>` : `
+    <button class="btn-add-item" onclick="renderGastosDiariosBody(true)" style="margin-top:4px">
+      <i class="bx bx-plus"></i> Agregar gasto personalizado
+    </button>`;
+
+  document.getElementById('onboarding-body').innerHTML = `
+    ${acuerdeonHTML}
+    ${customFormHTML}
+    <p class="form-hint" style="margin-top:12px;padding:0 4px">Puedes seleccionar varios o continuar sin ninguno.</p>
+  `;
+}
+
+window.renderGastosDiariosBody = renderGastosDiariosBody;
+
+window.toggleGdCategoria = function(categoria) {
+  if (!window._gdCategoriasAbiertas) window._gdCategoriasAbiertas = new Set();
+  if (window._gdCategoriasAbiertas.has(categoria)) {
+    window._gdCategoriasAbiertas.delete(categoria);
+  } else {
+    window._gdCategoriasAbiertas.add(categoria);
+  }
+  renderGastosDiariosBody();
+};
+
+window.toggleGdSubcategoria = function(categoria, icono, subcategoria) {
+  const idx = onboardingData.gastosDiarios.findIndex(
+    g => g.categoria === categoria && g.subcategoria === subcategoria
+  );
+  if (idx >= 0) {
+    onboardingData.gastosDiarios.splice(idx, 1);
+  } else {
+    onboardingData.gastosDiarios.push({ categoria, icono, subcategoria });
+  }
+  renderGastosDiariosBody();
+};
+
+window.guardarGdCustom = function() {
+  const nombre = document.getElementById('gd-custom-nombre')?.value.trim();
+  const categoria = document.getElementById('gd-custom-cat')?.value;
+  if (!nombre) { showSnackbar('Escribe el nombre del gasto', 'error'); return; }
+  const grupo = GASTOS_DIARIOS_CATALOGO.find(g => g.categoria === categoria);
+  const icono = grupo ? grupo.icono : 'bx bx-grid-alt';
+  const yaExiste = onboardingData.gastosDiarios.some(
+    g => g.categoria === categoria && g.subcategoria === nombre
+  );
+  if (!yaExiste) {
+    onboardingData.gastosDiarios.push({ categoria, icono, subcategoria: nombre });
+  }
+  renderGastosDiariosBody();
+};
+
+function nextStepGastosDiarios() {
+  renderStep(7);
+}
+window.nextStepGastosDiarios = nextStepGastosDiarios;
+
+// ---- STEP 7: Resumen ----
 function renderStep6resumen() {
   setHeader('Todo listo, revisa tu configuración', 'Si algo no está bien, regresa a corregirlo.');
 
@@ -930,7 +1153,7 @@ function renderStep6resumen() {
   setFooter(`
     <div class="footer-nav-row">
       <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
-      <button class="btn btn-success" id="btn-finish" onclick="finishOnboarding()">¡Listo, empecemos! 🚀</button>
+      <button class="btn btn-success" id="btn-finish" onclick="finishOnboarding()"><i class="bx bx-send" style="font-size:16px;vertical-align:middle;margin-right:6px"></i>¡Listo, empecemos!</button>
     </div>
   `);
 
@@ -1056,7 +1279,7 @@ async function finishOnboarding() {
     console.error(err);
     showSnackbar('Error al guardar. Intenta de nuevo.', 'error');
     const btn = document.getElementById('btn-finish');
-    if (btn) { btn.textContent = '¡Listo, empecemos!'; btn.disabled = false; }
+    if (btn) { btn.innerHTML = '<i class="bx bx-send" style="font-size:16px;vertical-align:middle;margin-right:6px"></i>¡Listo, empecemos!'; btn.disabled = false; }
   }
 }
 
@@ -1203,7 +1426,7 @@ window.updateGastoFijo = function(idx) {
 window.showFijoCustomForm = function() {
   window._showFijoCustomForm = true;
   window._fijoCustomNombre = '';
-  window._fijoCustomIcono = 'receipt';
+  window._fijoCustomIcono = 'smile';
   window._showFijoIconPanel = false;
   if (window._renderStep3Body) window._renderStep3Body();
 };
@@ -1224,7 +1447,7 @@ window.addGastoFijoCustom = function() {
   if (!nombre) { showSnackbar('Escribe el nombre del gasto fijo', 'error'); return; }
   onboardingData.gastosFijos.push({
     nombre,
-    icono: window._fijoCustomIcono || 'receipt',
+    icono: window._fijoCustomIcono || 'smile',
     monto: null,
     monto_variable: false,
     frecuencia: 'mensual',
@@ -1334,16 +1557,6 @@ window.addDeuda        = addDeuda;
 window.removeDeuda     = removeDeuda;
 window.nextStep5       = nextStep5;
 
-window.selectIconoMeta = function(icono) {
-  window._metaSelectedIcono = icono;
-  window._metaIconPanelOpen = false;
-  renderStep6Body(true, icono);
-};
-
-window.toggleMetaIconPanel = function() {
-  window._metaIconPanelOpen = !window._metaIconPanelOpen;
-  renderStep6Body(true, window._metaSelectedIcono || 'target');
-};
 
 window.addMeta         = addMeta;
 window.removeMeta      = removeMeta;

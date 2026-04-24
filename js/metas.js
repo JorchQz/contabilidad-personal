@@ -263,20 +263,20 @@ async function openAgregarMeta(metaId = null) {
 }
 
 function renderMetaModal() {
-  const icono = window._metaIcono || 'target';
+  const icono       = window._metaIcono || 'target';
   const panelAbierto = window._metaIconPanelOpen;
-  const draft = window._metaDraft || { nombre: '', monto: '', cuenta_id: '' };
-  const titulo = currentEditMetaId ? 'Editar meta' : 'Nueva meta de ahorro';
-  const btnLabel = currentEditMetaId ? 'Guardar cambios' : 'Guardar meta';
+  const draft       = window._metaDraft || { nombre: '', monto: '', cuenta_id: '', fecha_limite: '', frecuencia_ahorro: 'mensual' };
+  const titulo      = currentEditMetaId ? 'Editar meta' : 'Nueva meta de ahorro';
+  const btnLabel    = currentEditMetaId ? 'Guardar cambios' : 'Guardar meta';
+  const iconoBtn    = (icono === 'target' || !icono)
+    ? `<i class="bx bx-smile" style="font-size:20px"></i>`
+    : `<i data-lucide="${icono}" style="width:20px;height:20px;stroke-width:1.75"></i>`;
 
   openModal(titulo, `
     <div class="form-group">
-      <label class="form-label">Icono</label>
-      <div class="custom-form-row" style="align-items:center">
-        <button type="button" class="emoji-picker-btn" onclick="toggleMetaIconPanel()">
-          <i data-lucide="${icono}"></i>
-        </button>
-        <span style="font-size:13px;color:var(--text-secondary);margin-left:10px">Toca el icono para cambiarlo</span>
+      <div class="custom-form-row" style="align-items:center;margin-bottom:4px">
+        <button type="button" class="emoji-picker-btn" onclick="toggleMetaIconPanel()">${iconoBtn}</button>
+        <span style="font-size:13px;color:var(--text-secondary);margin-left:10px">Toca para cambiar el ícono</span>
       </div>
       ${panelAbierto ? `
         <div class="icon-panel" style="margin-top:10px">
@@ -291,13 +291,28 @@ function renderMetaModal() {
     </div>
     <div class="form-group">
       <label class="form-label">Nombre de la meta</label>
-      <input class="form-input" id="nm-nombre" type="text" placeholder="Ej: Capital para cachuchas" value="${draft.nombre}" />
+      <input class="form-input" id="nm-nombre" type="text" placeholder="Ej: Fondo de emergencia" value="${draft.nombre}" />
     </div>
     <div class="form-group">
-      <label class="form-label">¿Cuánto necesitas?</label>
+      <label class="form-label">Monto a ahorrar</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="nm-monto" type="number" placeholder="0.00" min="0" value="${draft.monto}" /></div>
+      <input class="form-input" id="nm-monto" type="number" placeholder="0.00" min="0" value="${draft.monto}" oninput="calcularAhorroMetaDash()" /></div>
     </div>
+    <div class="form-group">
+      <label class="form-label">Fecha límite</label>
+      <input class="form-input" id="nm-fecha-limite" type="date" value="${draft.fecha_limite || ''}" onchange="calcularAhorroMetaDash()" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Frecuencia de ahorro</label>
+      <select class="form-select" id="nm-frecuencia" onchange="calcularAhorroMetaDash()">
+        <option value="diaria"    ${draft.frecuencia_ahorro === 'diaria'    ? 'selected' : ''}>Diaria</option>
+        <option value="semanal"   ${draft.frecuencia_ahorro === 'semanal'   ? 'selected' : ''}>Semanal</option>
+        <option value="quincenal" ${draft.frecuencia_ahorro === 'quincenal' ? 'selected' : ''}>Quincenal</option>
+        <option value="mensual"   ${draft.frecuencia_ahorro === 'mensual'   ? 'selected' : ''}>Mensual</option>
+        <option value="libre"     ${draft.frecuencia_ahorro === 'libre'     ? 'selected' : ''}>Libre (sin fecha fija)</option>
+      </select>
+    </div>
+    <p id="nm-calculo-sugerido" style="font-size:13px;color:var(--accent);margin-bottom:10px;min-height:18px;font-weight:500"></p>
     <div class="form-group">
       <label class="form-label">¿En qué cuenta ahorrarás?</label>
       <select class="form-select" id="meta-cuenta-id">
@@ -310,27 +325,57 @@ function renderMetaModal() {
 
   const selCuenta = document.getElementById('meta-cuenta-id');
   if (selCuenta && draft.cuenta_id) selCuenta.value = draft.cuenta_id;
+  renderLucideIcons();
+}
+
+function _capturarDraftMeta() {
+  return {
+    nombre:           document.getElementById('nm-nombre')?.value || '',
+    monto:            document.getElementById('nm-monto')?.value || '',
+    cuenta_id:        document.getElementById('meta-cuenta-id')?.value || '',
+    fecha_limite:     document.getElementById('nm-fecha-limite')?.value || '',
+    frecuencia_ahorro: document.getElementById('nm-frecuencia')?.value || 'mensual',
+  };
 }
 
 window.toggleMetaIconPanel = function() {
-  window._metaDraft = {
-    nombre: document.getElementById('nm-nombre')?.value || '',
-    monto: document.getElementById('nm-monto')?.value || '',
-    cuenta_id: document.getElementById('meta-cuenta-id')?.value || ''
-  };
+  window._metaDraft = _capturarDraftMeta();
   window._metaIconPanelOpen = !window._metaIconPanelOpen;
   renderMetaModal();
 };
 
 window.selectMetaIcono = function(ic) {
-  window._metaDraft = {
-    nombre: document.getElementById('nm-nombre')?.value || '',
-    monto: document.getElementById('nm-monto')?.value || '',
-    cuenta_id: document.getElementById('meta-cuenta-id')?.value || ''
-  };
+  window._metaDraft = _capturarDraftMeta();
   window._metaIcono = ic;
   window._metaIconPanelOpen = false;
   renderMetaModal();
+};
+
+window.calcularAhorroMetaDash = function() {
+  const monto      = parseFloat(document.getElementById('nm-monto')?.value);
+  const fechaStr   = document.getElementById('nm-fecha-limite')?.value;
+  const frecuencia = document.getElementById('nm-frecuencia')?.value;
+  const resultado  = document.getElementById('nm-calculo-sugerido');
+  if (!resultado) return;
+
+  if (!monto || monto <= 0 || !fechaStr || frecuencia === 'libre') {
+    resultado.textContent = ''; return;
+  }
+
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const limite = new Date(fechaStr + 'T00:00:00');
+  if (limite <= hoy) { resultado.textContent = ''; return; }
+
+  const dias      = Math.ceil((limite - hoy) / 86400000);
+  const divisores = { diaria: 1, semanal: 7, quincenal: 15, mensual: 30 };
+  const singular  = { diaria: 'día',   semanal: 'semana',  quincenal: 'quincena', mensual: 'mes'   };
+  const plural    = { diaria: 'días',  semanal: 'semanas', quincenal: 'quincenas',mensual: 'meses' };
+  const periodos  = Math.ceil(dias / (divisores[frecuencia] || 30));
+  if (periodos <= 0) { resultado.textContent = ''; return; }
+
+  const cuota    = monto / periodos;
+  const labelPer = periodos === 1 ? singular[frecuencia] : plural[frecuencia];
+  resultado.textContent = `Deberás ahorrar ${formatMXN(cuota)} cada ${singular[frecuencia]} (${periodos} ${labelPer}).`;
 };
 
 async function guardarMeta() {

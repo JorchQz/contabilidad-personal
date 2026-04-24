@@ -44,7 +44,7 @@ export const GASTOS_FIJOS_CATALOGO = [
       { nombre: 'Disney+',         icono: 'clapperboard', frecuencia: 'mensual' },
       { nombre: 'HBO Max',         icono: 'tv',           frecuencia: 'mensual' },
       { nombre: 'Amazon Prime',    icono: 'package',      frecuencia: 'mensual' },
-      { nombre: 'YouTube Premium', icono: 'youtube',      frecuencia: 'mensual' },
+      { nombre: 'YouTube Premium', icono: 'bx bxl-youtube', frecuencia: 'mensual' },
       { nombre: 'Apple Music',     icono: 'music',        frecuencia: 'mensual' },
     ],
   },
@@ -77,12 +77,6 @@ export const GASTOS_FIJOS_CATALOGO = [
     titulo: 'Educación', icono: 'graduation-cap',
     items: [
       { nombre: 'Colegiatura', icono: 'graduation-cap', frecuencia: 'mensual' },
-    ],
-  },
-  {
-    titulo: 'Créditos', icono: 'credit-card',
-    items: [
-      { nombre: 'Tarjeta de crédito', icono: 'credit-card', frecuencia: 'mensual', montoVariable: true },
     ],
   },
 ];
