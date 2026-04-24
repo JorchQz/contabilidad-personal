@@ -163,7 +163,7 @@ function renderStep2nuevo() {
       <div class="custom-form">
         <div class="custom-form-row">
           <button class="emoji-picker-btn" id="emoji-btn" onclick="toggleIconPanel()">
-            <i data-lucide="${window._tipoIngresoSelectedIcono || 'plus'}"></i>
+            <i data-lucide="${window._tipoIngresoSelectedIcono || 'smile'}"></i>
           </button>
           <input class="form-input" id="ti-nombre" placeholder="Nombre del ingreso" />
         </div>
@@ -202,7 +202,7 @@ function renderStep2nuevo() {
 
   window._renderStep2Body = render;
   window._showCustomForm = false;
-  window._tipoIngresoSelectedIcono = 'plus';
+  window._tipoIngresoSelectedIcono = 'smile';
   render();
 
   setFooter(`
@@ -323,10 +323,12 @@ function renderStep3nuevo() {
                     <input class="form-input" id="gf-monto-${idx}" type="number" min="0" value="${f.monto ?? ''}" placeholder="Monto" onchange="updateGastoFijo(${idx})" />
                   </div>
                 `}
-                <select class="form-select" id="gf-freq-${idx}" onchange="updateGastoFijo(${idx})">
-                  ${FRECUENCIA_OPTIONS.map(([v, l]) => `<option value="${v}" ${f.frecuencia === v ? 'selected':''}>${l}</option>`).join('')}
-                </select>
-                ${diaField}
+                <div class="fijo-bottom-row">
+                  <select class="form-select" id="gf-freq-${idx}" onchange="updateGastoFijo(${idx})">
+                    ${FRECUENCIA_OPTIONS.map(([v, l]) => `<option value="${v}" ${f.frecuencia === v ? 'selected':''}>${l}</option>`).join('')}
+                  </select>
+                  ${diaField}
+                </div>
               </div>
             </div>
           `;
@@ -365,8 +367,8 @@ function renderStep3nuevo() {
         <div class="step-section-subtitle">Montos pueden ser definidos (igual cada vez, como renta o internet) o variables (cambian, como luz o agua). Solo los usamos para recordarte cuándo se acerca la fecha y que apartes dinero.</div>
       </div>
       ${sugeridosHtml}
-      ${fijosAddedHtml}
       ${fijoCustomFormHtml}
+      ${fijosAddedHtml}
     `;
 
     lucide.createIcons();
@@ -1039,13 +1041,13 @@ window.toggleTipoIngreso = function(nombre, icono, elemento) {
 
 window.showCustomIngresoForm = function() {
   window._showCustomForm = true;
-  window._tipoIngresoSelectedIcono = 'plus';
+  window._tipoIngresoSelectedIcono = 'smile';
   if (window._renderStep2Body) window._renderStep2Body(false);
 };
 
 window.cancelCustomIngresoForm = function() {
   window._showCustomForm = false;
-  window._tipoIngresoSelectedIcono = 'plus';
+  window._tipoIngresoSelectedIcono = 'smile';
   window._showIconPanel = false;
   if (window._renderStep2Body) window._renderStep2Body(false);
 };
@@ -1064,11 +1066,11 @@ window.selectIconoTipoIngreso = function(icono) {
 
 window.addTipoIngresoCustom = function() {
   const nombre = document.getElementById('ti-nombre')?.value.trim();
-  const icono = window._tipoIngresoSelectedIcono || 'plus';
+  const icono = window._tipoIngresoSelectedIcono || 'smile';
   if (!nombre) { showSnackbar('Escribe el nombre del ingreso', 'error'); return; }
   onboardingData.tiposIngreso.push({ nombre, icono });
   window._showCustomForm = false;
-  window._tipoIngresoSelectedIcono = 'plus';
+  window._tipoIngresoSelectedIcono = 'smile';
   if (window._renderStep2Body) window._renderStep2Body();
 };
 
@@ -1156,7 +1158,9 @@ window.updateGastoFijo = function(idx) {
     f.dia_semana = null;
   }
 
-  if (f.frecuencia !== prevFreq && window._renderStep3Body) window._renderStep3Body();
+  const prevSemanal = prevFreq === 'semanal';
+  const newSemanal  = f.frecuencia === 'semanal';
+  if (prevSemanal !== newSemanal && window._renderStep3Body) window._renderStep3Body();
 };
 
 window.showFijoCustomForm = function() {
