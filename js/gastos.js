@@ -313,8 +313,17 @@ const FRECUENCIAS_FIJO_UI = [
   ['trimestral', 'Trimestral'],
   ['semestral',  'Semestral'],
   ['anual',      'Anual'],
-  ['unico',      'Pago único'],
 ];
+
+const FREQ_DESC_MODAL = {
+  semanal:    'Cada semana, el día que elijas.',
+  quincenal:  'Los días 15 y último de cada mes.',
+  mensual:    'Una vez al mes, en el día que elijas.',
+  bimestral:  'Cada 2 meses — ingresa el último pago para proyectar el siguiente.',
+  trimestral: 'Cada 3 meses — ingresa el último pago para proyectar el siguiente.',
+  semestral:  'Cada 6 meses — ingresa el último pago para proyectar el siguiente.',
+  anual:      'Una vez al año — ingresa el último pago para proyectar el siguiente.',
+};
 
 const CICLOS_LARGOS_FIJO = ['bimestral', 'trimestral', 'semestral', 'anual'];
 
@@ -326,8 +335,6 @@ function extraerCamposFechaFijo(prefix, frecuencia, esAprox) {
     if (Number.isNaN(dia_semana)) dia_semana = null;
   } else if (frecuencia === 'mensual') {
     dia_pago = parseInt(document.getElementById(`${prefix}-dia-mes`)?.value, 10) || null;
-  } else if (frecuencia === 'unico') {
-    proximo_pago = document.getElementById(`${prefix}-prox`)?.value || null;
   } else if (CICLOS_LARGOS_FIJO.includes(frecuencia)) {
     ultima_fecha_pago = document.getElementById(`${prefix}-ultimo-pago`)?.value || null;
   }
@@ -344,20 +351,32 @@ function renderCamposFechaFijo(prefix, initial = {}) {
   const campos = document.getElementById(`${prefix}-fecha-campos`);
   if (!campos) return;
 
-  const esAprox = document.getElementById(`${prefix}-es-aprox`)?.checked;
-  if (esAprox) { campos.innerHTML = ''; return; }
+  const toggleRoot = document.getElementById(`${prefix}-tipo-monto`);
+  const esAprox = toggleRoot?.dataset.tipo === 'aproximado';
+
+  const montoWrap  = document.getElementById(`${prefix}-monto-wrap`);
+  const montoLabel = document.getElementById(`${prefix}-monto-label`);
+  const hint       = document.getElementById(`${prefix}-hint`);
+  const tipoActual = toggleRoot?.dataset.tipo || 'definido';
+  if (montoWrap)  montoWrap.style.display  = tipoActual === 'variable' ? 'none' : '';
+  if (hint)       hint.style.display       = tipoActual === 'variable' ? '' : 'none';
+  if (montoLabel) montoLabel.textContent   = esAprox ? 'Monto promedio estimado' : 'Monto';
 
   const frecuencia = document.getElementById(`${prefix}-freq`)?.value;
-  const prevDiaSemana  = document.getElementById(`${prefix}-dia-semana`)?.value;
-  const prevDiaMes     = document.getElementById(`${prefix}-dia-mes`)?.value;
-  const prevProx       = document.getElementById(`${prefix}-prox`)?.value;
-  const prevUltimo     = document.getElementById(`${prefix}-ultimo-pago`)?.value;
 
-  const diaSem  = Number.isInteger(initial.dia_semana) ? initial.dia_semana
-                : (prevDiaSemana !== undefined ? parseInt(prevDiaSemana, 10) : 1);
-  const diaMes  = initial.dia_pago || (prevDiaMes ? parseInt(prevDiaMes, 10) : 1);
-  const proxVal = initial.proximo_pago || prevProx || '';
-  const ultVal  = initial.ultima_fecha_pago || prevUltimo || '';
+  const freqDescEl = document.getElementById(`${prefix}-freq-desc`);
+  if (freqDescEl) freqDescEl.textContent = FREQ_DESC_MODAL[frecuencia] || '';
+
+  if (esAprox) { campos.innerHTML = ''; return; }
+
+  const prevDiaSemana = document.getElementById(`${prefix}-dia-semana`)?.value;
+  const prevDiaMes    = document.getElementById(`${prefix}-dia-mes`)?.value;
+  const prevUltimo    = document.getElementById(`${prefix}-ultimo-pago`)?.value;
+
+  const diaSem = Number.isInteger(initial.dia_semana) ? initial.dia_semana
+               : (prevDiaSemana !== undefined ? parseInt(prevDiaSemana, 10) : 1);
+  const diaMes = initial.dia_pago || (prevDiaMes ? parseInt(prevDiaMes, 10) : 1);
+  const ultVal = initial.ultima_fecha_pago || prevUltimo || '';
 
   const DIAS = [[1,'Lunes'],[2,'Martes'],[3,'Miércoles'],[4,'Jueves'],[5,'Viernes'],[6,'Sábado'],[0,'Domingo']];
 
@@ -368,17 +387,13 @@ function renderCamposFechaFijo(prefix, initial = {}) {
         ${DIAS.map(([v, l]) => `<option value="${v}" ${diaSem === v ? 'selected' : ''}>${l}</option>`).join('')}
       </select>`;
   } else if (frecuencia === 'quincenal') {
-    campos.innerHTML = `<p class="form-hint" style="margin:4px 0 0">Se programa para los días 15 y último de cada mes.</p>`;
+    campos.innerHTML = '';
   } else if (frecuencia === 'mensual') {
     const opts = Array.from({length: 31}, (_, i) => i + 1)
       .map(d => `<option value="${d}" ${diaMes === d ? 'selected' : ''}>${d}</option>`).join('');
     campos.innerHTML = `
       <label class="form-label">Día del mes</label>
       <select class="form-select" id="${prefix}-dia-mes">${opts}</select>`;
-  } else if (frecuencia === 'unico') {
-    campos.innerHTML = `
-      <label class="form-label">Fecha del pago</label>
-      <input class="form-input" id="${prefix}-prox" type="date" value="${proxVal}" />`;
   } else if (CICLOS_LARGOS_FIJO.includes(frecuencia)) {
     campos.innerHTML = `
       <label class="form-label">Fecha del último pago realizado</label>
@@ -388,25 +403,23 @@ function renderCamposFechaFijo(prefix, initial = {}) {
   }
 }
 
-function setFijoMontoVariableModal(prefix, isVariable) {
+function setFijoTipoMontoModal(prefix, tipo) {
   const toggleRoot = document.getElementById(`${prefix}-tipo-monto`);
-  const montoWrap = document.getElementById(`${prefix}-monto-wrap`);
-  const hint = document.getElementById(`${prefix}-hint`);
   if (!toggleRoot) return;
-  toggleRoot.dataset.variable = isVariable ? '1' : '0';
-  toggleRoot.querySelectorAll('.tipo-monto-opt').forEach((btn, i) => {
-    const matches = (i === 0 && !isVariable) || (i === 1 && isVariable);
-    btn.classList.toggle('active', matches);
+  toggleRoot.dataset.tipo = tipo;
+  toggleRoot.querySelectorAll('[data-tipo-btn]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tipoBtn === tipo);
   });
-  if (montoWrap) montoWrap.style.display = isVariable ? 'none' : '';
-  if (hint) hint.style.display = isVariable ? '' : 'none';
+  renderCamposFechaFijo(prefix);
 }
 
-function tipoMontoToggleHtml(prefix, isVariable) {
+function tipoMontoToggleHtml(prefix, tipoInicial) {
+  const tipo = tipoInicial || 'definido';
   return `
-    <div class="tipo-monto-toggle" id="${prefix}-tipo-monto" role="group" data-variable="${isVariable ? '1' : '0'}">
-      <button type="button" class="tipo-monto-opt${!isVariable ? ' active' : ''}" onclick="setFijoMontoVariableModal('${prefix}', false)">Definido</button>
-      <button type="button" class="tipo-monto-opt${isVariable ? ' active' : ''}" onclick="setFijoMontoVariableModal('${prefix}', true)">Variable</button>
+    <div class="tipo-monto-toggle" id="${prefix}-tipo-monto" role="group" data-tipo="${tipo}">
+      <button type="button" class="tipo-monto-opt${tipo === 'definido' ? ' active' : ''}" data-tipo-btn="definido" onclick="setFijoTipoMontoModal('${prefix}', 'definido')">Definido</button>
+      <button type="button" class="tipo-monto-opt${tipo === 'variable' ? ' active' : ''}" data-tipo-btn="variable" onclick="setFijoTipoMontoModal('${prefix}', 'variable')">Variable</button>
+      <button type="button" class="tipo-monto-opt${tipo === 'aproximado' ? ' active' : ''}" data-tipo-btn="aproximado" onclick="setFijoTipoMontoModal('${prefix}', 'aproximado')">Aprox.</button>
     </div>
   `;
 }
@@ -430,11 +443,11 @@ async function openEditarGastoFijo(gastoFijoId) {
     return;
   }
 
-  const isVariable = gasto.monto_variable === true || (gasto.monto == null);
+  const esAproxInicial = !!gasto.es_aproximado;
+  const isVariable = gasto.monto_variable === true || (gasto.monto == null && !esAproxInicial);
+  const tipoInicial = isVariable ? 'variable' : (esAproxInicial ? 'aproximado' : 'definido');
   const catOptions = (categorias || []).map(c => `<option value="${c.id}" ${c.id === gasto.categoria_id ? 'selected' : ''}>${c.nombre}</option>`).join('');
   const sinCatSel = !gasto.categoria_id ? 'selected' : '';
-
-  const esAproxInicial = !!gasto.es_aproximado;
 
   openModal('Editar gasto fijo', `
     <div class="form-group">
@@ -443,14 +456,14 @@ async function openEditarGastoFijo(gastoFijoId) {
     </div>
     <div class="form-group">
       <label class="form-label">Tipo de monto</label>
-      ${tipoMontoToggleHtml('egf', isVariable)}
+      ${tipoMontoToggleHtml('egf', tipoInicial)}
     </div>
-    <div class="form-group" id="egf-monto-wrap" style="${isVariable ? 'display:none' : ''}">
+    <div class="form-group" id="egf-monto-wrap" style="${tipoInicial === 'variable' ? 'display:none' : ''}">
       <label class="form-label" id="egf-monto-label">${esAproxInicial ? 'Monto promedio estimado' : 'Monto'}</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
       <input class="form-input" id="egf-monto" type="number" min="0" value="${gasto.monto != null ? Number(gasto.monto) : ''}" /></div>
     </div>
-    <p class="form-hint" id="egf-hint" style="${isVariable ? '' : 'display:none'};margin:-8px 0 12px">Cambia cada pago — solo te avisaremos la fecha.</p>
+    <p class="form-hint" id="egf-hint" style="${tipoInicial === 'variable' ? '' : 'display:none'};margin:-8px 0 12px">Cambia cada pago — solo te avisaremos la fecha.</p>
     <div class="form-group">
       <label class="form-label">Categoría (define el icono)</label>
       <select class="form-select" id="egf-cat">
@@ -458,14 +471,10 @@ async function openEditarGastoFijo(gastoFijoId) {
         ${catOptions}
       </select>
     </div>
-    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);cursor:pointer;margin-bottom:14px">
-      <input type="checkbox" id="egf-es-aprox" ${esAproxInicial ? 'checked' : ''} style="accent-color:var(--accent)"
-        onchange="renderCamposFechaFijo('egf');document.getElementById('egf-monto-label').textContent=this.checked?'Monto promedio estimado':'Monto'" />
-      Gasto aproximado / Sin fecha exacta
-    </label>
     <div class="form-group">
       <label class="form-label">Frecuencia</label>
       ${frecuenciaSelectHtml('egf-freq', "renderCamposFechaFijo('egf')", gasto.frecuencia || 'mensual')}
+      <p class="form-hint" id="egf-freq-desc" style="margin:4px 0 0;font-size:12px">${FREQ_DESC_MODAL[gasto.frecuencia || 'mensual'] || ''}</p>
     </div>
     <div class="form-group" id="egf-fecha-campos"></div>
     <button class="btn btn-primary" onclick="guardarEdicionGastoFijo('${gasto.id}')">Guardar cambios</button>
@@ -484,7 +493,9 @@ async function openEditarGastoFijo(gastoFijoId) {
 async function guardarEdicionGastoFijo(gastoFijoId) {
   const descripcion = document.getElementById('egf-desc')?.value.trim();
   const toggleRoot = document.getElementById('egf-tipo-monto');
-  const isVariable = toggleRoot?.dataset.variable === '1';
+  const tipo = toggleRoot?.dataset.tipo || 'definido';
+  const isVariable = tipo === 'variable';
+  const esAprox = tipo === 'aproximado';
   const frecuencia = document.getElementById('egf-freq')?.value;
   const categoria_id = document.getElementById('egf-cat')?.value || null;
 
@@ -499,7 +510,6 @@ async function guardarEdicionGastoFijo(gastoFijoId) {
     }
   }
 
-  const esAprox = document.getElementById('egf-es-aprox')?.checked || false;
   const { dia_semana, dia_pago, proximo_pago, ultima_fecha_pago } = extraerCamposFechaFijo('egf', frecuencia, esAprox);
 
   const payload = { descripcion, monto, monto_variable: isVariable, frecuencia, dia_pago, dia_semana, proximo_pago, es_aproximado: esAprox, ultima_fecha_pago, categoria_id };
@@ -534,7 +544,7 @@ async function openAgregarGastoFijo() {
     </div>
     <div class="form-group">
       <label class="form-label">Tipo de monto</label>
-      ${tipoMontoToggleHtml('fgf', false)}
+      ${tipoMontoToggleHtml('fgf', 'definido')}
     </div>
     <div class="form-group" id="fgf-monto-wrap">
       <label class="form-label" id="fgf-monto-label">Monto</label>
@@ -549,14 +559,10 @@ async function openAgregarGastoFijo() {
         ${catOptions}
       </select>
     </div>
-    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);cursor:pointer;margin-bottom:14px">
-      <input type="checkbox" id="fgf-es-aprox" style="accent-color:var(--accent)"
-        onchange="renderCamposFechaFijo('fgf');document.getElementById('fgf-monto-label').textContent=this.checked?'Monto promedio estimado':'Monto'" />
-      Gasto aproximado / Sin fecha exacta
-    </label>
     <div class="form-group">
       <label class="form-label">Frecuencia</label>
       ${frecuenciaSelectHtml('fgf-freq', "renderCamposFechaFijo('fgf')", 'mensual')}
+      <p class="form-hint" id="fgf-freq-desc" style="margin:4px 0 0;font-size:12px">${FREQ_DESC_MODAL['mensual']}</p>
     </div>
     <div class="form-group" id="fgf-fecha-campos"></div>
     <button class="btn btn-primary" onclick="guardarNuevoGastoFijo()">Guardar</button>
@@ -568,7 +574,9 @@ async function openAgregarGastoFijo() {
 async function guardarNuevoGastoFijo() {
   const descripcion = document.getElementById('fgf-desc')?.value.trim();
   const toggleRoot = document.getElementById('fgf-tipo-monto');
-  const isVariable = toggleRoot?.dataset.variable === '1';
+  const tipo = toggleRoot?.dataset.tipo || 'definido';
+  const isVariable = tipo === 'variable';
+  const esAprox = tipo === 'aproximado';
   const frecuencia = document.getElementById('fgf-freq')?.value;
   const categoria_id = document.getElementById('fgf-cat')?.value || null;
 
@@ -583,7 +591,6 @@ async function guardarNuevoGastoFijo() {
     }
   }
 
-  const esAprox = document.getElementById('fgf-es-aprox')?.checked || false;
   const { dia_semana, dia_pago, proximo_pago, ultima_fecha_pago } = extraerCamposFechaFijo('fgf', frecuencia, esAprox);
 
   const payload = {
