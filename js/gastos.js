@@ -313,7 +313,26 @@ const FRECUENCIAS_FIJO_UI = [
   ['trimestral', 'Trimestral'],
   ['semestral',  'Semestral'],
   ['anual',      'Anual'],
+  ['unico',      'Pago único'],
 ];
+
+const CICLOS_LARGOS_FIJO = ['bimestral', 'trimestral', 'semestral', 'anual'];
+
+function extraerCamposFechaFijo(prefix, frecuencia, esAprox) {
+  let dia_semana = null, dia_pago = null, proximo_pago = null, ultima_fecha_pago = null;
+  if (esAprox) return { dia_semana, dia_pago, proximo_pago, ultima_fecha_pago };
+  if (frecuencia === 'semanal') {
+    dia_semana = parseInt(document.getElementById(`${prefix}-dia-semana`)?.value, 10);
+    if (Number.isNaN(dia_semana)) dia_semana = null;
+  } else if (frecuencia === 'mensual') {
+    dia_pago = parseInt(document.getElementById(`${prefix}-dia-mes`)?.value, 10) || null;
+  } else if (frecuencia === 'unico') {
+    proximo_pago = document.getElementById(`${prefix}-prox`)?.value || null;
+  } else if (CICLOS_LARGOS_FIJO.includes(frecuencia)) {
+    ultima_fecha_pago = document.getElementById(`${prefix}-ultimo-pago`)?.value || null;
+  }
+  return { dia_semana, dia_pago, proximo_pago, ultima_fecha_pago };
+}
 
 function frecuenciaSelectHtml(id, onchange, selected) {
   return `<select class="form-select" id="${id}" onchange="${onchange}">
@@ -322,32 +341,51 @@ function frecuenciaSelectHtml(id, onchange, selected) {
 }
 
 function renderCamposFechaFijo(prefix, initial = {}) {
-  const frecuencia = document.getElementById(`${prefix}-freq`)?.value;
   const campos = document.getElementById(`${prefix}-fecha-campos`);
   if (!campos) return;
 
-  const previoProx = document.getElementById(`${prefix}-prox`)?.value;
-  const previoDiaSemana = document.getElementById(`${prefix}-dia-semana`)?.value;
-  const diaSemanaInicial = Number.isInteger(initial.dia_semana)
-    ? initial.dia_semana
-    : (previoDiaSemana !== undefined ? parseInt(previoDiaSemana, 10) : null);
-  const proxInicial = initial.proximo_pago || previoProx || '';
+  const esAprox = document.getElementById(`${prefix}-es-aprox`)?.checked;
+  if (esAprox) { campos.innerHTML = ''; return; }
+
+  const frecuencia = document.getElementById(`${prefix}-freq`)?.value;
+  const prevDiaSemana  = document.getElementById(`${prefix}-dia-semana`)?.value;
+  const prevDiaMes     = document.getElementById(`${prefix}-dia-mes`)?.value;
+  const prevProx       = document.getElementById(`${prefix}-prox`)?.value;
+  const prevUltimo     = document.getElementById(`${prefix}-ultimo-pago`)?.value;
+
+  const diaSem  = Number.isInteger(initial.dia_semana) ? initial.dia_semana
+                : (prevDiaSemana !== undefined ? parseInt(prevDiaSemana, 10) : 1);
+  const diaMes  = initial.dia_pago || (prevDiaMes ? parseInt(prevDiaMes, 10) : 1);
+  const proxVal = initial.proximo_pago || prevProx || '';
+  const ultVal  = initial.ultima_fecha_pago || prevUltimo || '';
+
+  const DIAS = [[1,'Lunes'],[2,'Martes'],[3,'Miércoles'],[4,'Jueves'],[5,'Viernes'],[6,'Sábado'],[0,'Domingo']];
 
   if (frecuencia === 'semanal') {
     campos.innerHTML = `
       <label class="form-label">Día de la semana</label>
       <select class="form-select" id="${prefix}-dia-semana">
-        ${['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado']
-          .map((d, i) => `<option value="${i}" ${diaSemanaInicial === i ? 'selected' : ''}>${d}</option>`).join('')}
-      </select>
-    `;
-    return;
+        ${DIAS.map(([v, l]) => `<option value="${v}" ${diaSem === v ? 'selected' : ''}>${l}</option>`).join('')}
+      </select>`;
+  } else if (frecuencia === 'quincenal') {
+    campos.innerHTML = `<p class="form-hint" style="margin:4px 0 0">Se programa para los días 15 y último de cada mes.</p>`;
+  } else if (frecuencia === 'mensual') {
+    const opts = Array.from({length: 31}, (_, i) => i + 1)
+      .map(d => `<option value="${d}" ${diaMes === d ? 'selected' : ''}>${d}</option>`).join('');
+    campos.innerHTML = `
+      <label class="form-label">Día del mes</label>
+      <select class="form-select" id="${prefix}-dia-mes">${opts}</select>`;
+  } else if (frecuencia === 'unico') {
+    campos.innerHTML = `
+      <label class="form-label">Fecha del pago</label>
+      <input class="form-input" id="${prefix}-prox" type="date" value="${proxVal}" />`;
+  } else if (CICLOS_LARGOS_FIJO.includes(frecuencia)) {
+    campos.innerHTML = `
+      <label class="form-label">Fecha del último pago realizado</label>
+      <input class="form-input" id="${prefix}-ultimo-pago" type="date" value="${ultVal}" />`;
+  } else {
+    campos.innerHTML = '';
   }
-
-  campos.innerHTML = `
-    <label class="form-label">Próximo pago</label>
-    <input class="form-input" id="${prefix}-prox" type="date" value="${proxInicial}" />
-  `;
 }
 
 function setFijoMontoVariableModal(prefix, isVariable) {
@@ -396,6 +434,8 @@ async function openEditarGastoFijo(gastoFijoId) {
   const catOptions = (categorias || []).map(c => `<option value="${c.id}" ${c.id === gasto.categoria_id ? 'selected' : ''}>${c.nombre}</option>`).join('');
   const sinCatSel = !gasto.categoria_id ? 'selected' : '';
 
+  const esAproxInicial = !!gasto.es_aproximado;
+
   openModal('Editar gasto fijo', `
     <div class="form-group">
       <label class="form-label">Descripción</label>
@@ -406,7 +446,7 @@ async function openEditarGastoFijo(gastoFijoId) {
       ${tipoMontoToggleHtml('egf', isVariable)}
     </div>
     <div class="form-group" id="egf-monto-wrap" style="${isVariable ? 'display:none' : ''}">
-      <label class="form-label">Monto</label>
+      <label class="form-label" id="egf-monto-label">${esAproxInicial ? 'Monto promedio estimado' : 'Monto'}</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
       <input class="form-input" id="egf-monto" type="number" min="0" value="${gasto.monto != null ? Number(gasto.monto) : ''}" /></div>
     </div>
@@ -418,6 +458,11 @@ async function openEditarGastoFijo(gastoFijoId) {
         ${catOptions}
       </select>
     </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);cursor:pointer;margin-bottom:14px">
+      <input type="checkbox" id="egf-es-aprox" ${esAproxInicial ? 'checked' : ''} style="accent-color:var(--accent)"
+        onchange="renderCamposFechaFijo('egf');document.getElementById('egf-monto-label').textContent=this.checked?'Monto promedio estimado':'Monto'" />
+      Gasto aproximado / Sin fecha exacta
+    </label>
     <div class="form-group">
       <label class="form-label">Frecuencia</label>
       ${frecuenciaSelectHtml('egf-freq', "renderCamposFechaFijo('egf')", gasto.frecuencia || 'mensual')}
@@ -427,8 +472,10 @@ async function openEditarGastoFijo(gastoFijoId) {
   `);
 
   renderCamposFechaFijo('egf', {
-    dia_semana: gasto.dia_semana,
-    proximo_pago: gasto.proximo_pago || null,
+    dia_semana:        gasto.dia_semana,
+    dia_pago:          gasto.dia_pago,
+    proximo_pago:      gasto.proximo_pago || null,
+    ultima_fecha_pago: gasto.ultima_fecha_pago || null,
   });
 
   renderLucideIcons();
@@ -452,29 +499,14 @@ async function guardarEdicionGastoFijo(gastoFijoId) {
     }
   }
 
-  let dia_semana = null;
-  let dia_pago = null;
-  let proximo_pago = null;
+  const esAprox = document.getElementById('egf-es-aprox')?.checked || false;
+  const { dia_semana, dia_pago, proximo_pago, ultima_fecha_pago } = extraerCamposFechaFijo('egf', frecuencia, esAprox);
 
-  if (frecuencia === 'semanal') {
-    dia_semana = parseInt(document.getElementById('egf-dia-semana')?.value, 10);
-    if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
-      showSnackbar('Selecciona un día de la semana', 'error');
-      return;
-    }
-  } else {
-    proximo_pago = document.getElementById('egf-prox')?.value || null;
-    if (proximo_pago) {
-      const dia = parseInt(proximo_pago.split('-')[2], 10);
-      dia_pago = Number.isInteger(dia) ? dia : null;
-    }
-  }
-
-  const payload = { descripcion, monto, monto_variable: isVariable, frecuencia, dia_pago, dia_semana, proximo_pago, categoria_id };
+  const payload = { descripcion, monto, monto_variable: isVariable, frecuencia, dia_pago, dia_semana, proximo_pago, es_aproximado: esAprox, ultima_fecha_pago, categoria_id };
   let { error } = await db.from('gastos_fijos').update(payload).eq('id', gastoFijoId).eq('usuario_id', (await getUsuarioId()));
 
   if (error) {
-    const { monto_variable, proximo_pago: _p, ...legacy } = payload;
+    const { monto_variable, proximo_pago: _p, es_aproximado: _a, ultima_fecha_pago: _u, ...legacy } = payload;
     legacy.monto = monto ?? 0;
     ({ error } = await db.from('gastos_fijos').update(legacy).eq('id', gastoFijoId).eq('usuario_id', (await getUsuarioId())));
   }
@@ -505,7 +537,7 @@ async function openAgregarGastoFijo() {
       ${tipoMontoToggleHtml('fgf', false)}
     </div>
     <div class="form-group" id="fgf-monto-wrap">
-      <label class="form-label">Monto</label>
+      <label class="form-label" id="fgf-monto-label">Monto</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
       <input class="form-input" id="fgf-monto" type="number" placeholder="0.00" min="0" /></div>
     </div>
@@ -517,6 +549,11 @@ async function openAgregarGastoFijo() {
         ${catOptions}
       </select>
     </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);cursor:pointer;margin-bottom:14px">
+      <input type="checkbox" id="fgf-es-aprox" style="accent-color:var(--accent)"
+        onchange="renderCamposFechaFijo('fgf');document.getElementById('fgf-monto-label').textContent=this.checked?'Monto promedio estimado':'Monto'" />
+      Gasto aproximado / Sin fecha exacta
+    </label>
     <div class="form-group">
       <label class="form-label">Frecuencia</label>
       ${frecuenciaSelectHtml('fgf-freq', "renderCamposFechaFijo('fgf')", 'mensual')}
@@ -546,23 +583,8 @@ async function guardarNuevoGastoFijo() {
     }
   }
 
-  let dia_semana = null;
-  let dia_pago = null;
-  let proximo_pago = null;
-
-  if (frecuencia === 'semanal') {
-    dia_semana = parseInt(document.getElementById('fgf-dia-semana')?.value, 10);
-    if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
-      showSnackbar('Selecciona un día de la semana', 'error');
-      return;
-    }
-  } else {
-    proximo_pago = document.getElementById('fgf-prox')?.value || null;
-    if (proximo_pago) {
-      const dia = parseInt(proximo_pago.split('-')[2], 10);
-      dia_pago = Number.isInteger(dia) ? dia : null;
-    }
-  }
+  const esAprox = document.getElementById('fgf-es-aprox')?.checked || false;
+  const { dia_semana, dia_pago, proximo_pago, ultima_fecha_pago } = extraerCamposFechaFijo('fgf', frecuencia, esAprox);
 
   const payload = {
     usuario_id: (await getUsuarioId()),
@@ -573,13 +595,15 @@ async function guardarNuevoGastoFijo() {
     dia_pago,
     dia_semana,
     proximo_pago,
+    es_aproximado: esAprox,
+    ultima_fecha_pago,
     categoria_id,
     activo: true,
   };
 
   let { error } = await db.from('gastos_fijos').insert(payload);
   if (error) {
-    const { monto_variable, proximo_pago: _p, ...legacy } = payload;
+    const { monto_variable, proximo_pago: _p, es_aproximado: _a, ultima_fecha_pago: _u, ...legacy } = payload;
     legacy.monto = monto ?? 0;
     ({ error } = await db.from('gastos_fijos').insert(legacy));
   }
