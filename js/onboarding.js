@@ -231,9 +231,17 @@ function renderStep3nuevo() {
   setHeader('Gastos fijos', 'Los que pagas sí o sí cada cierto tiempo.');
 
   window._showFijoCustomForm = false;
+  window._showFijoCustomConfig = false;
   window._fijoCustomNombre = '';
   window._fijoCustomIcono = 'smile';
   window._showFijoIconPanel = false;
+  window._fijoCustomTipo = 'exacto';
+  window._fijoCustomFrecuencia = 'mensual';
+  window._fijoCustomMonto = null;
+  window._fijoCustomDiaPago = null;
+  window._fijoCustomDiaSemana = null;
+  window._fijoCustomProximoPago = null;
+  window._fijoCustomUltimaFecha = null;
 
   if (!(window._fijoGruposAbiertos instanceof Set)) {
     window._fijoGruposAbiertos = new Set();
@@ -311,12 +319,18 @@ function renderStep3nuevo() {
     const fijosAddedHtml = onboardingData.gastosFijos.length > 0 ? `
       <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
         ${onboardingData.gastosFijos.map((f, idx) => {
-          const isVariable = f.monto_variable === true;
-          const esAprox    = !!f.es_aproximado;
-          const tipoActivo = isVariable ? 'variable' : (esAprox ? 'aproximado' : 'definido');
+          const mv        = !!f.monto_variable;
+          const ap        = !!f.es_aproximado;
+          const tipoActivo = !mv && !ap ? 'exacto' : !mv && ap ? 'monto-variable' : mv && !ap ? 'fecha-flexible' : 'aproximado';
+          const esFlex    = mv;
 
           let campoFecha = '';
-          if (!esAprox) {
+          if (esFlex) {
+            campoFecha = `<div style="flex:1">
+              <input class="form-input" id="gf-ultimo-${idx}" type="date" value="${f.ultima_fecha_pago ?? ''}" onchange="updateGastoFijo(${idx})" />
+              <p class="form-hint" style="font-size:11px;margin:3px 0 0">Calcularemos la fecha esperada según tu frecuencia.</p>
+            </div>`;
+          } else {
             if (f.frecuencia === 'semanal') {
               campoFecha = `<select class="form-select" id="gf-dia-${idx}" onchange="updateGastoFijo(${idx})">
                 ${DIAS_SEMANA.map(([v, l]) => `<option value="${v}" ${f.dia_semana === v ? 'selected':''}>${l}</option>`).join('')}
@@ -326,13 +340,8 @@ function renderStep3nuevo() {
             } else if (f.frecuencia === 'mensual') {
               const opts31 = Array.from({length:31},(_,i)=>i+1).map(d=>`<option value="${d}" ${(f.dia_pago||1)===d?'selected':''}>${d}</option>`).join('');
               campoFecha = `<select class="form-select" id="gf-dia-mes-${idx}" onchange="updateGastoFijo(${idx})">${opts31}</select>`;
-            } else if (f.frecuencia === 'unico') {
+            } else if (f.frecuencia === 'unico' || CICLOS_LARGOS.includes(f.frecuencia)) {
               campoFecha = `<input class="form-input" id="gf-prox-${idx}" type="date" value="${f.proximo_pago ?? ''}" onchange="updateGastoFijo(${idx})" />`;
-            } else if (CICLOS_LARGOS.includes(f.frecuencia)) {
-              campoFecha = `<div style="flex:1">
-                <div class="form-label" style="font-size:11px;margin-bottom:4px">Último pago</div>
-                <input class="form-input" id="gf-ultimo-${idx}" type="date" value="${f.ultima_fecha_pago ?? ''}" onchange="updateGastoFijo(${idx})" />
-              </div>`;
             }
           }
 
@@ -348,22 +357,19 @@ function renderStep3nuevo() {
                 <button class="btn-remove" onclick="removeGastoFijo(${idx})" type="button"><i data-lucide="x" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i></button>
               </div>
               <div class="fijo-card-fields">
-                <div class="tipo-monto-toggle" role="group" aria-label="Tipo de monto">
-                  <button type="button" class="tipo-monto-opt${tipoActivo === 'definido' ? ' active' : ''}" onclick="setFijoTipoMonto(${idx}, 'definido')">Definido</button>
-                  <button type="button" class="tipo-monto-opt${tipoActivo === 'variable' ? ' active' : ''}" onclick="setFijoTipoMonto(${idx}, 'variable')">Variable</button>
-                  <button type="button" class="tipo-monto-opt${tipoActivo === 'aproximado' ? ' active' : ''}" onclick="setFijoTipoMonto(${idx}, 'aproximado')">Aprox.</button>
+                <div class="tipo-monto-toggle tipo-monto-toggle--4" role="group" aria-label="Tipo de monto">
+                  <button type="button" class="tipo-monto-opt${tipoActivo === 'exacto' ? ' active' : ''}" onclick="setFijoTipoMonto(${idx}, 'exacto')"><span class="tipo-opt-name">Exacto</span><span class="tipo-opt-desc">Monto fijo · Fecha fija</span></button>
+                  <button type="button" class="tipo-monto-opt${tipoActivo === 'monto-variable' ? ' active' : ''}" onclick="setFijoTipoMonto(${idx}, 'monto-variable')"><span class="tipo-opt-name">Est. mensual</span><span class="tipo-opt-desc">Monto estimado · Fecha fija</span></button>
+                  <button type="button" class="tipo-monto-opt${tipoActivo === 'fecha-flexible' ? ' active' : ''}" onclick="setFijoTipoMonto(${idx}, 'fecha-flexible')"><span class="tipo-opt-name">Flexible</span><span class="tipo-opt-desc">Monto fijo · Fecha aprox.</span></button>
+                  <button type="button" class="tipo-monto-opt${tipoActivo === 'aproximado' ? ' active' : ''}" onclick="setFijoTipoMonto(${idx}, 'aproximado')"><span class="tipo-opt-name">Aproximado</span><span class="tipo-opt-desc">Monto est. · Fecha aprox.</span></button>
                 </div>
-                ${isVariable ? `
-                  <div class="fijo-hint">Cambia cada pago — solo te avisaremos la fecha.</div>
-                ` : `
-                  <div class="input-money-wrap">
-                    <span class="currency-prefix">$</span>
-                    <input class="form-input" id="gf-monto-${idx}" type="number" min="0" value="${f.monto ?? ''}"
-                      placeholder="${esAprox ? 'Promedio estimado' : 'Monto'}" onchange="updateGastoFijo(${idx})" />
-                  </div>
-                `}
-                <div class="fijo-bottom-row">
-                  <select class="form-select" id="gf-freq-${idx}" onchange="updateGastoFijo(${idx})">
+                <div class="input-money-wrap">
+                  <span class="currency-prefix">$</span>
+                  <input class="form-input" id="gf-monto-${idx}" type="number" min="0" value="${f.monto ?? ''}"
+                    placeholder="${ap ? 'Promedio estimado' : '0.00'}" onchange="updateGastoFijo(${idx})" />
+                </div>
+                <div class="fijo-bottom-row" style="align-items:flex-start !important">
+                  <select class="form-select" id="gf-freq-${idx}" onchange="updateGastoFijo(${idx})" style="height:46px !important;max-height:46px !important">
                     ${FRECUENCIA_OPTIONS.map(([v, l]) => `<option value="${v}" ${f.frecuencia === v ? 'selected':''}>${l}</option>`).join('')}
                   </select>
                   ${campoFecha}
@@ -375,6 +381,65 @@ function renderStep3nuevo() {
         }).join('')}
       </div>
     ` : '';
+
+    function buildCustomFijoDateCampo() {
+      const tipo  = window._fijoCustomTipo || 'exacto';
+      const freq  = window._fijoCustomFrecuencia || 'mensual';
+      const esFlex = tipo === 'fecha-flexible' || tipo === 'aproximado';
+      if (esFlex) {
+        return `<div style="flex:1;min-width:0">
+          <input class="form-input" type="date" value="${window._fijoCustomUltimaFecha || ''}" onchange="window._fijoCustomUltimaFecha=this.value" style="width:100%" />
+          <p class="form-hint" style="font-size:11px;margin:3px 0 0">Calcularemos la fecha esperada según tu frecuencia.</p>
+        </div>`;
+      }
+      if (freq === 'semanal') {
+        return `<select class="form-select" onchange="window._fijoCustomDiaSemana=parseInt(this.value,10)" style="width:100%">
+          ${DIAS_SEMANA.map(([v,l]) => `<option value="${v}" ${(window._fijoCustomDiaSemana??1)===v?'selected':''}>${l}</option>`).join('')}
+        </select>`;
+      }
+      if (freq === 'mensual') {
+        return `<select class="form-select" onchange="window._fijoCustomDiaPago=parseInt(this.value,10)" style="width:100%">
+          ${Array.from({length:31},(_,i)=>i+1).map(d=>`<option value="${d}" ${(window._fijoCustomDiaPago||1)===d?'selected':''}>${d}</option>`).join('')}
+        </select>`;
+      }
+      if (freq === 'unico' || CICLOS_LARGOS.includes(freq)) {
+        return `<input class="form-input" type="date" value="${window._fijoCustomProximoPago || ''}" onchange="window._fijoCustomProximoPago=this.value" style="width:100%" />`;
+      }
+      return '<div style="flex:1"></div>';
+    }
+
+    const customTipo = window._fijoCustomTipo || 'exacto';
+    const customFreq = window._fijoCustomFrecuencia || 'mensual';
+    const customOpts = [
+      ['exacto',         'Exacto',       'Monto fijo · Fecha fija'],
+      ['monto-variable', 'Est. mensual', 'Monto estimado · Fecha fija'],
+      ['fecha-flexible', 'Flexible',     'Monto fijo · Fecha aprox.'],
+      ['aproximado',     'Aproximado',   'Monto est. · Fecha aprox.'],
+    ];
+    const customConfigHtml = `
+      <div class="tipo-monto-toggle tipo-monto-toggle--4" role="group" style="margin-top:10px">
+        ${customOpts.map(([v,label,desc]) => `
+          <button type="button" class="tipo-monto-opt${customTipo===v?' active':''}" onclick="setFijoCustomTipo('${v}')">
+            <span class="tipo-opt-name">${label}</span>
+            <span class="tipo-opt-desc">${desc}</span>
+          </button>`).join('')}
+      </div>
+      <div class="input-money-wrap" style="margin-top:8px">
+        <span class="currency-prefix">$</span>
+        <input class="form-input" type="number" min="0" value="${window._fijoCustomMonto ?? ''}"
+          placeholder="${(customTipo==='monto-variable'||customTipo==='aproximado')?'Promedio estimado':'0.00'}"
+          onchange="window._fijoCustomMonto=parseFloat(this.value)||null" />
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-start;margin-top:8px">
+        <div style="flex:1">
+          <select class="form-select" onchange="updateFijoCustomFreq(this.value)" style="width:100%;height:46px !important;max-height:46px !important">
+            ${FRECUENCIA_OPTIONS.map(([v,l]) => `<option value="${v}" ${customFreq===v?'selected':''}>${l}</option>`).join('')}
+          </select>
+        </div>
+        ${buildCustomFijoDateCampo()}
+      </div>
+      ${FREQ_DESC[customFreq] ? `<p class="form-hint" style="font-size:12px;margin:4px 0 0">${FREQ_DESC[customFreq]}</p>` : ''}
+    `;
 
     const fijoCustomFormHtml = window._showFijoCustomForm ? `
       <div class="custom-form" style="margin-top:14px">
@@ -394,7 +459,12 @@ function renderStep3nuevo() {
             </div>
           </div>
         ` : ''}
-        <button class="btn btn-secondary" style="margin-top:12px;width:100%" onclick="addGastoFijoCustom()">+ Agregar</button>
+        ${window._showFijoCustomConfig ? `
+          ${customConfigHtml}
+          <button class="btn btn-primary" style="margin-top:12px;width:100%" onclick="confirmarGastoFijoCustom()">Guardar</button>
+        ` : `
+          <button class="btn btn-secondary" style="margin-top:12px;width:100%" onclick="iniciarConfigFijoCustom()">+ Agregar</button>
+        `}
       </div>
     ` : `
       <button class="btn-add-item" style="margin-top:14px" onclick="showFijoCustomForm()">
@@ -1417,7 +1487,7 @@ window.toggleGastoFijoSugerido = function(btnOrNombre, iconoOpt) {
       dia_pago: null,
       dia_semana: null,
       proximo_pago: null,
-      es_aproximado: false,
+      es_aproximado: montoVariable,
       ultima_fecha_pago: null,
     });
   }
@@ -1432,9 +1502,8 @@ window.removeGastoFijo = function(idx) {
 window.setFijoTipoMonto = function(idx, tipo) {
   const f = onboardingData.gastosFijos[idx];
   if (!f) return;
-  f.monto_variable = tipo === 'variable';
-  f.es_aproximado  = tipo === 'aproximado';
-  if (tipo === 'variable') f.monto = null;
+  f.monto_variable = tipo === 'fecha-flexible' || tipo === 'aproximado';
+  f.es_aproximado  = tipo === 'monto-variable'  || tipo === 'aproximado';
   if (window._renderStep3Body) window._renderStep3Body();
 };
 
@@ -1442,42 +1511,41 @@ window.updateGastoFijo = function(idx) {
   const f = onboardingData.gastosFijos[idx];
   if (!f) return;
 
-  const prevFreq  = f.frecuencia;
-  const prevAprox = !!f.es_aproximado;
+  const prevFreq = f.frecuencia;
+  const prevType = `${f.monto_variable}-${f.es_aproximado}`;
 
   f.frecuencia = document.getElementById(`gf-freq-${idx}`)?.value || 'mensual';
 
-  if (!f.monto_variable) {
-    const monto = parseFloat(document.getElementById(`gf-monto-${idx}`)?.value);
-    f.monto = Number.isFinite(monto) ? monto : null;
-  } else {
-    f.monto = null;
-  }
+  const monto = parseFloat(document.getElementById(`gf-monto-${idx}`)?.value);
+  f.monto = Number.isFinite(monto) ? monto : null;
 
   f.dia_semana = null; f.dia_pago = null; f.proximo_pago = null; f.ultima_fecha_pago = null;
 
-  if (!f.es_aproximado) {
-    const CICLOS = ['bimestral', 'trimestral', 'semestral', 'anual'];
+  const esFlex = !!f.monto_variable;
+  const CICLOS = ['bimestral', 'trimestral', 'semestral', 'anual'];
+
+  if (esFlex) {
+    f.ultima_fecha_pago = document.getElementById(`gf-ultimo-${idx}`)?.value || null;
+  } else {
     if (f.frecuencia === 'semanal') {
       const v = parseInt(document.getElementById(`gf-dia-${idx}`)?.value, 10);
       f.dia_semana = Number.isInteger(v) ? v : null;
     } else if (f.frecuencia === 'mensual') {
       const v = parseInt(document.getElementById(`gf-dia-mes-${idx}`)?.value, 10);
       f.dia_pago = (v >= 1 && v <= 31) ? v : null;
-    } else if (f.frecuencia === 'unico') {
+    } else if (f.frecuencia === 'unico' || CICLOS.includes(f.frecuencia)) {
       f.proximo_pago = document.getElementById(`gf-prox-${idx}`)?.value || null;
-    } else if (CICLOS.includes(f.frecuencia)) {
-      f.ultima_fecha_pago = document.getElementById(`gf-ultimo-${idx}`)?.value || null;
     }
   }
 
-  if (prevFreq !== f.frecuencia || prevAprox !== f.es_aproximado) {
+  if (prevFreq !== f.frecuencia || prevType !== `${f.monto_variable}-${f.es_aproximado}`) {
     if (window._renderStep3Body) window._renderStep3Body();
   }
 };
 
 window.showFijoCustomForm = function() {
   window._showFijoCustomForm = true;
+  window._showFijoCustomConfig = false;
   window._fijoCustomNombre = '';
   window._fijoCustomIcono = 'smile';
   window._showFijoIconPanel = false;
@@ -1495,25 +1563,71 @@ window.selectFijoIcono = function(icono) {
   if (window._renderStep3Body) window._renderStep3Body();
 };
 
-window.addGastoFijoCustom = function() {
+window.iniciarConfigFijoCustom = function() {
   const nombre = (window._fijoCustomNombre || document.getElementById('fijo-custom-nombre')?.value || '').trim();
   if (!nombre) { showSnackbar('Escribe el nombre del gasto fijo', 'error'); return; }
+  window._fijoCustomNombre = nombre;
+  window._showFijoCustomConfig = true;
+  window._fijoCustomTipo = 'exacto';
+  window._fijoCustomFrecuencia = 'mensual';
+  window._fijoCustomMonto = null;
+  window._fijoCustomDiaPago = null;
+  window._fijoCustomDiaSemana = null;
+  window._fijoCustomProximoPago = null;
+  window._fijoCustomUltimaFecha = null;
+  if (window._renderStep3Body) window._renderStep3Body();
+};
+
+window.setFijoCustomTipo = function(tipo) {
+  window._fijoCustomTipo = tipo;
+  window._fijoCustomDiaPago = null;
+  window._fijoCustomDiaSemana = null;
+  window._fijoCustomProximoPago = null;
+  window._fijoCustomUltimaFecha = null;
+  if (window._renderStep3Body) window._renderStep3Body();
+};
+
+window.updateFijoCustomFreq = function(freq) {
+  window._fijoCustomFrecuencia = freq;
+  window._fijoCustomDiaPago = null;
+  window._fijoCustomDiaSemana = null;
+  window._fijoCustomProximoPago = null;
+  window._fijoCustomUltimaFecha = null;
+  if (window._renderStep3Body) window._renderStep3Body();
+};
+
+window.confirmarGastoFijoCustom = function() {
+  const nombre = (window._fijoCustomNombre || '').trim();
+  if (!nombre) { showSnackbar('Escribe el nombre del gasto fijo', 'error'); return; }
+  const tipo   = window._fijoCustomTipo || 'exacto';
+  const esFlex = tipo === 'fecha-flexible' || tipo === 'aproximado';
+  const esAprox = tipo === 'monto-variable' || tipo === 'aproximado';
   onboardingData.gastosFijos.push({
     nombre,
     icono: window._fijoCustomIcono || 'smile',
-    monto: null,
-    monto_variable: false,
-    frecuencia: 'mensual',
-    dia_pago: null,
-    dia_semana: null,
-    proximo_pago: null,
-    es_aproximado: false,
-    ultima_fecha_pago: null,
+    monto: window._fijoCustomMonto || null,
+    monto_variable: esFlex,
+    frecuencia: window._fijoCustomFrecuencia || 'mensual',
+    dia_pago:    esFlex ? null : (window._fijoCustomDiaPago || null),
+    dia_semana:  esFlex ? null : (window._fijoCustomDiaSemana ?? null),
+    proximo_pago: esFlex ? null : (window._fijoCustomProximoPago || null),
+    es_aproximado: esAprox,
+    ultima_fecha_pago: esFlex ? (window._fijoCustomUltimaFecha || null) : null,
   });
   window._showFijoCustomForm = false;
+  window._showFijoCustomConfig = false;
   window._fijoCustomNombre = '';
+  window._fijoCustomTipo = 'exacto';
+  window._fijoCustomFrecuencia = 'mensual';
+  window._fijoCustomMonto = null;
+  window._fijoCustomDiaPago = null;
+  window._fijoCustomDiaSemana = null;
+  window._fijoCustomProximoPago = null;
+  window._fijoCustomUltimaFecha = null;
   if (window._renderStep3Body) window._renderStep3Body();
 };
+
+window.addGastoFijoCustom = window.iniciarConfigFijoCustom;
 
 window.nextStep3nuevo = nextStep3nuevo;
 
