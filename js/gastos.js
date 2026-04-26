@@ -1153,6 +1153,6 @@ window.openAgregarGastoFijo = openAgregarGastoFijo;
 window.guardarNuevoGastoFijo = guardarNuevoGastoFijo;
 window.openRegistrarGasto = openRegistrarGasto;
 window.guardarGasto = guardarGasto;
-window.setFijoMontoVariableModal = setFijoMontoVariableModal;
+window.setFijoTipoMontoModal = setFijoTipoMontoModal;
 window.renderCamposFechaFijo = renderCamposFechaFijo;
 window.toggleGastoPickerGrupo = toggleGastoPickerGrupo;
