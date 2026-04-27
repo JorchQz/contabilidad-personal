@@ -171,11 +171,12 @@ function renderCamposFechaEditarIngresoProgramado() {
   const frecuencia = document.getElementById('eip-freq')?.value;
   const campos = document.getElementById('eip-fecha-campos');
   if (!campos) return;
+  const H = 'height:46px;max-height:46px;width:100%';
 
   if (frecuencia === 'mensual') {
     campos.innerHTML = `
       <label class="form-label">Día del mes</label>
-      <input class="form-input" id="eip-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />
+      <input class="form-input" id="eip-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" style="${H}" />
     `;
     return;
   }
@@ -183,7 +184,7 @@ function renderCamposFechaEditarIngresoProgramado() {
   if (frecuencia === 'semanal') {
     campos.innerHTML = `
       <label class="form-label">Día de la semana</label>
-      <select class="form-select" id="eip-dia-semana">
+      <select class="form-select" id="eip-dia-semana" style="${H}">
         <option value="0">Domingo</option>
         <option value="1">Lunes</option>
         <option value="2">Martes</option>
@@ -199,7 +200,7 @@ function renderCamposFechaEditarIngresoProgramado() {
   if (frecuencia === 'quincenal') {
     campos.innerHTML = `
       <label class="form-label">Día de la quincena</label>
-      <input class="form-input" id="eip-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" />
+      <input class="form-input" id="eip-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" style="${H}" />
     `;
     return;
   }
@@ -337,11 +338,12 @@ function renderCamposFechaIngresoProgramado() {
   const frecuencia = document.getElementById('ip-freq')?.value;
   const campos = document.getElementById('ip-fecha-campos');
   if (!campos) return;
+  const H = 'height:46px;max-height:46px;width:100%';
 
   if (frecuencia === 'mensual') {
     campos.innerHTML = `
       <label class="form-label">Día del mes</label>
-      <input class="form-input" id="ip-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />
+      <input class="form-input" id="ip-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" style="${H}" />
     `;
     return;
   }
@@ -349,7 +351,7 @@ function renderCamposFechaIngresoProgramado() {
   if (frecuencia === 'semanal') {
     campos.innerHTML = `
       <label class="form-label">Día de la semana</label>
-      <select class="form-select" id="ip-dia-semana">
+      <select class="form-select" id="ip-dia-semana" style="${H}">
         <option value="0">Domingo</option>
         <option value="1">Lunes</option>
         <option value="2">Martes</option>
@@ -365,7 +367,7 @@ function renderCamposFechaIngresoProgramado() {
   if (frecuencia === 'quincenal') {
     campos.innerHTML = `
       <label class="form-label">Día de la quincena</label>
-      <input class="form-input" id="ip-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" />
+      <input class="form-input" id="ip-dia-pago" type="number" min="1" max="15" placeholder="1 - 15" style="${H}" />
     `;
     return;
   }

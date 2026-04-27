@@ -478,10 +478,10 @@ function sugerirYAplicarModoFijo(prefix) {
 function tipoMontoToggleHtml(prefix, tipoInicial) {
   const tipo = tipoInicial || 'exacto';
   const opts = [
-    ['exacto',         'Exacto',       'Monto fijo · Fecha fija'],
-    ['monto-variable', 'Est. mensual', 'Monto estimado · Fecha fija'],
-    ['fecha-flexible', 'Flexible',     'Monto fijo · Fecha aprox.'],
-    ['aproximado',     'Aproximado',   'Monto est. · Fecha aprox.'],
+    ['exacto',         'Fijo',       'Monto exacto · Fecha límite'],
+    ['monto-variable', 'Variable',   'Monto estimado · Fecha límite'],
+    ['fecha-flexible', 'Flexible',   'Monto exacto · Fecha esperada'],
+    ['aproximado',     'Aproximado', 'Monto est. · Fecha esperada'],
   ];
   return `
     <div class="tipo-monto-toggle tipo-monto-toggle--4" id="${prefix}-tipo-monto" role="group" data-tipo="${tipo}">

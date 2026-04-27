@@ -118,11 +118,12 @@ function renderCamposFechaEditarDeuda() {
   const frecuencia = document.getElementById('ed-freq')?.value;
   const campos = document.getElementById('ed-fecha-campos');
   if (!campos) return;
+  const H = 'height:46px;max-height:46px;width:100%';
 
   if (frecuencia === 'unico') {
     campos.innerHTML = `
       <label class="form-label">Día de pago</label>
-      <input class="form-input" id="ed-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" />
+      <input class="form-input" id="ed-dia-pago" type="number" min="1" max="31" placeholder="1 - 31" style="${H}" />
     `;
     return;
   }
@@ -133,7 +134,7 @@ function renderCamposFechaEditarDeuda() {
       .map(d => `<option value="${d}" ${parseInt(edDiaPagoVal) === d ? 'selected' : ''}>${d}</option>`).join('');
     campos.innerHTML = `
       <label class="form-label">Día del mes que pagas</label>
-      <select class="form-select" id="ed-dia-pago">${opts}</select>
+      <select class="form-select" id="ed-dia-pago" style="${H}">${opts}</select>
     `;
     return;
   }
@@ -142,7 +143,7 @@ function renderCamposFechaEditarDeuda() {
     const edDiaSemVal = document.getElementById('ed-dia-semana')?.value || '1';
     campos.innerHTML = `
       <label class="form-label">Día de la semana</label>
-      <select class="form-select" id="ed-dia-semana">
+      <select class="form-select" id="ed-dia-semana" style="${H}">
         <option value="1" ${edDiaSemVal === '1' ? 'selected' : ''}>Lunes</option>
         <option value="2" ${edDiaSemVal === '2' ? 'selected' : ''}>Martes</option>
         <option value="3" ${edDiaSemVal === '3' ? 'selected' : ''}>Miércoles</option>
@@ -557,11 +558,12 @@ function renderCamposFechaDeuda() {
   const frecuencia = document.getElementById('nd-freq')?.value;
   const campos = document.getElementById('nd-fecha-campos');
   if (!campos) return;
+  const H = 'height:46px;max-height:46px;width:100%';
 
   if (frecuencia === 'unico') {
     campos.innerHTML = `
       <label class="form-label">Fecha de pago</label>
-      <input class="form-input" id="nd-fecha-pago" type="date" />
+      <input class="form-input" id="nd-fecha-pago" type="date" style="${H}" />
     `;
     return;
   }
@@ -571,7 +573,7 @@ function renderCamposFechaDeuda() {
       .map(d => `<option value="${d}">${d}</option>`).join('');
     campos.innerHTML = `
       <label class="form-label">Día del mes que pagas</label>
-      <select class="form-select" id="nd-dia-pago">${opts}</select>
+      <select class="form-select" id="nd-dia-pago" style="${H}">${opts}</select>
     `;
     return;
   }
@@ -579,7 +581,7 @@ function renderCamposFechaDeuda() {
   if (frecuencia === 'semanal') {
     campos.innerHTML = `
       <label class="form-label">Día de la semana</label>
-      <select class="form-select" id="nd-dia-semana">
+      <select class="form-select" id="nd-dia-semana" style="${H}">
         <option value="1">Lunes</option>
         <option value="2">Martes</option>
         <option value="3">Miércoles</option>
