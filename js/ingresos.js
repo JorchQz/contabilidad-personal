@@ -630,7 +630,7 @@ async function guardarIngreso() {
             <div class="item-row-name">${pago.nombre}</div>
             <div class="item-row-detail">${pago.tipo === 'fijo' ? 'Gasto fijo' : 'Deuda'}${pago.urgente ? ' · <i data-lucide="alert-triangle" style="width:18px;height:18px;stroke-width:1.75"></i> Urgente' : ''}</div>
           </div>
-          <div class="item-row-amount">${pago.monto_variable && !pago.monto ? 'Variable' : formatMXN(pago.monto)}</div>
+          <div class="item-row-amount">${pago.fecha_flexible && !pago.monto ? 'Variable' : formatMXN(pago.monto)}</div>
         </div>
       `).join('')}
     </div>

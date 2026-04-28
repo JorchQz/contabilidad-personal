@@ -43,7 +43,8 @@ import { exportarDatosCSV } from './export.js';
 
 // NOTA — Migración para gastos fijos con monto variable + frecuencias extendidas:
 // ALTER TABLE gastos_fijos ALTER COLUMN monto DROP NOT NULL;
-// ALTER TABLE gastos_fijos ADD COLUMN IF NOT EXISTS monto_variable BOOLEAN DEFAULT false;
+// ALTER TABLE gastos_fijos ADD COLUMN IF NOT EXISTS fecha_flexible BOOLEAN DEFAULT false;
+// ALTER TABLE gastos_fijos ADD COLUMN IF NOT EXISTS monto_estimado BOOLEAN DEFAULT false;
 // ALTER TABLE gastos_fijos ADD COLUMN IF NOT EXISTS proximo_pago DATE;
 // ALTER TABLE gastos_fijos DROP CONSTRAINT IF EXISTS gastos_fijos_frecuencia_check;
 // ALTER TABLE gastos_fijos ADD CONSTRAINT gastos_fijos_frecuencia_check
@@ -475,7 +476,7 @@ export async function loadDashboard() {
                 </div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-                <div class="item-row-amount">${p.monto_variable && !p.monto ? 'Variable' : formatMXN(p.monto)}</div>
+                <div class="item-row-amount">${p.fecha_flexible && !p.monto ? 'Variable' : formatMXN(p.monto)}</div>
                 <span class="pago-pendiente-chevron"><i data-lucide="chevron-down" style="width:18px;height:18px;stroke-width:1.75"></i></span>
               </div>
             </div>

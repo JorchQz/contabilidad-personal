@@ -16,6 +16,16 @@ import {
 import { loadDeudas } from './deudas.js';
 import { loadMetas } from './metas.js';
 
+// ---- SEGURIDAD ----
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // ---- CATÁLOGO DE GASTOS FIJOS ----
 export const GASTOS_FIJOS_CATALOGO = [
   {
@@ -279,7 +289,7 @@ export async function loadFijos() {
         <div class="item-row" style="margin-bottom:8px">
           <div class="item-row-emoji">${iconoHtml}</div>
           <div class="item-row-info">
-            <div class="item-row-name">${g.descripcion}</div>
+            <div class="item-row-name">${escapeHtml(g.descripcion)}</div>
             <div class="item-row-detail">${formatearFrecuenciaGastoFijo(g.frecuencia, g.dia_pago, g.dia_semana, g.proximo_pago)}</div>
           </div>
           <div class="item-row-amount" style="color:var(--red)">${montoTxt}</div>
@@ -513,8 +523,8 @@ async function openEditarGastoFijo(gastoFijoId) {
     return;
   }
 
-  const mv = !!gasto.monto_variable;
-  const ap = !!gasto.es_aproximado;
+  const mv = !!gasto.fecha_flexible;
+  const ap = !!gasto.monto_estimado;
   const tipoInicial = !mv && !ap ? 'exacto' : !mv && ap ? 'monto-variable' : mv && !ap ? 'fecha-flexible' : 'aproximado';
   const catOptions = (categorias || []).map(c => `<option value="${c.id}" ${c.id === gasto.categoria_id ? 'selected' : ''}>${c.nombre}</option>`).join('');
   const sinCatSel = !gasto.categoria_id ? 'selected' : '';
@@ -567,6 +577,11 @@ async function guardarEdicionGastoFijo(gastoFijoId) {
   const descripcion = document.getElementById('egf-desc')?.value.trim();
   const toggleRoot = document.getElementById('egf-tipo-monto');
   const tipo = toggleRoot?.dataset.tipo || 'exacto';
+  // Regla 4 cuadrantes:
+  // exacto        → fecha_flexible=false, monto_estimado=false
+  // monto-variable→ fecha_flexible=false, monto_estimado=true
+  // fecha-flexible→ fecha_flexible=true,  monto_estimado=false
+  // aproximado    → fecha_flexible=true,  monto_estimado=true
   const esAprox = tipo === 'monto-variable' || tipo === 'aproximado';
   const esFlex  = tipo === 'fecha-flexible'  || tipo === 'aproximado';
   const frecuencia = document.getElementById('egf-freq')?.value;
@@ -582,11 +597,11 @@ async function guardarEdicionGastoFijo(gastoFijoId) {
 
   const { dia_semana, dia_pago, proximo_pago, ultima_fecha_pago } = extraerCamposFechaFijo('egf', frecuencia, tipo);
 
-  const payload = { descripcion, monto, monto_variable: esFlex, frecuencia, dia_pago, dia_semana, proximo_pago, es_aproximado: esAprox, ultima_fecha_pago, categoria_id };
+  const payload = { descripcion, monto, fecha_flexible: esFlex, frecuencia, dia_pago, dia_semana, proximo_pago, monto_estimado: esAprox, ultima_fecha_pago, categoria_id };
   let { error } = await db.from('gastos_fijos').update(payload).eq('id', gastoFijoId).eq('usuario_id', (await getUsuarioId()));
 
   if (error) {
-    const { monto_variable, proximo_pago: _p, es_aproximado: _a, ultima_fecha_pago: _u, ...legacy } = payload;
+    const { fecha_flexible, proximo_pago: _p, monto_estimado: _a, ultima_fecha_pago: _u, ...legacy } = payload;
     legacy.monto = monto ?? 0;
     ({ error } = await db.from('gastos_fijos').update(legacy).eq('id', gastoFijoId).eq('usuario_id', (await getUsuarioId())));
   }
@@ -649,6 +664,11 @@ async function guardarNuevoGastoFijo() {
   const descripcion = document.getElementById('fgf-desc')?.value.trim();
   const toggleRoot = document.getElementById('fgf-tipo-monto');
   const tipo = toggleRoot?.dataset.tipo || 'exacto';
+  // Regla 4 cuadrantes:
+  // exacto        → fecha_flexible=false, monto_estimado=false
+  // monto-variable→ fecha_flexible=false, monto_estimado=true
+  // fecha-flexible→ fecha_flexible=true,  monto_estimado=false
+  // aproximado    → fecha_flexible=true,  monto_estimado=true
   const esAprox = tipo === 'monto-variable' || tipo === 'aproximado';
   const esFlex  = tipo === 'fecha-flexible'  || tipo === 'aproximado';
   const frecuencia = document.getElementById('fgf-freq')?.value;
@@ -668,12 +688,12 @@ async function guardarNuevoGastoFijo() {
     usuario_id: (await getUsuarioId()),
     descripcion,
     monto,
-    monto_variable: esFlex,
+    fecha_flexible: esFlex,
     frecuencia,
     dia_pago,
     dia_semana,
     proximo_pago,
-    es_aproximado: esAprox,
+    monto_estimado: esAprox,
     ultima_fecha_pago,
     categoria_id,
     activo: true,
@@ -681,7 +701,7 @@ async function guardarNuevoGastoFijo() {
 
   let { error } = await db.from('gastos_fijos').insert(payload);
   if (error) {
-    const { monto_variable, proximo_pago: _p, es_aproximado: _a, ultima_fecha_pago: _u, ...legacy } = payload;
+    const { fecha_flexible, proximo_pago: _p, monto_estimado: _a, ultima_fecha_pago: _u, ...legacy } = payload;
     legacy.monto = monto ?? 0;
     ({ error } = await db.from('gastos_fijos').insert(legacy));
   }
@@ -740,8 +760,8 @@ export async function loadGastos() {
         <div class="item-row" style="margin-bottom:8px">
           <div class="item-row-emoji">${g.categorias?.emoji ? renderEmojiOrIcon(g.categorias.emoji, 'package', 18) : getCategoriaGastoIcon(g.categorias?.nombre)}</div>
           <div class="item-row-info">
-            <div class="item-row-name">${g.descripcion}</div>
-            <div class="item-row-detail">${g.categorias?.nombre || 'Sin categoría'} · ${g.fecha}</div>
+            <div class="item-row-name">${escapeHtml(g.descripcion)}</div>
+            <div class="item-row-detail">${escapeHtml(g.categorias?.nombre || 'Sin categoría')} · ${g.fecha}</div>
           </div>
           <div class="item-row-amount">${formatMXN(g.monto)}</div>
           <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuGasto('${g.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>

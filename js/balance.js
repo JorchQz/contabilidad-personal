@@ -302,13 +302,13 @@ export async function getPagosPendientes() {
       const ultimoPago = normalizeDate(new Date(gf.ultimo_pago + 'T00:00:00'));
       if (isDateInRange(ultimoPago, hoy, fechaLimite)) continue;
     }
-    const esVariable = gf.monto_variable === true || gf.monto == null;
+    const esVariable = gf.fecha_flexible === true || gf.monto == null;
     pendientes.push({
       item_id: `fijo-${gf.id}`,
       gasto_fijo_id: gf.id,
       nombre: gf.descripcion,
       monto: Number(gf.monto || 0),
-      monto_variable: esVariable,
+      fecha_flexible: esVariable,
       fecha_esperada: fechaEsperada,
       tipo: 'fijo',
       urgente: true

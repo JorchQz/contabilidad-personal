@@ -10,23 +10,43 @@ import {
   loadDashboard
 } from './app.js';
 
-export function getCuentaIcon(tipo) {
-  const cuentaIcon = {
-    efectivo: '<i data-lucide="banknote" style="width:18px;height:18px;stroke-width:1.75"></i>',
-    debito: '<i data-lucide="building-2" style="width:18px;height:18px;stroke-width:1.75"></i>',
-    negocio: '<i data-lucide="store" style="width:18px;height:18px;stroke-width:1.75"></i>',
-    otro: '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>'
-  };
+// ---- SEGURIDAD ----
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
-  return cuentaIcon[tipo] || '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>';
+// ---- TAXONOMÍA FINANCIERA ----
+// efectivo / debito  → es_disponible=true,  es_pasivo=false  (dinero líquido real)
+// credito            → es_disponible=false, es_pasivo=true   (pasivo circulante)
+// ahorro             → es_disponible=false, es_pasivo=false  (fondos comprometidos)
+function getEsDisponiblePasivo(tipo) {
+  return {
+    es_disponible: tipo === 'efectivo' || tipo === 'debito',
+    es_pasivo:     tipo === 'credito'
+  };
+}
+
+export function getCuentaIcon(tipo) {
+  const icons = {
+    efectivo: '<i data-lucide="banknote"    style="width:18px;height:18px;stroke-width:1.75"></i>',
+    debito:   '<i data-lucide="building-2"  style="width:18px;height:18px;stroke-width:1.75"></i>',
+    credito:  '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>',
+    ahorro:   '<i data-lucide="piggy-bank"  style="width:18px;height:18px;stroke-width:1.75"></i>'
+  };
+  return icons[tipo] || icons.debito;
 }
 
 export function getCuentaTipos() {
   return [
     { value: 'efectivo', label: 'Efectivo' },
-    { value: 'debito', label: 'Debito / Banco' },
-    { value: 'negocio', label: 'Mercado Pago' },
-    { value: 'otro', label: 'Otro' }
+    { value: 'debito',   label: 'Débito / Nómina' },
+    { value: 'credito',  label: 'Tarjeta de Crédito' },
+    { value: 'ahorro',   label: 'Ahorro / Inversión' }
   ];
 }
 
@@ -98,7 +118,7 @@ export async function loadCuentas() {
     { data: traspasosSalida },
     { data: traspasosEntrada }
   ] = await Promise.all([
-    db.from('cuentas').select('id, nombre, tipo, saldo_inicial').eq('usuario_id', uid).eq('activa', true),
+    db.from('cuentas').select('id, nombre, tipo, saldo_inicial, es_disponible, es_pasivo').eq('usuario_id', uid).eq('activa', true),
     db.from('ingresos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
     db.from('gastos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
     db.from('pagos_deuda').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
@@ -130,8 +150,8 @@ export async function loadCuentas() {
           <div class="item-row" style="margin-bottom:8px">
             <div class="item-row-emoji">${cuenta.emoji}</div>
             <div class="item-row-info">
-              <div class="item-row-name">${cuenta.nombre}</div>
-              <div class="item-row-detail">${cuenta.tipoLabel}</div>
+              <div class="item-row-name">${escapeHtml(cuenta.nombre)}</div>
+              <div class="item-row-detail">${escapeHtml(cuenta.tipoLabel)}</div>
             </div>
             <div class="item-row-amount">${formatMXN(cuenta.saldoCalculado)}</div>
             <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuCuenta('${cuenta.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
@@ -164,7 +184,7 @@ export function openMenuCuenta(cuentaId) {
 export async function openEditarCuenta(cuentaId) {
   const { data: cuenta, error } = await db
     .from('cuentas')
-    .select('id, nombre, tipo, saldo_inicial')
+    .select('id, nombre, tipo, saldo_inicial, es_disponible, es_pasivo')
     .eq('id', cuentaId)
     .eq('usuario_id', await getUsuarioId())
     .maybeSingle();
@@ -179,7 +199,7 @@ export async function openEditarCuenta(cuentaId) {
   openModal('Editar cuenta', `
     <div class="form-group">
       <label class="form-label">Nombre</label>
-      <input class="form-input" id="ec-nombre" type="text" value="${cuenta.nombre || ''}" />
+      <input class="form-input" id="ec-nombre" type="text" value="${escapeHtml(cuenta.nombre || '')}" />
     </div>
     <div class="form-group">
       <label class="form-label">Tipo</label>
@@ -201,14 +221,17 @@ export async function guardarEdicionCuenta(cuentaId) {
   const tipo = document.getElementById('ec-tipo')?.value;
   const saldo_inicial = parseFloat(document.getElementById('ec-saldo')?.value);
 
-  if (!nombre || !tipo || Number.isNaN(saldo_inicial) || saldo_inicial < 0) {
+  const TIPOS_VALIDOS = ['efectivo', 'debito', 'credito', 'ahorro'];
+  const MAX_SALDO = 999999999;
+  if (!nombre || nombre.length > 100 || !TIPOS_VALIDOS.includes(tipo) || Number.isNaN(saldo_inicial) || saldo_inicial < 0 || saldo_inicial > MAX_SALDO) {
     showSnackbar('Completa los campos correctamente', 'error');
     return;
   }
 
+  const { es_disponible, es_pasivo } = getEsDisponiblePasivo(tipo);
   const { error } = await db
     .from('cuentas')
-    .update({ nombre, tipo, saldo_inicial })
+    .update({ nombre, tipo, saldo_inicial, es_disponible, es_pasivo })
     .eq('id', cuentaId)
     .eq('usuario_id', await getUsuarioId());
 
@@ -224,6 +247,17 @@ export async function guardarEdicionCuenta(cuentaId) {
 }
 
 export async function eliminarCuenta(cuentaId) {
+  const { data: cuentaCheck } = await db
+    .from('cuentas')
+    .select('tipo, nombre')
+    .eq('id', cuentaId)
+    .maybeSingle();
+
+  if (cuentaCheck?.tipo === 'efectivo') {
+    showSnackbar('La cuenta de Efectivo no puede eliminarse', 'error');
+    return;
+  }
+
   if (!confirm('¿Eliminar esta cuenta?\n\nLos movimientos de esta cuenta se conservan en el historial.')) return;
 
   const { error } = await db
@@ -252,16 +286,13 @@ export async function openAgregarCuenta() {
     <div class="form-group">
       <label class="form-label">Tipo</label>
       <select class="form-select" id="nc-tipo">
-        <option value="efectivo">Efectivo</option>
-        <option value="debito">Debito</option>
-        <option value="negocio">Negocio</option>
-        <option value="otro">Otro</option>
+        ${getCuentaTipos().map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
       <label class="form-label">Saldo inicial</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="nc-saldo" type="number" min="0" placeholder="0.00" /></div>
+      <input class="form-input" id="nc-saldo" type="number" min="0" max="999999999" placeholder="0.00" /></div>
     </div>
     <button class="btn btn-primary" onclick="guardarNuevaCuenta()">Guardar cuenta</button>
   `);
@@ -271,17 +302,30 @@ export async function guardarNuevaCuenta() {
   const nombre = document.getElementById('nc-nombre')?.value.trim();
   const tipo = document.getElementById('nc-tipo')?.value;
   const saldo_inicial = parseFloat(document.getElementById('nc-saldo')?.value) || 0;
+  const TIPOS_VALIDOS = ['efectivo', 'debito', 'credito', 'ahorro'];
+  const MAX_SALDO = 999999999;
 
-  if (!nombre) {
-    showSnackbar('Escribe el nombre de la cuenta', 'error');
+  if (!nombre || nombre.length > 100) {
+    showSnackbar('El nombre debe tener entre 1 y 100 caracteres', 'error');
+    return;
+  }
+  if (!TIPOS_VALIDOS.includes(tipo)) {
+    showSnackbar('Selecciona un tipo de cuenta válido', 'error');
+    return;
+  }
+  if (saldo_inicial < 0 || saldo_inicial > MAX_SALDO) {
+    showSnackbar('Ingresa un saldo entre $0 y $999,999,999', 'error');
     return;
   }
 
+  const { es_disponible, es_pasivo } = getEsDisponiblePasivo(tipo);
   const { error } = await db.from('cuentas').insert({
     usuario_id: await getUsuarioId(),
     nombre,
     tipo,
     saldo_inicial,
+    es_disponible,
+    es_pasivo,
     activa: true
   });
 

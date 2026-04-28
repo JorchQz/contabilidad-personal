@@ -3,6 +3,16 @@ import { db } from './supabase.js';
 import { formatMXN, showSnackbar, renderLucideIcons, renderApp } from './app.js';
 import { GASTOS_FIJOS_CATALOGO, GASTOS_VARIABLES_CATALOGO } from './gastos.js';
 
+// ---- SEGURIDAD ----
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // ---- ESTADO ----
 let onboardingData = {
   nombre: '',
@@ -57,8 +67,20 @@ export function renderOnboarding() {
   document.getElementById('onboarding-body').addEventListener('click', e => {
     // Step 3: chips de gastos fijos sugeridos
     const fijoChip = e.target.closest('.fijo-sugerido-chip');
-    if (fijoChip) {
-      window.toggleGastoFijoSugerido(fijoChip);
+    if (fijoChip) { window.toggleGastoFijoSugerido(fijoChip); return; }
+
+    // Step 2: toggle tipo de ingreso (usa data-* para evitar XSS en onclick)
+    const ingresoToggleBtn = e.target.closest('.ingreso-toggle-btn');
+    if (ingresoToggleBtn) {
+      window.toggleTipoIngreso(ingresoToggleBtn.dataset.nombre, ingresoToggleBtn.dataset.icono);
+      return;
+    }
+
+    // Step 2: expandir/colapsar configuración de ingreso
+    const ingresoExpansionBtn = e.target.closest('.ingreso-expansion-btn');
+    if (ingresoExpansionBtn) {
+      window.toggleIngresoExpansion(ingresoExpansionBtn.dataset.nombre);
+      return;
     }
   });
 
@@ -112,6 +134,10 @@ function setFooter(html) {
 }
 
 // ---- STEP 1: Tipos de ingreso ----
+// Fallback explícito: se asigna desde el paso de registro de nombre del usuario.
+// Si no se ha asignado aún, se usa cadena vacía para evitar crashes.
+if (typeof window._regNombre === 'undefined') window._regNombre = '';
+
 const TIPOS_INGRESO_DEFAULT = [
   { nombre: 'Salario / Nómina', icono: 'briefcase' },
   { nombre: 'Honorarios / Freelance', icono: 'laptop' },
@@ -255,15 +281,14 @@ function renderStep2nuevo() {
     const sel      = !!ing;
     const expanded = window._ingresoExpandido === item.nombre;
     const ok       = sel && isOk(ing);
-    const enc      = item.nombre.replace(/'/g,"\\'");
     return `
       <div style="background:var(--bg-card);border:1.5px solid ${sel?'var(--accent)':'var(--border)'};border-radius:var(--radius-sm);overflow:hidden;transition:border-color 180ms">
-        <button type="button" onclick="toggleTipoIngreso('${enc}','${item.icono}')"
+        <button type="button" class="ingreso-toggle-btn" data-nombre="${escapeHtml(item.nombre)}" data-icono="${item.icono}"
           style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px;background:none;border:none;cursor:pointer;font-family:inherit;text-align:left;-webkit-tap-highlight-color:transparent">
           <span style="display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden">
             <i data-lucide="${item.icono}" style="width:18px;height:18px;stroke-width:1.75;flex-shrink:0;color:${sel?'#10b981':'var(--text-muted)'}"></i>
             <span style="display:flex;flex-direction:column;gap:1px;min-width:0;overflow:hidden">
-              <span style="font-size:14px;font-weight:${sel?'600':'400'};color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${item.nombre}</span>
+              <span style="font-size:14px;font-weight:${sel?'600':'400'};color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(item.nombre)}</span>
               ${ok && !expanded && ing ? `<span style="font-size:11px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${resumeText(ing)}</span>` : ''}
             </span>
           </span>
@@ -272,7 +297,7 @@ function renderStep2nuevo() {
         ${sel ? `
           <div style="padding:0 14px ${expanded?'14px':'8px'}">
             ${''}
-            <button type="button" onclick="toggleIngresoExpansion('${enc}')"
+            <button type="button" class="ingreso-expansion-btn" data-nombre="${escapeHtml(item.nombre)}"
               style="display:flex;align-items:center;gap:4px;background:none;border:none;cursor:pointer;padding:2px 0;font-family:inherit;-webkit-tap-highlight-color:transparent">
               <span style="font-size:12px;font-weight:600;color:var(--accent)">${expanded ? 'Cerrar' : (ok ? 'Editar' : 'Configurar')}</span>
               <i data-lucide="${expanded?'chevron-up':'chevron-down'}" style="width:14px;height:14px;color:var(--accent)"></i>
@@ -453,8 +478,8 @@ function renderStep3nuevo() {
     const fijosAddedHtml = onboardingData.gastosFijos.length > 0 ? `
       <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
         ${onboardingData.gastosFijos.map((f, idx) => {
-          const mv         = !!f.monto_variable;
-          const ap         = !!f.es_aproximado;
+          const mv         = !!f.fecha_flexible;
+          const ap         = !!f.monto_estimado;
           const tipoActivo = !mv && !ap ? 'exacto' : !mv && ap ? 'monto-variable' : mv && !ap ? 'fecha-flexible' : 'aproximado';
           const esFlex     = mv;
           const montoLabel = (tipoActivo === 'exacto' || tipoActivo === 'fecha-flexible') ? 'Monto exacto' : 'Monto promedio estimado';
@@ -658,7 +683,7 @@ function renderStep3nuevo() {
 }
 
 function nextStep3nuevo() {
-  const faltantes = onboardingData.gastosFijos.filter(f => !f.monto_variable && (!Number.isFinite(f.monto) || f.monto <= 0));
+  const faltantes = onboardingData.gastosFijos.filter(f => !f.fecha_flexible && (!Number.isFinite(f.monto) || f.monto <= 0));
   if (faltantes.length > 0) {
     showSnackbar(`Falta monto en "${faltantes[0].nombre}" o márcalo como Variable`, 'error');
     return;
@@ -677,18 +702,18 @@ const INSTITUCIONES = [
   { nombre: 'Inbursa',               tipo: 'debito',   icono: 'building-2' },
   { nombre: 'Afirme',                tipo: 'debito',   icono: 'building-2' },
   { nombre: 'BanBajío',              tipo: 'debito',   icono: 'building-2' },
-  { nombre: 'Nu',                    tipo: 'debito',   icono: 'smartphone' },
-  { nombre: 'Mercado Pago',          tipo: 'negocio',  icono: 'store' },
+  { nombre: 'Nu',                    tipo: 'credito',  icono: 'smartphone' },
+  { nombre: 'Mercado Pago',          tipo: 'debito',   icono: 'smartphone' },
   { nombre: 'Hey Banco',             tipo: 'debito',   icono: 'smartphone' },
   { nombre: 'Klar',                  tipo: 'debito',   icono: 'smartphone' },
   { nombre: 'Spin by OXXO',          tipo: 'debito',   icono: 'smartphone' },
   { nombre: 'Ualá',                  tipo: 'debito',   icono: 'smartphone' },
-  { nombre: 'PayPal',                tipo: 'negocio',  icono: 'globe' },
-  { nombre: 'Stori',                 tipo: 'debito',   icono: 'smartphone' },
-  { nombre: 'Vexi',                  tipo: 'debito',   icono: 'smartphone' },
-  { nombre: 'Bitso',                 tipo: 'otro',     icono: 'coins' },
+  { nombre: 'PayPal',                tipo: 'debito',   icono: 'globe' },
+  { nombre: 'Stori',                 tipo: 'credito',  icono: 'credit-card' },
+  { nombre: 'Vexi',                  tipo: 'credito',  icono: 'credit-card' },
+  { nombre: 'Bitso',                 tipo: 'ahorro',   icono: 'coins' },
   { nombre: 'Otro banco',            tipo: 'debito',   icono: 'building-2' },
-  { nombre: 'Otro digital',          tipo: 'otro',     icono: 'smartphone' },
+  { nombre: 'Otro digital',          tipo: 'debito',   icono: 'smartphone' },
 ];
 
 function renderStep4() {
@@ -712,7 +737,7 @@ function renderStep4() {
 }
 
 function renderStep4Body() {
-  const TIPO_LABELS = { efectivo: 'Efectivo', debito: 'Débito / Banco', negocio: 'Negocio/Digital', otro: 'Otro' };
+  const TIPO_LABELS = { efectivo: 'Efectivo', debito: 'Débito / Nómina', credito: 'Tarjeta de Crédito', ahorro: 'Ahorro / Inversión' };
   const efectivoAgregado = onboardingData.cuentas.some(c => c.tipo === 'efectivo');
 
   document.getElementById('onboarding-body').innerHTML = `
@@ -721,7 +746,7 @@ function renderStep4Body() {
         <div class="item-row">
           <div class="item-row-emoji"><i data-lucide="${c.icono || 'credit-card'}" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <div class="item-row-info">
-            <div class="item-row-name">${c.nombre}</div>
+            <div class="item-row-name">${escapeHtml(c.nombre)}</div>
             <div class="item-row-detail">${TIPO_LABELS[c.tipo] || 'Cuenta'} · Saldo: ${formatMXN(c.saldo_inicial)}</div>
           </div>
           ${c.tipo !== 'efectivo' ? `<button class="item-row-delete" onclick="removeCuenta(${i})"><i data-lucide="x" style="width:18px;height:18px;stroke-width:1.75"></i></button>` : ''}
@@ -729,7 +754,7 @@ function renderStep4Body() {
       `).join('')}
     </div>
 
-    <button id="btn-add-otra-cuenta" class="btn-add-item" style="${efectivoAgregado ? '' : 'display:none'}margin-top:4px" onclick="mostrarBuscadorCuenta()">
+    <button id="btn-add-otra-cuenta" class="btn-add-item" style="${efectivoAgregado ? 'margin-top:4px' : 'display:none;margin-top:4px'}" onclick="mostrarBuscadorCuenta()">
       <span>+</span> Agregar otra cuenta
     </button>
 
@@ -741,6 +766,13 @@ function renderStep4Body() {
         </div>
         <div id="banco-resultados" class="banco-resultados-list" style="display:none;margin-bottom:4px"></div>
         <input class="form-input" id="c-nombre" placeholder="Nombre de la cuenta" style="display:none;margin-bottom:8px" />
+        <div id="cuenta-tipo-wrap" style="display:none;margin-bottom:8px">
+          <select class="form-select" id="c-tipo">
+            <option value="debito">Débito / Nómina</option>
+            <option value="credito">Tarjeta de Crédito</option>
+            <option value="ahorro">Ahorro / Inversión</option>
+          </select>
+        </div>
         <div id="cuenta-saldo-wrap" class="input-money-wrap" style="display:none;margin-bottom:8px">
           <span class="currency-prefix">$</span>
           <input class="form-input" id="c-saldo" type="number" placeholder="Saldo actual (0)" min="0" />
@@ -764,6 +796,10 @@ function _abrirFormCuenta({ nombre = '', readOnly = false, sinCancelar = false, 
   cNombre.style.display = 'block';
   cNombre.value = nombre;
   cNombre.readOnly = readOnly;
+  const tipoWrap = document.getElementById('cuenta-tipo-wrap');
+  const mostrarTipo = !sinCancelar && !readOnly;
+  tipoWrap.style.display = mostrarTipo ? 'block' : 'none';
+  if (mostrarTipo) document.getElementById('c-tipo').value = 'debito';
   document.getElementById('cuenta-saldo-wrap').style.display = 'flex';
   document.getElementById('c-saldo').value = '';
   const actions = document.getElementById('form-cuenta-actions');
@@ -786,10 +822,14 @@ function ordenarInstitucionesConEfectivoPrimero(items) {
 
 function addCuenta() {
   const nombre = document.getElementById('c-nombre')?.value.trim();
-  const tipo = window._selectedBancoTipo || 'otro';
-  const icono = window._selectedBancoIcono || 'credit-card';
+  const TIPO_ICONOS = { efectivo: 'banknote', debito: 'building-2', credito: 'credit-card', ahorro: 'piggy-bank' };
+  const tipo = window._selectedBancoTipo || document.getElementById('c-tipo')?.value || 'debito';
+  const icono = window._selectedBancoIcono || TIPO_ICONOS[tipo] || 'building-2';
   const saldo = parseFloat(document.getElementById('c-saldo')?.value) || 0;
+  const MAX_SALDO = 999999999;
   if (!nombre) { showSnackbar('Escribe el nombre de la cuenta', 'error'); return; }
+  if (saldo < 0) { showSnackbar('El saldo no puede ser negativo', 'error'); return; }
+  if (saldo > MAX_SALDO) { showSnackbar('El saldo máximo es $999,999,999', 'error'); return; }
   onboardingData.cuentas.push({ nombre, tipo, icono, saldo_inicial: saldo });
   window._selectedBancoTipo = null;
   window._selectedBancoIcono = null;
@@ -797,6 +837,12 @@ function addCuenta() {
 }
 
 function removeCuenta(i) {
+  i = parseInt(i, 10);
+  if (Number.isNaN(i) || i < 0 || i >= onboardingData.cuentas.length) return;
+  if (onboardingData.cuentas[i]?.tipo === 'efectivo') {
+    showSnackbar('La cuenta de Efectivo no puede eliminarse', 'error');
+    return;
+  }
   onboardingData.cuentas.splice(i, 1);
   renderStep4Body();
 }
@@ -994,8 +1040,12 @@ function renderCamposDeudaOnboarding() {
     return;
   }
   if (tipo === 'quincenal') {
-    campos.innerHTML = '';
-    if (hint) hint.innerHTML = `<p class="text-xs text-gray-500 mt-1 block" style="color:var(--text-secondary);font-size:12px;margin-top:6px">Los pagos se programarán los días 15 y último del mes.</p>`;
+    campos.innerHTML = `
+      <select class="form-select" id="d-quincena" style="width:100%">
+        <option value="1">Primera quincena (día 15)</option>
+        <option value="2">Segunda quincena (último día)</option>
+      </select>`;
+    if (hint) hint.innerHTML = `<p style="color:var(--text-secondary);font-size:12px;margin-top:6px">Selecciona en qué quincena realizas el pago.</p>`;
     return;
   }
   if (tipo === 'mensual') {
@@ -1098,7 +1148,7 @@ function renderStep6() {
 
 function renderStep6Body(showForm = false) {
   const cuentasOptions = onboardingData.cuentas.map(c =>
-    `<option value="${c.nombre}">${c.nombre}</option>`
+    `<option value="${escapeHtml(c.nombre)}">${escapeHtml(c.nombre)}</option>`
   ).join('');
 
   document.getElementById('onboarding-body').innerHTML = `
@@ -1384,7 +1434,7 @@ function renderStep6resumen() {
       <button class="btn btn-ghost" style="position:absolute;top:10px;right:12px;padding:4px 10px;font-size:12px" onclick="renderStep(2)">Editar</button>
       <strong style="display:block;margin-bottom:10px">Gastos fijos</strong>
       <p class="form-hint" style="margin-bottom:8px">${totalGastosFijos} ${totalGastosFijos === 1 ? 'gasto fijo' : 'gastos fijos'}</p>
-      ${renderList(onboardingData.gastosFijos, 'Ninguno', item => `${item.nombre}${item.monto_variable ? ' · variable' : (item.monto ? ` · ${formatMXN(item.monto)}` : '')}`)}
+      ${renderList(onboardingData.gastosFijos, 'Ninguno', item => `${item.nombre}${item.fecha_flexible ? ' · variable' : (item.monto ? ` · ${formatMXN(item.monto)}` : '')}`)}
     </div>
 
     <div style="${sectionStyle}">
@@ -1392,7 +1442,7 @@ function renderStep6resumen() {
       <strong style="display:block;margin-bottom:10px">Cuentas</strong>
       ${onboardingData.cuentas.length === 0 ? '<p class="form-hint">Ninguna</p>' : onboardingData.cuentas.map(c => `
         <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light)">
-          <span>${c.nombre}</span>
+          <span>${escapeHtml(c.nombre)}</span>
           <span style="color:var(--text-secondary)">${formatMXN(c.saldo_inicial || 0)}</span>
         </div>
       `).join('')}
@@ -1444,7 +1494,13 @@ async function finishOnboarding() {
   btn.disabled = true;
 
   try {
-    const { data: { user } } = await db.auth.getUser();
+    const { data: { user }, error: authError } = await db.auth.getUser();
+    if (!user?.id || authError) {
+      showSnackbar('Sesión expirada. Vuelve a iniciar sesión.', 'error');
+      btn.textContent = 'Finalizar';
+      btn.disabled = false;
+      return;
+    }
     const userId = user.id;
     const nombre = window._regNombre || (user.email ? user.email.split('@')[0] : 'Usuario');
 
@@ -1489,8 +1545,11 @@ async function finishOnboarding() {
 
       const fijos = onboardingData.gastosFijos.map(f => ({
         descripcion: f.nombre,
-        monto: f.monto_variable ? null : (f.monto ?? null),
-        monto_variable: !!f.monto_variable,
+        // Regla de Oro del Monto: solo null si monto_estimado=true Y no hay valor conocido.
+        // Si fecha_flexible=true pero el monto es conocido, se persiste.
+        monto: f.monto_estimado && !Number.isFinite(f.monto) ? null : (f.monto ?? null),
+        fecha_flexible: !!f.fecha_flexible,
+        monto_estimado: !!f.monto_estimado,
         frecuencia: f.frecuencia || 'mensual',
         dia_pago: f.dia_pago ?? null,
         dia_semana: f.dia_semana ?? null,
@@ -1500,7 +1559,7 @@ async function finishOnboarding() {
       }));
       const { error: errFijos } = await db.from('gastos_fijos').insert(fijos);
       if (errFijos) {
-        const fijosLegacy = fijos.map(({ monto_variable, proximo_pago, ...rest }) => ({
+        const fijosLegacy = fijos.map(({ fecha_flexible, monto_estimado, proximo_pago, ...rest }) => ({
           ...rest,
           monto: rest.monto ?? 0,
         }));
@@ -1514,6 +1573,9 @@ async function finishOnboarding() {
         nombre: c.nombre,
         tipo: c.tipo,
         saldo_inicial: c.saldo_inicial,
+        // Taxonomía financiera: dinero líquido vs pasivo vs ahorro comprometido
+        es_disponible: c.tipo === 'efectivo' || c.tipo === 'debito',
+        es_pasivo:     c.tipo === 'credito',
         activa: true,
         usuario_id: userId
       }));
@@ -1697,12 +1759,12 @@ window.toggleGastoFijoSugerido = function(btnOrNombre, iconoOpt) {
     onboardingData.gastosFijos.push({
       nombre, icono,
       monto: null,
-      monto_variable: montoVariable,
+      fecha_flexible: montoVariable,
       frecuencia,
       dia_pago: null,
       dia_semana: null,
       proximo_pago: null,
-      es_aproximado: montoVariable,
+      monto_estimado: montoVariable,
       ultima_fecha_pago: null,
       modo_sugerido,
     });
@@ -1718,8 +1780,13 @@ window.removeGastoFijo = function(idx) {
 window.setFijoTipoMonto = function(idx, tipo) {
   const f = onboardingData.gastosFijos[idx];
   if (!f) return;
-  f.monto_variable = tipo === 'fecha-flexible' || tipo === 'aproximado';
-  f.es_aproximado  = tipo === 'monto-variable'  || tipo === 'aproximado';
+  // Regla 4 cuadrantes:
+  // exacto        → fecha_flexible=false, monto_estimado=false
+  // monto-variable→ fecha_flexible=false, monto_estimado=true
+  // fecha-flexible→ fecha_flexible=true,  monto_estimado=false
+  // aproximado    → fecha_flexible=true,  monto_estimado=true
+  f.fecha_flexible = tipo === 'fecha-flexible' || tipo === 'aproximado';
+  f.monto_estimado = tipo === 'monto-variable'  || tipo === 'aproximado';
   if (window._renderStep3Body) window._renderStep3Body();
 };
 
@@ -1728,7 +1795,7 @@ window.updateGastoFijo = function(idx) {
   if (!f) return;
 
   const prevFreq = f.frecuencia;
-  const prevType = `${f.monto_variable}-${f.es_aproximado}`;
+  const prevType = `${f.fecha_flexible}-${f.monto_estimado}`;
 
   f.frecuencia = document.getElementById(`gf-freq-${idx}`)?.value || 'mensual';
 
@@ -1737,7 +1804,7 @@ window.updateGastoFijo = function(idx) {
 
   f.dia_semana = null; f.dia_pago = null; f.proximo_pago = null; f.ultima_fecha_pago = null;
 
-  const esFlex = !!f.monto_variable;
+  const esFlex = !!f.fecha_flexible;
   const CICLOS = ['bimestral', 'trimestral', 'semestral', 'anual'];
 
   if (esFlex) {
@@ -1754,7 +1821,7 @@ window.updateGastoFijo = function(idx) {
     }
   }
 
-  if (prevFreq !== f.frecuencia || prevType !== `${f.monto_variable}-${f.es_aproximado}`) {
+  if (prevFreq !== f.frecuencia || prevType !== `${f.fecha_flexible}-${f.monto_estimado}`) {
     if (window._renderStep3Body) window._renderStep3Body();
   }
 };
@@ -1821,13 +1888,14 @@ window.confirmarGastoFijoCustom = function() {
   onboardingData.gastosFijos.push({
     nombre,
     icono: window._fijoCustomIcono || 'smile',
+    // Regla de Oro del Monto: persistir monto si es conocido, aunque la fecha sea flexible
     monto: window._fijoCustomMonto || null,
-    monto_variable: esFlex,
+    fecha_flexible: esFlex,
     frecuencia: window._fijoCustomFrecuencia || 'mensual',
     dia_pago:    esFlex ? null : (window._fijoCustomDiaPago || null),
     dia_semana:  esFlex ? null : (window._fijoCustomDiaSemana ?? null),
     proximo_pago: esFlex ? null : (window._fijoCustomProximoPago || null),
-    es_aproximado: esAprox,
+    monto_estimado: esAprox,
     ultima_fecha_pago: esFlex ? (window._fijoCustomUltimaFecha || null) : null,
   });
   window._showFijoCustomForm = false;
@@ -1898,8 +1966,8 @@ window.seleccionarBancoIdx = function(idx) {
 
 window.seleccionarBancoCustom = function() {
   const q = document.getElementById('banco-search')?.value.trim() || '';
-  window._selectedBancoTipo = 'otro';
-  window._selectedBancoIcono = 'credit-card';
+  window._selectedBancoTipo = null;
+  window._selectedBancoIcono = null;
   document.getElementById('cuenta-search-row').style.display = 'none';
   document.getElementById('banco-search').value = '';
   _abrirFormCuenta({ nombre: q, readOnly: false });
@@ -1909,6 +1977,7 @@ window.cancelarFormCuenta = function() {
   window._selectedBancoTipo = null;
   window._selectedBancoIcono = null;
   document.getElementById('form-cuenta-banco').style.display = 'none';
+  document.getElementById('cuenta-tipo-wrap').style.display = 'none';
   document.getElementById('btn-add-otra-cuenta').style.display = '';
 };
 
