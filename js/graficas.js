@@ -23,6 +23,7 @@ export async function renderGraficaGastos(canvas) {
     db.from('gastos')
       .select('monto, categoria_id')
       .eq('usuario_id', uid)
+      .neq('es_ahorro', true)
       .gte('fecha', inicioMes)
       .lte('fecha', finMes),
     db.from('categorias')

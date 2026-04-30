@@ -249,12 +249,8 @@ function getProximaFechaCobro(ingresoProgramado, fechaBase) {
   }
 
   if (ingresoProgramado.frecuencia === 'quincenal') {
-    const year = base.getFullYear();
-    const month = base.getMonth();
-    const day = base.getDate();
-    if (day < 1) return new Date(year, month, 1);
-    if (day < 16) return new Date(year, month, 16);
-    return new Date(year, month + 1, 1);
+    const diaPago = ingresoProgramado.dia_pago || 1;
+    return getNextQuincenalDate(diaPago, base);
   }
 
   if (ingresoProgramado.frecuencia === 'mensual') {
@@ -273,16 +269,17 @@ export async function getPagosPendientes() {
     .from('ingresos_programados')
     .select('*')
     .eq('usuario_id', usuarioId)
-    .eq('activo', true)
-    .order('created_at', { ascending: true })
-    .limit(1);
+    .eq('activo', true);
 
-  const ingresoBase = ingresosProgramados?.[0] || null;
-  const proximaFechaCobro = getProximaFechaCobro(ingresoBase, hoy);
+  const fechasCobro = (ingresosProgramados || [])
+    .map(ip => getProximaFechaCobro(ip, hoy))
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+  const proximaFechaCobro = fechasCobro[0] || null;
 
   const fechaLimite = proximaFechaCobro || (() => {
     const d = new Date(hoy);
-    d.setDate(d.getDate() + 7);
+    d.setDate(d.getDate() + 15);
     return d;
   })();
 

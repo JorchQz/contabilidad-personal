@@ -5,6 +5,12 @@ import {
   openModal, closeModal
 } from './app.js';
 
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
 export async function loadPresupuestos() {
   const uid = await getUsuarioId();
   const hoy = new Date();
@@ -20,7 +26,7 @@ export async function loadPresupuestos() {
   ] = await Promise.all([
     db.from('presupuestos').select('*').eq('usuario_id', uid).eq('periodo', periodo),
     db.from('categorias').select('id, nombre, emoji').eq('usuario_id', uid).eq('tipo', 'gasto').order('nombre', { ascending: true }),
-    db.from('gastos').select('categoria_id, monto').eq('usuario_id', uid).gte('fecha', inicioMes).lte('fecha', finMes).not('categoria_id', 'is', null)
+    db.from('gastos').select('categoria_id, monto').eq('usuario_id', uid).neq('es_ahorro', true).gte('fecha', inicioMes).lte('fecha', finMes).not('categoria_id', 'is', null)
   ]);
 
   const gastoPorCat = {};
@@ -33,6 +39,7 @@ export async function loadPresupuestos() {
     presupuestoPorCat[p.categoria_id] = p;
   }
 
+  window._presupuestosCatMap = Object.fromEntries((categorias || []).map(c => [c.id, c.nombre]));
   const catsSinPresupuesto = (categorias || []).filter(c => !presupuestoPorCat[c.id]);
   const catsConPresupuesto = (categorias || []).filter(c => presupuestoPorCat[c.id]);
 
@@ -46,16 +53,16 @@ export async function loadPresupuestos() {
     const isLucide = /^[a-z][a-z0-9-]*$/.test(icono);
     const iconHtml = isLucide
       ? `<i data-lucide="${icono}" style="width:20px;height:20px;stroke-width:1.75"></i>`
-      : `<span style="font-size:18px">${icono}</span>`;
+      : `<span style="font-size:18px">${escapeHtml(icono)}</span>`;
 
     if (!p) {
       return `
         <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px">
           <div style="display:flex;align-items:center;gap:10px">
             ${iconHtml}
-            <div style="font-size:14px;font-weight:500">${cat.nombre}</div>
+            <div style="font-size:14px;font-weight:500">${escapeHtml(cat.nombre)}</div>
           </div>
-          <button class="btn btn-secondary" style="padding:6px 14px;font-size:13px" onclick="openPresupuestoModal('${cat.id}','${cat.nombre}',null)">Establecer</button>
+          <button class="btn btn-secondary" style="padding:6px 14px;font-size:13px" onclick="openPresupuestoModal('${cat.id}',null)">Establecer</button>
         </div>
       `;
     }
@@ -66,11 +73,11 @@ export async function loadPresupuestos() {
           <div style="display:flex;align-items:center;gap:10px">
             ${iconHtml}
             <div>
-              <div style="font-size:14px;font-weight:600">${cat.nombre}</div>
+              <div style="font-size:14px;font-weight:600">${escapeHtml(cat.nombre)}</div>
               <div style="font-size:12px;color:var(--text-muted)">Límite: ${formatMXN(limite)}</div>
             </div>
           </div>
-          <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;min-width:32px;min-height:32px;justify-content:center" onclick="openPresupuestoModal('${cat.id}','${cat.nombre}','${p.id}')"><i data-lucide="pencil" style="width:15px;height:15px;pointer-events:none"></i></button>
+          <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;min-width:32px;min-height:32px;justify-content:center" onclick="openPresupuestoModal('${cat.id}','${p.id}')"><i data-lucide="pencil" style="width:15px;height:15px;pointer-events:none"></i></button>
         </div>
         <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:8px">
           <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width 0.5s ease"></div>
@@ -108,8 +115,9 @@ export async function loadPresupuestos() {
   renderLucideIcons();
 }
 
-async function openPresupuestoModal(categoriaId, categoriaNombre, presupuestoId) {
+async function openPresupuestoModal(categoriaId, presupuestoId) {
   const uid = await getUsuarioId();
+  const categoriaNombre = window._presupuestosCatMap?.[categoriaId] || '';
   let montoActual = '';
 
   if (presupuestoId) {
@@ -117,7 +125,7 @@ async function openPresupuestoModal(categoriaId, categoriaNombre, presupuestoId)
     if (p) montoActual = Number(p.monto_limite);
   }
 
-  const titulo = presupuestoId ? `Editar: ${categoriaNombre}` : `Establecer: ${categoriaNombre}`;
+  const titulo = presupuestoId ? `Editar: ${escapeHtml(categoriaNombre)}` : `Establecer: ${escapeHtml(categoriaNombre)}`;
 
   openModal(titulo, `
     <div class="form-group">
@@ -135,8 +143,12 @@ async function openPresupuestoModal(categoriaId, categoriaNombre, presupuestoId)
 
 async function guardarPresupuesto(categoriaId) {
   const monto_limite = parseFloat(document.getElementById('pres-monto')?.value);
-  if (!monto_limite || monto_limite <= 0) {
+  if (!monto_limite || monto_limite <= 0 || !isFinite(monto_limite)) {
     showSnackbar('Ingresa un monto válido', 'error');
+    return;
+  }
+  if (monto_limite > 999_999_999) {
+    showSnackbar('Monto excede el límite permitido', 'error');
     return;
   }
 
@@ -159,21 +171,19 @@ async function guardarPresupuesto(categoriaId) {
   await loadPresupuestos();
 }
 
-async function eliminarPresupuesto(presupuestoId) {
-  if (!window.confirm('¿Eliminar este presupuesto?')) return;
-
+async function _doEliminarPresupuesto(presupuestoId) {
   const uid = await getUsuarioId();
   const { error } = await db.from('presupuestos').delete().eq('id', presupuestoId).eq('usuario_id', uid);
-
-  if (error) {
-    showSnackbar('No se pudo eliminar el presupuesto', 'error');
-    return;
-  }
-
+  if (error) { showSnackbar('No se pudo eliminar el presupuesto', 'error'); return; }
   closeModal();
   showSnackbar('Presupuesto eliminado', 'success');
   await loadPresupuestos();
 }
+
+function eliminarPresupuesto(presupuestoId) {
+  openConfirmModal('¿Eliminar este presupuesto?', `_doEliminarPresupuesto('${presupuestoId}')`);
+}
+window._doEliminarPresupuesto = _doEliminarPresupuesto;
 
 window.openPresupuestoModal = openPresupuestoModal;
 window.guardarPresupuesto = guardarPresupuesto;

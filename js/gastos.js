@@ -15,6 +15,7 @@ import {
 } from './app.js';
 import { loadDeudas } from './deudas.js';
 import { loadMetas } from './metas.js';
+import { getSaldoCuentaEspecifica } from './balance.js';
 
 // ---- SEGURIDAD ----
 function escapeHtml(str) {
@@ -619,8 +620,9 @@ async function guardarEdicionGastoFijo(gastoFijoId) {
 
 async function openAgregarGastoFijo() {
   const uid = (await getUsuarioId());
-  const { data: categorias } = await db.from('categorias').select('id, nombre, emoji').eq('usuario_id', uid).eq('tipo', 'gasto').order('nombre', { ascending: true });
-  const catOptions = (categorias || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+  const { data: categorias, error: errCatsFijo } = await db.from('categorias').select('id, nombre, emoji').eq('usuario_id', uid).eq('tipo', 'gasto').order('nombre', { ascending: true });
+  if (errCatsFijo) { showSnackbar('No se pudieron cargar las categorías', 'error'); return; }
+  const catOptions = (categorias || []).map(c => `<option value="${c.id}">${escapeHtml(c.nombre)}</option>`).join('');
 
   openModal('Nuevo gasto fijo', `
     <div class="form-group">
@@ -717,24 +719,22 @@ async function guardarNuevoGastoFijo() {
   await loadDashboard();
 }
 
-async function eliminarGastoFijo(gastoFijoId) {
-  if (!window.confirm('¿Eliminar este gasto fijo?')) return;
-
+async function _doEliminarGastoFijo(gastoFijoId) {
   const { error } = await db
     .from('gastos_fijos')
     .update({ activo: false })
     .eq('id', gastoFijoId)
     .eq('usuario_id', (await getUsuarioId()));
-
-  if (error) {
-    showSnackbar('No se pudo eliminar el gasto fijo', 'error');
-    return;
-  }
-
+  if (error) { showSnackbar('No se pudo eliminar el gasto fijo', 'error'); return; }
   showSnackbar('Gasto fijo eliminado', 'success');
   await loadFijos();
   await loadDashboard();
 }
+
+function eliminarGastoFijo(gastoFijoId) {
+  openConfirmModal('¿Eliminar este gasto fijo?', `_doEliminarGastoFijo('${gastoFijoId}')`);
+}
+window._doEliminarGastoFijo = _doEliminarGastoFijo;
 
 // ---- GASTOS (historial) ----
 export async function loadGastos() {
@@ -780,25 +780,52 @@ function openMenuGasto(gastoId) {
   ]);
 }
 
-async function eliminarGasto(gastoId) {
-  if (!window.confirm('¿Eliminar este gasto?')) return;
+async function _doEliminarGasto(gastoId) {
+  const usuarioId = await getUsuarioId();
+
+  const { data: gasto } = await db
+    .from('gastos')
+    .select('monto, es_ahorro, meta_id')
+    .eq('id', gastoId)
+    .eq('usuario_id', usuarioId)
+    .maybeSingle();
 
   const { error } = await db
     .from('gastos')
     .delete()
     .eq('id', gastoId)
-    .eq('usuario_id', (await getUsuarioId()));
+    .eq('usuario_id', usuarioId);
 
   if (error) {
     showSnackbar('No se pudo eliminar el gasto', 'error');
     return;
   }
 
+  if (gasto?.es_ahorro && gasto?.meta_id) {
+    const { data: meta } = await db
+      .from('metas_ahorro')
+      .select('monto_actual')
+      .eq('id', gasto.meta_id)
+      .maybeSingle();
+
+    if (meta) {
+      const nuevoMonto = Math.max(Number(meta.monto_actual || 0) - Number(gasto.monto || 0), 0);
+      await db.from('metas_ahorro')
+        .update({ monto_actual: nuevoMonto })
+        .eq('id', gasto.meta_id);
+    }
+  }
+
   closeModal();
   showSnackbar('Gasto eliminado', 'success');
   await loadGastos();
   await loadDashboard();
+  if (gasto?.es_ahorro) await loadMetas();
 }
+function eliminarGasto(gastoId) {
+  openConfirmModal('¿Eliminar este gasto?', `_doEliminarGasto('${gastoId}')`);
+}
+window._doEliminarGasto = _doEliminarGasto;
 
 // ---- PICKER AGRUPADO DE GASTO (con recientes + subgrupos) ----
 export async function abrirSelectorGasto() {
@@ -1008,7 +1035,8 @@ export async function toggleCamposGastoEspecial() {
 // ---- REGISTRAR / EDITAR GASTO ----
 async function openRegistrarGasto(gastoId = null) {
   const uid = await getUsuarioId();
-  const { data: cuentas } = await db.from('cuentas').select('*').eq('usuario_id', uid).eq('activa', true);
+  const { data: cuentas, error: errCuentasGasto } = await db.from('cuentas').select('*').eq('usuario_id', uid).eq('activa', true);
+  if (errCuentasGasto) { showSnackbar('No se pudieron cargar las cuentas', 'error'); return; }
 
   currentEditGastoId = gastoId || null;
   setCatState(null, null, 'gasto');
@@ -1067,7 +1095,7 @@ async function openRegistrarGasto(gastoId = null) {
     </div>
     <div class="form-group">
       <label class="form-label">Fecha</label>
-      <input class="form-input" id="rg-fecha" type="date" value="${fechaValue}" />
+      <input class="form-input" id="rg-fecha" type="date" min="2000-01-01" max="${new Date().toISOString().split('T')[0]}" value="${fechaValue}" />
     </div>
     <button class="btn btn-primary" onclick="guardarGasto()">${gastoId ? 'Guardar cambios' : 'Guardar gasto'}</button>
   `);
@@ -1088,6 +1116,19 @@ async function guardarGasto() {
   if (!especial && !descripcion) { showSnackbar('Escribe una descripción', 'error'); return; }
 
   if (currentEditGastoId) {
+    if (cuenta_id) {
+      const { data: gastoOriginal } = await db.from('gastos').select('monto, cuenta_id').eq('id', currentEditGastoId).maybeSingle();
+      const montoOriginal = Number(gastoOriginal?.monto || 0);
+      const cuentaCambio = gastoOriginal?.cuenta_id !== cuenta_id;
+      const { error: errSaldo, saldoDisponible } = await getSaldoCuentaEspecifica(usuarioId, cuenta_id);
+      if (!errSaldo) {
+        const saldoConMargen = cuentaCambio ? saldoDisponible : saldoDisponible + montoOriginal;
+        if (monto > saldoConMargen) {
+          showSnackbar('Saldo insuficiente en esa cuenta', 'error');
+          return;
+        }
+      }
+    }
     const { error } = await db.from('gastos')
       .update({ descripcion, monto, categoria_id, cuenta_id, fecha })
       .eq('id', currentEditGastoId)
@@ -1099,7 +1140,7 @@ async function guardarGasto() {
     closeModal();
     showSnackbar('Gasto actualizado ✓', 'success');
     await loadDashboard();
-    loadGastos();
+    await loadGastos();
     return;
   }
 
@@ -1136,8 +1177,10 @@ async function guardarGasto() {
     const meta_id = document.getElementById('rg-meta-id')?.value || null;
     if (!meta_id) { showSnackbar('Selecciona una meta', 'error'); return; }
 
-    const { data: meta, error: errMeta } = await db.from('metas_ahorro').select('nombre, monto_actual').eq('id', meta_id).maybeSingle();
+    const { data: meta, error: errMeta } = await db.from('metas_ahorro').select('nombre, monto_actual, monto_objetivo').eq('id', meta_id).maybeSingle();
     if (errMeta || !meta) { showSnackbar('No se pudo cargar la meta', 'error'); return; }
+    const _restanteMeta = Math.max(Number(meta.monto_objetivo || 0) - Number(meta.monto_actual || 0), 0);
+    if (monto > _restanteMeta) { showSnackbar(`El aporte excede el restante de la meta (${formatMXN(_restanteMeta)})`, 'error'); return; }
 
     const gastoPayload = {
       usuario_id: usuarioId,
@@ -1146,20 +1189,23 @@ async function guardarGasto() {
       categoria_id,
       cuenta_id,
       fecha,
+      es_ahorro: true,
+      meta_id,
     };
     const { error } = await db.from('gastos').insert(gastoPayload);
     if (error) { showSnackbar('Error al guardar', 'error'); return; }
 
-    await db.from('metas_ahorro')
+    const { error: errMetaUpdate } = await db.from('metas_ahorro')
       .update({ monto_actual: Number(meta.monto_actual || 0) + monto })
       .eq('id', meta_id);
+    if (errMetaUpdate) { showSnackbar('Gasto guardado, pero no se pudo actualizar la meta', 'error'); return; }
 
     window._gastoEspecial = null;
     closeModal();
     showSnackbar('Aporte a meta registrado ✓', 'success');
     await loadDashboard();
     await loadMetas();
-    loadGastos();
+    await loadGastos();
     return;
   }
 
@@ -1191,21 +1237,23 @@ async function guardarGasto() {
         .limit(1)
         .maybeSingle();
       if (proximoPago) {
-        await db.from('pagos_programados').update({
+        const { error: errProg } = await db.from('pagos_programados').update({
           pagado: true,
           fecha_pago: fecha,
           monto_pagado: monto
         }).eq('id', proximoPago.id);
+        if (errProg) showSnackbar('Pago registrado, pero no se pudo marcar la cuota', 'error');
       }
     }
 
     const nuevoMonto = Number(deuda.monto_actual) - monto;
-    await db.from('deudas').update({
+    const { error: errDeudaUpdate } = await db.from('deudas').update({
       monto_actual: nuevoMonto,
       activa: nuevoMonto > 0,
       ultimo_pago: fecha,
       monto_ultimo_pago: monto,
     }).eq('id', deuda_id);
+    if (errDeudaUpdate) { showSnackbar('Error al actualizar la deuda', 'error'); return; }
 
     window._gastoEspecial = null;
     closeModal();
@@ -1230,7 +1278,7 @@ async function guardarGasto() {
   closeModal();
   showSnackbar('Gasto registrado ✓', 'success');
   await loadDashboard();
-  loadGastos();
+  await loadGastos();
 }
 
 // Funciones invocadas desde atributos onclick en HTML generado dinámicamente

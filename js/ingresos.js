@@ -17,6 +17,15 @@ import { getPagosPendientes } from './balance.js';
 import { loadCuentas } from './cuentas.js';
 import { loadDeudas } from './deudas.js';
 
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 let currentIngresoTipo = 'otro';
 
 export function setCurrentIngresoTipo(tipo) {
@@ -92,7 +101,7 @@ export async function loadIngresos() {
         <div class="item-row" style="margin-bottom:8px">
           <div class="item-row-emoji"><i data-lucide="calendar-days" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <div class="item-row-info">
-            <div class="item-row-name">${i.descripcion}</div>
+            <div class="item-row-name">${escapeHtml(i.descripcion || '')}</div>
             <div class="item-row-detail">${formatearFrecuenciaIngresoProgramado(i.frecuencia, i.dia_pago, i.dia_semana)}</div>
           </div>
           <div class="item-row-amount" style="color:var(--green)">${formatMXN(i.monto_estimado)}</div>
@@ -123,7 +132,7 @@ export async function loadIngresos() {
           <div class="item-row" style="margin-bottom:8px">
             <div class="item-row-emoji">${iconoHtml}</div>
             <div class="item-row-info">
-              <div class="item-row-name">${nombre}</div>
+              <div class="item-row-name">${escapeHtml(nombre)}</div>
               <div class="item-row-detail">${i.fecha}</div>
             </div>
             <div class="item-row-amount" style="color:var(--green)">${formatMXN(i.monto)}</div>
@@ -135,13 +144,13 @@ export async function loadIngresos() {
   document.getElementById('page-ingresos').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Ingresos</h1>
-      <button onclick="openRegistrarIngreso()" style="background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius-sm);padding:8px 14px;color:var(--green);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nuevo</button>
+      <button onclick="openRegistrarIngreso()" style="background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius-sm);padding:8px 14px;color:var(--green);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font)">+ Nuevo</button>
     </div>
     <div class="page-body">
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px">
           <div style="font-weight:700;font-size:14px">Programados</div>
-          <button onclick="openAgregarIngresoProgramado()" style="background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius-sm);padding:8px 12px;color:var(--green);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Agregar</button>
+          <button onclick="openAgregarIngresoProgramado()" style="background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius-sm);padding:8px 12px;color:var(--green);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">+ Agregar</button>
         </div>
         ${programadosHTML}
       </div>
@@ -224,7 +233,7 @@ async function openEditarIngresoProgramado(ingresoProgramadoId) {
   openModal('Editar ingreso programado', `
     <div class="form-group">
       <label class="form-label">Descripción</label>
-      <input class="form-input" id="eip-desc" type="text" value="${ingresoProgramado.descripcion || ''}" />
+      <input class="form-input" id="eip-desc" type="text" value="${escapeHtml(ingresoProgramado.descripcion || '')}" />
     </div>
     <div class="form-group">
       <label class="form-label">Monto estimado</label>
@@ -267,7 +276,7 @@ async function guardarEdicionIngresoProgramado(ingresoProgramadoId) {
   let dia_pago = null;
   let dia_semana = null;
 
-  if (!descripcion || !monto_estimado) {
+  if (!descripcion || !monto_estimado || monto_estimado <= 0 || !isFinite(monto_estimado)) {
     showSnackbar('Completa descripción y monto', 'error');
     return;
   }
@@ -382,7 +391,7 @@ async function guardarIngresoProgramado() {
   let dia_pago = null;
   let dia_semana = null;
 
-  if (!descripcion || !monto_estimado) {
+  if (!descripcion || !monto_estimado || monto_estimado <= 0 || !isFinite(monto_estimado)) {
     showSnackbar('Completa descripción y monto', 'error');
     return;
   }
@@ -427,23 +436,21 @@ async function guardarIngresoProgramado() {
   await loadIngresos();
 }
 
-async function eliminarIngresoProgramado(ingresoProgramadoId) {
-  if (!window.confirm('¿Eliminar este ingreso programado?')) return;
-
+async function _doEliminarIngresoProgramado(ingresoProgramadoId) {
   const { error } = await db
     .from('ingresos_programados')
     .update({ activo: false })
     .eq('id', ingresoProgramadoId)
     .eq('usuario_id', (await getUsuarioId()));
-
-  if (error) {
-    showSnackbar('No se pudo eliminar el ingreso programado', 'error');
-    return;
-  }
-
+  if (error) { showSnackbar('No se pudo eliminar el ingreso programado', 'error'); return; }
   showSnackbar('Ingreso programado eliminado', 'success');
   await loadIngresos();
 }
+
+function eliminarIngresoProgramado(ingresoProgramadoId) {
+  openConfirmModal('¿Eliminar este ingreso programado?', `_doEliminarIngresoProgramado('${ingresoProgramadoId}')`);
+}
+window._doEliminarIngresoProgramado = _doEliminarIngresoProgramado;
 
 // ---- HISTORIAL DE INGRESOS ----
 function openMenuIngresoHistorial(ingresoId) {
@@ -452,9 +459,7 @@ function openMenuIngresoHistorial(ingresoId) {
   ]);
 }
 
-async function eliminarIngreso(ingresoId) {
-  if (!window.confirm('¿Eliminar este ingreso del historial?')) return;
-
+async function _doEliminarIngreso(ingresoId) {
   const { error } = await db
     .from('ingresos')
     .delete()
@@ -472,11 +477,22 @@ async function eliminarIngreso(ingresoId) {
   await loadDashboard();
   await loadCuentas();
 }
+function eliminarIngreso(ingresoId) {
+  openConfirmModal('¿Eliminar este ingreso del historial?', `_doEliminarIngreso('${ingresoId}')`);
+}
+window._doEliminarIngreso = _doEliminarIngreso;
 
 // ---- REGISTRAR INGRESO ----
 async function openRegistrarIngreso() {
-  const { data: categorias } = await db.from('categorias').select('id, nombre, emoji, es_default').eq('usuario_id', (await getUsuarioId())).eq('tipo', 'ingreso').order('nombre', { ascending: true });
-  const { data: cuentas } = await db.from('cuentas').select('*').eq('usuario_id', (await getUsuarioId())).eq('activa', true);
+  const uid = await getUsuarioId();
+  const [
+    { data: categorias, error: errCatsIng },
+    { data: cuentas, error: errCuentasIng }
+  ] = await Promise.all([
+    db.from('categorias').select('id, nombre, emoji, es_default').eq('usuario_id', uid).eq('tipo', 'ingreso').order('nombre', { ascending: true }),
+    db.from('cuentas').select('*').eq('usuario_id', uid).eq('activa', true)
+  ]);
+  if (errCatsIng || errCuentasIng) { showSnackbar('No se pudieron cargar los datos', 'error'); return; }
 
   const categoriasIngreso = categorias || [];
   const categoriaInicial = categoriasIngreso.find(c => c.es_default === false) || categoriasIngreso[0] || { id: null, nombre: 'Otro', emoji: 'circle', special: 'otro', tipoSelector: 'ingreso' };
@@ -507,7 +523,7 @@ async function openRegistrarIngreso() {
     </div>
     <div class="form-group">
       <label class="form-label">Fecha</label>
-      <input class="form-input" id="ri-fecha" type="date" value="${new Date().toISOString().split('T')[0]}" />
+      <input class="form-input" id="ri-fecha" type="date" min="2000-01-01" max="${new Date().toISOString().split('T')[0]}" value="${new Date().toISOString().split('T')[0]}" />
     </div>
     <button class="btn btn-primary" onclick="guardarIngreso()">Guardar ingreso</button>
   `);
@@ -538,8 +554,10 @@ export function toggleCamposPrestamo() {
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Pago por cuota (opcional)</label>
-        <input class="form-input" id="ri-pago-prestamo" type="number" placeholder="Pago por cuota (opcional)" min="0" />
+        <label class="form-label">Pago por cuota</label>
+        <div class="input-money-wrap"><span class="currency-prefix">$</span>
+        <input class="form-input" id="ri-pago-prestamo" type="number" placeholder="¿Cuánto pagarás cada vez?" min="0" /></div>
+        <p class="form-hint" style="margin-top:4px">Necesario para proyectar tus pagos futuros</p>
       </div>
     `;
     return;
@@ -560,8 +578,11 @@ async function guardarIngreso() {
   const prestamista = document.getElementById('ri-prestamista')?.value?.trim() || '';
   const frecuenciaPrestamo = document.getElementById('ri-freq-prestamo')?.value || 'libre';
   const montoPagoPrestamo = parseFloat(document.getElementById('ri-pago-prestamo')?.value) || null;
-  if (!monto) { showSnackbar('Ingresa un monto', 'error'); return; }
+  if (!monto || monto <= 0 || !isFinite(monto)) { showSnackbar('Ingresa un monto válido', 'error'); return; }
   if (tipo === 'prestamo' && !prestamista) { showSnackbar('Escribe quién te prestó', 'error'); return; }
+  if (tipo === 'prestamo' && (!montoPagoPrestamo || montoPagoPrestamo <= 0 || !isFinite(montoPagoPrestamo))) {
+    showSnackbar('Ingresa el monto de cada cuota para proyectar tus pagos', 'error'); return;
+  }
 
   const ingresoPayload = {
     usuario_id,
@@ -646,7 +667,7 @@ async function guardarIngreso() {
         <div class="item-row" style="margin-bottom:0">
           <div class="item-row-emoji">${pago.tipo === 'fijo' ? '<i data-lucide="pin" style="width:18px;height:18px;stroke-width:1.75"></i>' : '<i data-lucide="trending-down" style="width:18px;height:18px;stroke-width:1.75"></i>'}</div>
           <div class="item-row-info">
-            <div class="item-row-name">${pago.nombre}</div>
+            <div class="item-row-name">${escapeHtml(pago.nombre || '')}</div>
             <div class="item-row-detail">${pago.tipo === 'fijo' ? 'Gasto fijo' : 'Deuda'}${pago.urgente ? ' · <i data-lucide="alert-triangle" style="width:18px;height:18px;stroke-width:1.75"></i> Urgente' : ''}</div>
           </div>
           <div class="item-row-amount">${pago.fecha_flexible && !pago.monto ? 'Variable' : formatMXN(pago.monto)}</div>

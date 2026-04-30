@@ -195,7 +195,9 @@ async function guardarAbonoMeta(metaId) {
     monto: abono,
     usuario_id: usuarioId,
     fecha: new Date().toISOString().split('T')[0],
-    cuenta_id: meta.cuenta_id
+    cuenta_id: meta.cuenta_id,
+    es_ahorro: true,
+    meta_id: metaId
   });
 
   if (errorGasto) {
@@ -214,9 +216,7 @@ async function guardarAbonoMeta(metaId) {
 }
 
 
-async function eliminarMeta(metaId) {
-  if (!window.confirm('¿Eliminar esta meta?')) return;
-
+async function _doEliminarMeta(metaId) {
   const { error } = await db
     .from('metas_ahorro')
     .update({ activa: false })
@@ -233,6 +233,10 @@ async function eliminarMeta(metaId) {
   await loadMetas();
   await loadDashboard();
 }
+function eliminarMeta(metaId) {
+  openConfirmModal('¿Eliminar esta meta?', `_doEliminarMeta('${metaId}')`);
+}
+window._doEliminarMeta = _doEliminarMeta;
 
 async function openAgregarMeta(metaId = null) {
   const usuarioId = await getUsuarioId();

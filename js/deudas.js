@@ -430,9 +430,7 @@ async function guardarEdicionDeuda(esTabla = false) {
   await loadDashboard();
 }
 
-async function eliminarDeuda(deudaId) {
-  if (!window.confirm('¿Eliminar esta deuda?')) return;
-
+async function _doEliminarDeuda(deudaId) {
   const { error } = await db
     .from('deudas')
     .update({ activa: false })
@@ -449,6 +447,10 @@ async function eliminarDeuda(deudaId) {
   await loadDeudas();
   await loadDashboard();
 }
+function eliminarDeuda(deudaId) {
+  openConfirmModal('¿Eliminar esta deuda?', `_doEliminarDeuda('${deudaId}')`);
+}
+window._doEliminarDeuda = _doEliminarDeuda;
 
 async function openPagarDeuda(deudaId, acreedor, montoActual, tipoDeuda, montoUltimoPago) {
   const { data: cuentas, error } = await db

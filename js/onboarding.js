@@ -178,7 +178,12 @@ function renderStep2nuevo() {
     const ing = onboardingData.tiposIngreso.find(t => t.nombre === nombre);
     const enc = encodeURIComponent(nombre);
     if (freq === 'quincenal') {
-      return `<p style="font-size:13px;color:var(--text-secondary);margin:10px 0 0;line-height:1.4">Los días 15 y último de cada mes.</p>`;
+      const val = ing?.dia_pago ?? 1;
+      return `
+        <select class="form-select" onchange="updateIngresoField('${enc}','dia_pago',parseInt(this.value,10))" style="${SELECT_STYLE}">
+          ${Array.from({length:15},(_,i)=>i+1).map(d=>`<option value="${d}" ${val===d?'selected':''}>${d}</option>`).join('')}
+        </select>
+        <p style="font-size:12px;color:var(--text-secondary);margin:4px 0 0">Día de la primera quincena (también cobras el día ${val + 15 > 28 ? 'último' : val + 15}).</p>`;
     }
     if (freq === 'semanal') {
       const DIAS = [[1,'Lunes'],[2,'Martes'],[3,'Miércoles'],[4,'Jueves'],[5,'Viernes'],[6,'Sábado'],[0,'Domingo']];
@@ -206,7 +211,7 @@ function renderStep2nuevo() {
     let det = FL[ing.frecuencia] || ing.frecuencia;
     if (ing.frecuencia === 'semanal' && Number.isInteger(ing.dia_semana)) det += ` · ${DIAS_NOMBRE[ing.dia_semana]}`;
     else if (ing.frecuencia === 'mensual' && ing.dia_pago) det += ` · Día ${ing.dia_pago}`;
-    else if (ing.frecuencia === 'quincenal') det += ' · Días 15 y último';
+    else if (ing.frecuencia === 'quincenal') det += ing.dia_pago ? ` · Días ${ing.dia_pago} y ${ing.dia_pago + 15 > 28 ? 'último' : ing.dia_pago + 15}` : ' · Quincenal';
     return `${formatMXN(ing.monto)} · ${det}`;
   }
 
@@ -225,7 +230,7 @@ function renderStep2nuevo() {
     let det = FL[ing.frecuencia] || ing.frecuencia;
     if (ing.frecuencia === 'semanal' && Number.isInteger(ing.dia_semana)) det += ` · ${DIAS_NOMBRE[ing.dia_semana]}`;
     else if (ing.frecuencia === 'mensual' && ing.dia_pago) det += ` · Día ${ing.dia_pago}`;
-    else if (ing.frecuencia === 'quincenal') det += ' · Días 15 y último';
+    else if (ing.frecuencia === 'quincenal') det += ing.dia_pago ? ` · Días ${ing.dia_pago} y ${ing.dia_pago + 15 > 28 ? 'último' : ing.dia_pago + 15}` : ' · Quincenal';
     return `<div style="display:flex;align-items:center;gap:5px;padding:4px 0 2px;font-size:12px;color:var(--text-secondary)">
       <i data-lucide="check-circle" style="width:13px;height:13px;color:var(--accent);flex-shrink:0"></i>
       <span>${formatMXN(ing.monto)} · ${det}</span>

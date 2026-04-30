@@ -34,7 +34,7 @@ import {
 } from './ingresos.js';
 import { loadPresupuestos } from './presupuestos.js';
 import { renderGraficaGastos } from './graficas.js';
-import { exportarDatosCSV } from './export.js';
+import { exportarDatosCSV, exportarReportePDF } from './export.js';
 
 // NOTA PARA EL DESARROLLADOR — ejecutar en Supabase SQL Editor antes de usar pago único:
 // ALTER TABLE deudas DROP CONSTRAINT IF EXISTS deudas_tipo_pago_check;
@@ -87,8 +87,9 @@ function updateThemeToggleUI() {
 
   if (label) {
     label.innerHTML = isLight
-      ? `<i class="bx bx-sun" style="font-size:16px;vertical-align:middle;margin-right:4px"></i> Modo claro`
-      : `<i class="bx bx-moon" style="font-size:16px;vertical-align:middle;margin-right:4px"></i> Modo oscuro`;
+      ? `<i data-lucide="sun" style="width:16px;height:16px;stroke-width:1.75;vertical-align:middle;margin-right:4px"></i> Modo claro`
+      : `<i data-lucide="moon" style="width:16px;height:16px;stroke-width:1.75;vertical-align:middle;margin-right:4px"></i> Modo oscuro`;
+    renderLucideIcons();
   }
 
   if (sw) {
@@ -377,7 +378,7 @@ export async function loadDashboard() {
   ] = await Promise.all([
     db.from('usuarios').select('nombre').eq('id', uid).single(),
     db.from('ingresos').select('monto').eq('usuario_id', uid),
-    db.from('gastos').select('monto').eq('usuario_id', uid),
+    db.from('gastos').select('monto').eq('usuario_id', uid).neq('es_ahorro', true),
     db.from('deudas').select('monto_actual').eq('usuario_id', uid).eq('activa', true),
     db.from('cuentas').select('id, nombre, tipo, saldo_inicial').eq('usuario_id', uid).eq('activa', true),
     db.from('ingresos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
@@ -412,10 +413,11 @@ export async function loadDashboard() {
   let semaforoHtml = '';
   if (ingresoMensualEst > 0) {
     const ratio = (gastosFijosMens + servDeudaMens) / ingresoMensualEst;
-    const libre  = Math.max(1 - ratio, 0);
-    const color  = ratio < 0.6 ? 'var(--green)' : ratio < 0.8 ? 'var(--yellow)' : 'var(--red)';
-    const icon   = ratio < 0.6 ? 'smile' : ratio < 0.8 ? 'alert-circle' : 'alert-triangle';
-    const msg    = ratio < 0.6
+    const comprometidosPor100 = Math.min(Math.round(ratio * 100), 100);
+    const libresPor100 = Math.max(100 - comprometidosPor100, 0);
+    const color = ratio < 0.6 ? 'var(--green)' : ratio < 0.8 ? 'var(--yellow)' : 'var(--red)';
+    const icon  = ratio < 0.6 ? 'smile' : ratio < 0.8 ? 'alert-circle' : 'alert-triangle';
+    const msg   = ratio < 0.6
       ? 'Tus finanzas tienen margen'
       : ratio < 0.8
       ? 'Gran parte de tu ingreso ya está comprometido'
@@ -426,7 +428,7 @@ export async function loadDashboard() {
           <i data-lucide="${icon}" style="width:20px;height:20px;stroke-width:1.75;color:${color};flex-shrink:0"></i>
           <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:600;color:${color}">${msg}</div>
-            <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${Math.round(libre * 100)}% de tu ingreso estimado disponible</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px">De cada $100 → <strong style="color:${color}">$${comprometidosPor100} comprometidos</strong> · $${libresPor100} disponibles</div>
           </div>
         </div>
       </div>
@@ -446,6 +448,7 @@ export async function loadDashboard() {
   const totalGastos = (gastos || []).reduce((s, g) => s + Number(g.monto), 0);
   const totalDeuda = (deudas || []).reduce((s, d) => s + Number(d.monto_actual), 0);
   const disponible = totalGeneralCuentas;
+  const realParaGastar = disponible - totalPendientePeriodo;
 
   const horaActual = new Date().getHours();
   const saludo = (horaActual >= 5 && horaActual < 12) ? 'Buenos días'
@@ -456,7 +459,7 @@ export async function loadDashboard() {
     <div class="page-header">
       <div>
         <p class="text-secondary" style="font-size:12px">${saludo}</p>
-        <h1 class="page-title">${usuario?.nombre?.split(' ')[0] || 'JM Finance'}</h1>
+        <h1 class="page-title">${escapeHtml(usuario?.nombre?.split(' ')[0] || 'JM Finance')}</h1>
       </div>
     </div>
 
@@ -466,6 +469,16 @@ export async function loadDashboard() {
         <span class="currency">$</span>${Math.abs(disponible).toLocaleString('es-MX')}
         ${disponible < 0 ? '<span style="font-size:14px;color:var(--red);margin-left:8px"><i data-lucide="alert-triangle" style="width:18px;height:18px;stroke-width:1.75"></i> Negativo</span>' : ''}
       </div>
+      ${proximaFechaCobro && totalPendientePeriodo > 0 ? `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 4px;padding:10px 14px;background:rgba(255,255,255,0.05);border-radius:var(--radius-sm)">
+          <div style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:5px">
+            <i data-lucide="calendar-clock" style="width:13px;height:13px;stroke-width:1.75"></i>
+            Real para gastar
+            <span style="opacity:0.65"> · hasta ${proximaFechaCobro.toLocaleDateString('es-MX', {day:'numeric', month:'short'})}</span>
+          </div>
+          <strong style="font-size:14px;color:${realParaGastar >= 0 ? 'var(--green)' : 'var(--red)'}">${formatMXN(realParaGastar)}</strong>
+        </div>
+      ` : ''}
       <div class="balance-row">
         <div class="balance-stat">
           <span class="balance-stat-label">Ingresos</span>
@@ -515,7 +528,7 @@ export async function loadDashboard() {
                   : '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>'
                 }
                 <div>
-                  <div class="item-row-name">${p.nombre}</div>
+                  <div class="item-row-name">${escapeHtml(p.nombre || '')}</div>
                   <div class="item-row-detail">${fechaTxt}</div>
                 </div>
               </div>
@@ -629,13 +642,13 @@ async function openRegistrarTraspaso() {
     <div class="form-group">
       <label class="form-label">De qué cuenta</label>
       <select class="form-select" id="tr-origen">
-        ${cuentas.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+        ${cuentas.map(c => `<option value="${c.id}">${escapeHtml(c.nombre)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
       <label class="form-label">A qué cuenta</label>
       <select class="form-select" id="tr-destino">
-        ${cuentas.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+        ${cuentas.map(c => `<option value="${c.id}">${escapeHtml(c.nombre)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
@@ -645,7 +658,7 @@ async function openRegistrarTraspaso() {
     </div>
     <div class="form-group">
       <label class="form-label">Fecha</label>
-      <input class="form-input" id="tr-fecha" type="date" value="${new Date().toISOString().split('T')[0]}" />
+      <input class="form-input" id="tr-fecha" type="date" min="2000-01-01" max="${new Date().toISOString().split('T')[0]}" value="${new Date().toISOString().split('T')[0]}" />
     </div>
     <div class="form-group">
       <label class="form-label">Nota opcional</label>
@@ -741,13 +754,13 @@ async function loadAjustes() {
     <div class="page-body">
       <div class="card" style="margin-bottom:12px">
         <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Cuenta</div>
-        <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:12px">${email}</div>
+        <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:12px">${escapeHtml(email)}</div>
         <button class="btn btn-danger" onclick="cerrarSesion()">Cerrar sesión</button>
       </div>
 
       <div class="theme-toggle" onclick="toggleTheme()" style="margin-bottom:12px">
         <div class="theme-toggle-label">
-          <span id="theme-label"><i class="bx bx-moon" style="font-size:16px;vertical-align:middle;margin-right:4px"></i> Modo oscuro</span>
+          <span id="theme-label"><i data-lucide="moon" style="width:16px;height:16px;stroke-width:1.75;vertical-align:middle;margin-right:4px"></i> Modo oscuro</span>
         </div>
         <div class="toggle-switch" id="theme-switch">
           <div class="toggle-knob"></div>
@@ -761,9 +774,13 @@ async function loadAjustes() {
 
       <div class="card" style="margin-bottom:12px">
         <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Exportar datos</div>
-        <button class="btn btn-secondary" onclick="exportarDatosCSV()" style="width:100%">
-          <i data-lucide="download" style="width:16px;height:16px;pointer-events:none"></i>
+        <button class="btn btn-secondary" onclick="exportarDatosCSV()" style="width:100%;margin-bottom:8px">
+          <i data-lucide="file-spreadsheet" style="width:16px;height:16px;pointer-events:none"></i>
           <span>Descargar Historial (CSV)</span>
+        </button>
+        <button class="btn btn-secondary" onclick="exportarReportePDF()" style="width:100%">
+          <i data-lucide="file-text" style="width:16px;height:16px;pointer-events:none"></i>
+          <span>Descargar Reporte (PDF)</span>
         </button>
       </div>
 
@@ -878,7 +895,7 @@ async function abrirSelectorCategoria(tipo) {
       return `
         <button class="category-item" style="width:100%" onclick="seleccionarCategoriaDesdeSheet(${idx})">
           <i data-lucide="${getCategoriaIcono(item, tipo === 'ingreso' ? 'wallet' : 'package')}" class="cat-icon"></i>
-          <span class="cat-name">${item.nombre}</span>
+          <span class="cat-name">${escapeHtml(item.nombre || '')}</span>
         </button>
       `;
     }).join('');
@@ -920,7 +937,9 @@ window.togglePagoPendienteExpand = togglePagoPendienteExpand;
 window.abrirPagoPendienteDeuda = abrirPagoPendienteDeuda;
 window.openMarcarPagoFijo = openMarcarPagoFijo;
 window.confirmarMarcarPagoFijo = confirmarMarcarPagoFijo;
+window.openConfirmModal = openConfirmModal;
 window.exportarDatosCSV = exportarDatosCSV;
+window.exportarReportePDF = exportarReportePDF;
 window.toggleTheme = toggleTheme;
 window.resetApp = resetApp;
 window.closeFabMenu = closeFabMenu;
@@ -953,7 +972,7 @@ export async function renderApp() {
   await loadMetas();
   await loadPresupuestos();
   await loadFijos();
-  loadGastos();
+  await loadGastos();
   await loadIngresos();
   await loadAjustes();
   if (typeof updateFab === 'function') updateFab('dashboard');
@@ -980,7 +999,7 @@ export function openModal(title, content) {
   overlay.innerHTML = `
     <div class="bottom-sheet">
       <div class="sheet-handle"></div>
-      <div class="sheet-title">${title}</div>
+      <div class="sheet-title">${escapeHtml(title)}</div>
       ${content}
     </div>
   `;
@@ -988,6 +1007,22 @@ export function openModal(title, content) {
   renderLucideIcons();
 
   requestAnimationFrame(() => overlay.classList.add('open'));
+}
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+export function openConfirmModal(mensaje, onConfirmJs, labelConfirm = 'Eliminar') {
+  openModal('Confirmar', `
+    <p style="font-size:14px;line-height:1.5;margin-bottom:20px;color:var(--text-secondary)">${mensaje}</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-danger" style="flex:1" onclick="closeModal();${onConfirmJs}">${labelConfirm}</button>
+    </div>
+  `);
 }
 
 export function closeModal() {
