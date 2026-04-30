@@ -38,6 +38,59 @@ function calcularProyeccionLiquidacion(montoActual, montoPago, tasaAnual, tipoPa
   return { fecha: fechaLiq, nPeriodos, meses };
 }
 
+function renderPlanPago(deudas) {
+  const atacables = deudas.filter(d =>
+    d.monto_pago > 0 && d.monto_actual > 0 &&
+    d.tipo_deuda !== 'flexible' && d.tipo_deuda !== 'tabla'
+  );
+  if (atacables.length < 2) return '';
+
+  const conTasa = atacables.some(d => (d.tasa_interes_anual || 0) > 0);
+  const ordenBola = [...atacables].sort((a, b) => a.monto_actual - b.monto_actual);
+  const ordenAval  = [...atacables].sort((a, b) => (b.tasa_interes_anual || 0) - (a.tasa_interes_anual || 0));
+
+  const filas = (lista) => lista.map((d, i) => {
+    const proy = calcularProyeccionLiquidacion(d.monto_actual, d.monto_pago, d.tasa_interes_anual, d.tipo_pago);
+    const labelMeses = proy?.meses ? (proy.meses <= 1 ? 'menos de 1 mes' : `${proy.meses} meses`) : '';
+    const primero = i === 0;
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:var(--radius-xs);${primero ? 'background:var(--accent-soft);border:1px solid rgba(59,130,246,0.2)' : 'opacity:0.6'}">
+        <span style="font-size:13px;font-weight:700;color:${primero ? 'var(--accent)' : 'var(--text-muted)'};min-width:18px;text-align:center">${i + 1}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:${primero ? '700' : '500'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(d.acreedor)}</div>
+          ${labelMeses ? `<div style="font-size:11px;color:var(--text-secondary)">${primero ? 'Siguiente objetivo · ' : ''}libre en ${labelMeses}</div>` : ''}
+        </div>
+        <span style="font-size:12px;color:var(--text-secondary);flex-shrink:0">${formatMXN(d.monto_actual)}</span>
+      </div>`;
+  }).join('');
+
+  const activo = 'background:var(--accent);color:#fff;border:1px solid var(--accent);padding:5px 10px;border-radius:var(--radius-xs);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)';
+  const ghost  = 'background:transparent;color:var(--accent);border:1px solid var(--accent);padding:5px 10px;border-radius:var(--radius-xs);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)';
+
+  return `
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <i data-lucide="route" style="width:16px;height:16px;stroke-width:1.75;color:var(--accent)"></i>
+          <span style="font-size:13px;font-weight:600">Plan de pago</span>
+        </div>
+        ${conTasa ? `
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button id="btn-plan-bola" onclick="togglePlanMetodo('bola')" style="${activo}">Bola de nieve</button>
+          <button id="btn-plan-aval" onclick="togglePlanMetodo('avalancha')" style="${ghost}">Avalancha</button>
+        </div>` : ''}
+      </div>
+      <div id="plan-display-bola" style="display:flex;flex-direction:column;gap:4px">
+        ${filas(ordenBola)}
+        <p style="font-size:11px;color:var(--text-muted);margin:8px 0 0">Primero la deuda más pequeña — cada victoria te da impulso.</p>
+      </div>
+      <div id="plan-display-aval" style="display:none;flex-direction:column;gap:4px">
+        ${filas(ordenAval)}
+        <p style="font-size:11px;color:var(--text-muted);margin:8px 0 0">Primero la de mayor interés — pagas menos en total.</p>
+      </div>
+    </div>`;
+}
+
 export async function loadDeudas() {
   const uid = (await getUsuarioId());
   const { data: deudas } = await db.from('deudas').select('*').eq('usuario_id', uid).eq('activa', true).order('created_at');
@@ -137,12 +190,15 @@ export async function loadDeudas() {
     }
   }
 
+  const planPagoHTML = deudas && deudas.length >= 2 ? renderPlanPago(deudas) : '';
+
   const pageDeudas = document.getElementById('page-deudas');
   pageDeudas.innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Mis deudas</h1>
     </div>
     <div class="page-body">
+      ${planPagoHTML}
       ${deudaCardsHTML}
     </div>
   `;
@@ -848,6 +904,19 @@ async function guardarTablaPagesProgramados(deudaId) {
   await loadDeudas();
   await loadDashboard();
 }
+
+window.togglePlanMetodo = function(metodo) {
+  const esBola = metodo === 'bola';
+  const divBola = document.getElementById('plan-display-bola');
+  const divAval  = document.getElementById('plan-display-aval');
+  const btnBola  = document.getElementById('btn-plan-bola');
+  const btnAval  = document.getElementById('btn-plan-aval');
+  if (!divBola) return;
+  divBola.style.display = esBola ? 'flex' : 'none';
+  divAval.style.display  = esBola ? 'none' : 'flex';
+  if (btnBola) { btnBola.style.background = esBola ? 'var(--accent)' : 'transparent'; btnBola.style.color = esBola ? '#fff' : 'var(--accent)'; }
+  if (btnAval)  { btnAval.style.background  = esBola ? 'transparent' : 'var(--accent)'; btnAval.style.color  = esBola ? 'var(--accent)' : '#fff'; }
+};
 
 window.openMenuDeuda = openMenuDeuda;
 window.openPagarDeuda = openPagarDeuda;
