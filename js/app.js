@@ -391,6 +391,48 @@ export async function loadDashboard() {
   const proximaFechaCobro = pagosPendientes.proxima_fecha_cobro;
   const totalPendientePeriodo = pagosPendientes.total_periodo || 0;
 
+  const [
+    { data: ingProgramados },
+    { data: gastosFijosData },
+    { data: deudasConPago }
+  ] = await Promise.all([
+    db.from('ingresos_programados').select('monto_estimado, frecuencia').eq('usuario_id', uid).eq('activo', true),
+    db.from('gastos_fijos').select('monto, frecuencia, monto_estimado').eq('usuario_id', uid),
+    db.from('deudas').select('monto_pago, tipo_pago').eq('usuario_id', uid).eq('activa', true).not('monto_pago', 'is', null)
+  ]);
+
+  const _normMens = (monto, freq) => {
+    const f = { semanal: 4.33, quincenal: 2, mensual: 1, bimestral: 0.5, trimestral: 0.333, semestral: 0.167, anual: 0.0833 };
+    return (Number(monto) || 0) * (f[freq] || 1);
+  };
+  const ingresoMensualEst = (ingProgramados || []).reduce((s, i) => s + _normMens(i.monto_estimado, i.frecuencia), 0);
+  const gastosFijosMens   = (gastosFijosData || []).reduce((s, g) => !g.monto_estimado && g.monto ? s + _normMens(g.monto, g.frecuencia) : s, 0);
+  const servDeudaMens     = (deudasConPago || []).reduce((s, d) => s + _normMens(d.monto_pago, d.tipo_pago || 'mensual'), 0);
+
+  let semaforoHtml = '';
+  if (ingresoMensualEst > 0) {
+    const ratio = (gastosFijosMens + servDeudaMens) / ingresoMensualEst;
+    const libre  = Math.max(1 - ratio, 0);
+    const color  = ratio < 0.6 ? 'var(--green)' : ratio < 0.8 ? 'var(--yellow)' : 'var(--red)';
+    const icon   = ratio < 0.6 ? 'smile' : ratio < 0.8 ? 'alert-circle' : 'alert-triangle';
+    const msg    = ratio < 0.6
+      ? 'Tus finanzas tienen margen'
+      : ratio < 0.8
+      ? 'Gran parte de tu ingreso ya está comprometido'
+      : 'Casi todo tu ingreso está comprometido';
+    semaforoHtml = `
+      <div style="padding:0 16px;margin-bottom:16px">
+        <div class="card" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-left:3px solid ${color}">
+          <i data-lucide="${icon}" style="width:20px;height:20px;stroke-width:1.75;color:${color};flex-shrink:0"></i>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;color:${color}">${msg}</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${Math.round(libre * 100)}% de tu ingreso estimado disponible</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   const { totalGeneralCuentas } = calcularCuentasConSaldo(
     cuentas || [],
     ingresosPorCuenta || [],
@@ -439,6 +481,8 @@ export async function loadDashboard() {
         </div>
       </div>
     </div>
+
+    ${semaforoHtml}
 
     <div style="padding: 0 16px; margin-bottom: 16px">
       <p class="section-title">Gastos del mes por categoría</p>

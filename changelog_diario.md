@@ -1,5 +1,227 @@
 # Changelog Diario — JM Finance
 **Fecha:** 2026-04-28
+**Archivos modificados:** `js/metas.js`, `js/onboarding.js`
+**Sesión:** Cirugía Módulo Metas — XSS, Colisión de Variables, Matemáticas y Payload DB
+
+---
+
+## PASO 1 — Seguridad XSS (C1, C2, C3)
+
+### Fix 1 — `escapeHtml` añadida a `metas.js`
+El módulo no tenía la función. Definida al inicio del archivo antes de cualquier uso.
+
+### Fix 2 — `escapeHtml` aplicado en todos los puntos de interpolación de `metas.js`
+
+| Línea | Variable | Contexto |
+|---|---|---|
+| 67 | `m.nombre` | Card header en `loadMetas` |
+| 68 | `cuentasPorId[m.cuenta_id]` | Subtítulo de cuenta en card |
+| 118 | `meta.nombre` | `<option>` en select de abonos |
+| 264 | `c.nombre` | `<option>` en select de cuentas del modal |
+| 301 | `draft.nombre` | Atributo `value` del input de edición |
+
+### Fix 3 — `escapeHtml` aplicado en `onboarding.js`
+
+| Línea | Variable | Contexto |
+|---|---|---|
+| 1162 | `m.nombre` | Lista de metas en Step 6 |
+| 1166 | `m.cuenta_nombre` | Detalle de cuenta en Step 6 |
+| 1467 | `m.nombre` | Resumen final Step 7 |
+
+---
+
+## PASO 2 — Colisión de Variables Globales (C4, C5)
+
+### Fix 4 — `window.toggleMetaIconPanel` renombrado en `onboarding.js`
+- `window.toggleMetaIconPanel` → `window.toggleOnboardingMetaIconPanel`
+- `onclick="toggleMetaIconPanel()"` en template → `onclick="toggleOnboardingMetaIconPanel()"`
+
+### Fix 5 — `window.selectIconoMeta` renombrado en `onboarding.js`
+- `window.selectIconoMeta` → `window.selectOnboardingMetaIcono`
+- `onclick="selectIconoMeta(...)"` en template → `onclick="selectOnboardingMetaIcono(...)"`
+
+### Fix 6 — `window._metaIcono` aislado como `window._onbMetaIcono` en `onboarding.js`
+Todos los accesos a `window._metaIcono` en `onboarding.js` reemplazados con `replace_all` a `window._onbMetaIcono`. Las referencias en `metas.js` permanecen intactas (son la versión de la app principal).
+
+---
+
+## PASO 3 — Corrección Matemática (A2, A4)
+
+### Fix 7 — División por cero en barra de progreso (`metas.js`)
+```javascript
+// ANTES — NaN% si monto_objetivo = 0
+const pct = Math.min(Math.round((m.monto_actual / m.monto_objetivo) * 100), 100);
+// DESPUES
+const pct = m.monto_objetivo > 0 ? Math.min(Math.round(...), 100) : 0;
+```
+
+### Fix 8 — Fórmula de cuota sugerida corregida (`metas.js`)
+`calcularAhorroMetaDash` ahora calcula sobre el saldo restante:
+```javascript
+const montoActual = Number(window._metaDraft?.monto_actual || 0);
+const restante    = Math.max(monto - montoActual, 0);
+const cuota       = restante / periodos;
+```
+Si `restante <= 0` muestra "Ya alcanzaste el objetivo." en lugar de una cuota de cero.
+
+### Fix 9 — `monto_actual` incluido en el draft al editar (`metas.js`)
+El SELECT de edición ahora incluye `monto_actual, fecha_limite, frecuencia_ahorro`. El draft los recibe para que la calculadora pueda operar con el avance real.
+
+### Fix 10 — Validación de monto en `addMeta` (`onboarding.js`)
+```javascript
+// ANTES
+if (!nombre || !monto_objetivo)
+// DESPUES
+if (!nombre || !monto_objetivo || monto_objetivo <= 0 || !isFinite(monto_objetivo))
+```
+
+---
+
+## PASO 4 — Datos Fantasma y Payload DB (A1, A3, C7)
+
+### Fix 11 — BoxIcon `bx bx-smile` eliminado del picker (`metas.js`)
+```javascript
+// ANTES — icono roto cuando icono === 'target'
+const iconoBtn = (icono === 'target' || !icono)
+  ? `<i class="bx bx-smile" ...></i>`
+  : `<i data-lucide="${icono}" ...></i>`;
+// DESPUES — Lucide siempre
+const iconoBtn = `<i data-lucide="${icono || 'target'}" style="width:20px;height:20px;stroke-width:1.75"></i>`;
+```
+
+### Fix 12 — `fecha_limite` y `frecuencia_ahorro` incluidos en UPDATE e INSERT (`metas.js`)
+Ambos campos ahora se leen del DOM y se envían a Supabase en `guardarMeta()`.
+
+### Fix 13 — `fecha_limite` y `frecuencia_ahorro` incluidos en `finishOnboarding` (`onboarding.js`)
+```javascript
+fecha_limite: m.fecha_limite || null,
+frecuencia_ahorro: m.frecuencia_ahorro || null,
+```
+
+### Fix 14 — INSERT de metas con captura de error en `finishOnboarding` (`onboarding.js`)
+```javascript
+// ANTES — fallo silencioso
+await db.from('metas_ahorro').insert(metas);
+// DESPUES — error detenido con throw
+const { error: errMetas } = await db.from('metas_ahorro').insert(metas);
+if (errMetas) throw errMetas;
+```
+
+---
+
+**Sin cambios de estilos. Sin refactoring de estado. Historial anterior intacto.**
+
+---
+
+# Changelog Diario — JM Finance
+**Fecha:** 2026-04-28
+**Archivos modificados:** `js/deudas.js`, `js/onboarding.js`
+**Base de datos:** Supabase — migración `add_tasa_interes_activa_deudas`
+**Sesión:** Cirugía Módulo Deudas — Seguridad, BD y Estabilidad (Prioridades 1-5)
+
+---
+
+## PASO 1 — Base de Datos: Migración aplicada
+
+**Estado: COMPLETADO en Supabase (proyecto rzanhkfmwvbngbpjefec)**
+
+```sql
+ALTER TABLE deudas ADD COLUMN IF NOT EXISTS activa BOOLEAN DEFAULT true;
+ALTER TABLE deudas ADD COLUMN IF NOT EXISTS tasa_interes_anual NUMERIC DEFAULT 0;
+```
+
+---
+
+## PASO 2 — Seguridad XSS y Delegación de eventos
+
+### Fix 1 — Función `escapeHtml` añadida a `deudas.js`
+El módulo no tenía la función. Ahora está disponible para todos los puntos de interpolación.
+
+### Fix 2 — Botones "Registrar pago" migrados de `onclick` a `data-*`
+- **Antes:** `onclick="openPagarDeuda('${d.id}', '${d.acreedor}', ...)"` — acreedor inyectado en JS inline
+- **Después:** `data-action="pagar-deuda"` + `data-acreedor="${escapeHtml(d.acreedor)}"` + delegación vía `pageDeudas.onclick`
+
+### Fix 3 — `escapeHtml` aplicado en todos los puntos de interpolación
+
+| Archivo | Variable | Ubicación |
+|---|---|---|
+| `deudas.js` | `d.acreedor` | Card header (`deuda-acreedor`) |
+| `deudas.js` | `d.tipo_pago / d.tipo_deuda` | Badge clase y texto |
+| `deudas.js` | `deuda.acreedor` | Value del input en edición |
+| `deudas.js` | `c.nombre` | `<option>` en select de cuentas |
+| `deudas.js` | `acreedor` | Título de modal "Pagar:" |
+| `deudas.js` | `acreedor` | Título de modal "Pagos programados:" |
+| `onboarding.js` | `d.acreedor` | Lista de deudas en Step 5 |
+| `onboarding.js` | `d.acreedor` | Resumen final (Step 7) |
+
+### Fix 4 — `abrirCargarPagosDesdeEdicion` sin acreedor en `onclick`
+La función ya no recibe `acreedor` desde el HTML. Lo lee de `#ed-acreedor` antes de cerrar el modal.
+
+---
+
+## PASO 3 — Estabilidad y Matemáticas
+
+### Fix 5 — Payload de deudas en onboarding con campos explícitos
+```javascript
+activa: true,
+tasa_interes_anual: 0,
+```
+Campos añadidos al objeto de inserción en `finishOnboarding`.
+
+### Fix 6 — `guardarPagoDeuda` con control de errores en cada escritura
+Las tres operaciones DB verifican el error devuelto. Si alguna falla, snackbar de error + return sin tocar la UI.
+
+### Fix 7 — División por cero en barra de progreso
+```javascript
+// ANTES — produce NaN si monto_inicial = 0
+const pct = Math.round(((d.monto_inicial - d.monto_actual) / d.monto_inicial) * 100);
+// DESPUES
+const pct = d.monto_inicial > 0 ? Math.round(...) : 0;
+```
+
+### Fix 8 — Bloqueo de montos negativos y NaN
+- `guardarNuevaDeuda`: `!monto || monto <= 0 || !isFinite(monto)`
+- `addDeuda` (onboarding): misma guarda
+- `agregarFilaPago`: valida `parseInt` y `parseFloat` antes del push; rechaza NaN y valores <= 0
+
+---
+
+## PASO 4 — UI: Reemplazo de BoxIcons por Lucide
+
+### Fix 9 — `chart-line` -> `line-chart` en `deudas.js`
+
+### Fix 10 — 7 iconos de `GASTOS_DIARIOS_CATALOGO` migrados
+
+| BoxIcon | Lucide |
+|---|---|
+| `bx bx-restaurant` | `utensils` |
+| `bx bx-car` | `car` |
+| `bx bx-home-alt` | `home` |
+| `bx bx-party` | `party-popper` |
+| `bx bx-heart` | `heart` |
+| `bx bx-book` | `book-open` |
+| `bx bx-grid-alt` | `grid-2x2` |
+
+Renderizado cambiado de `class="${grupo.icono}"` a `data-lucide="${grupo.icono}"`.
+
+### Fix 11 — Chevrones del acordeón migrados
+`bx-chevron-up/down` -> `chevron-up/chevron-down` (Lucide)
+
+### Fix 12 — Plus y Send migrados
+- `bx bx-plus` (2 lugares) -> `data-lucide="plus"`
+- `bx bx-send` (catch block) -> `data-lucide="send"` + `renderLucideIcons()`
+
+### Fix 13 — Fallback de icono en `guardarGdCustom`
+`'bx bx-grid-alt'` -> `'grid-2x2'`
+
+---
+
+**Sin cambios de estilos. Sin refactoring de estado. Historial anterior intacto.**
+
+---
+
+# Changelog Diario — JM Finance
+**Fecha:** 2026-04-28
 **Archivos modificados:** `js/onboarding.js`
 **Sesión:** Corrección de UI Rota y Selector Faltante — XSS Delegation + Tipo Selector
 

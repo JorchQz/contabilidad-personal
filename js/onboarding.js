@@ -654,7 +654,7 @@ function renderStep3nuevo() {
       </div>
     ` : `
       <button class="btn-add-item" style="margin-top:14px" onclick="showFijoCustomForm()">
-        <i class="bx bx-plus"></i> Agregar personalizado
+        <i data-lucide="plus" style="width:16px;height:16px;stroke-width:2;vertical-align:middle;margin-right:4px"></i> Agregar personalizado
       </button>
     `;
 
@@ -982,7 +982,7 @@ function renderStep5Body(showForm = false) {
         <div class="item-row">
           <div class="item-row-emoji"><i data-lucide="trending-down" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <div class="item-row-info">
-            <div class="item-row-name">${d.acreedor}</div>
+            <div class="item-row-name">${escapeHtml(d.acreedor)}</div>
             <div class="item-row-detail">${d.tipo_deuda === 'tabla' ? 'con tabla' : (d.tipo_pago || 'sin fecha fija')}${d.monto_pago ? ` · ${formatMXN(d.monto_pago)}/pago` : ''}</div>
           </div>
           <div class="item-row-amount">${formatMXN(d.monto_actual)}</div>
@@ -1066,7 +1066,7 @@ function addDeuda() {
   const monto = parseFloat(document.getElementById('d-monto')?.value);
   let tipo_pago = null;
   let monto_pago = null;
-  if (!acreedor || !monto) { showSnackbar('Completa acreedor y monto', 'error'); return; }
+  if (!acreedor || !monto || monto <= 0 || !isFinite(monto)) { showSnackbar('Completa acreedor y monto', 'error'); return; }
 
   let dia_pago = null;
   let dia_semana = null;
@@ -1125,13 +1125,13 @@ function nextStep5() {
 
 // ---- CATÁLOGO GASTOS DIARIOS ----
 const GASTOS_DIARIOS_CATALOGO = [
-  { categoria: 'Alimentación',    icono: 'bx bx-restaurant',  items: ['Súper / Despensa', 'Restaurantes', 'Antojitos / Café', 'Delivery'] },
-  { categoria: 'Transporte',      icono: 'bx bx-car',         items: ['Transporte público', 'Gasolina', 'Uber / Didi', 'Estacionamiento', 'Mecánico / Mantenimiento'] },
-  { categoria: 'Hogar',           icono: 'bx bx-home-alt',    items: ['Limpieza', 'Mascotas / Veterinario', 'Reparaciones'] },
-  { categoria: 'Entretenimiento', icono: 'bx bx-party',       items: ['Salidas', 'Cine / Eventos', 'Hobbies'] },
-  { categoria: 'Salud y Cuidado', icono: 'bx bx-heart',       items: ['Farmacia / Consultas', 'Peluquería', 'Ropa'] },
-  { categoria: 'Educación',       icono: 'bx bx-book',        items: ['Material escolar', 'Cursos'] },
-  { categoria: 'Otros',           icono: 'bx bx-grid-alt',    items: ['Regalos', 'Gastos hormiga'] },
+  { categoria: 'Alimentación',    icono: 'utensils',      items: ['Súper / Despensa', 'Restaurantes', 'Antojitos / Café', 'Delivery'] },
+  { categoria: 'Transporte',      icono: 'car',           items: ['Transporte público', 'Gasolina', 'Uber / Didi', 'Estacionamiento', 'Mecánico / Mantenimiento'] },
+  { categoria: 'Hogar',           icono: 'home',          items: ['Limpieza', 'Mascotas / Veterinario', 'Reparaciones'] },
+  { categoria: 'Entretenimiento', icono: 'party-popper',  items: ['Salidas', 'Cine / Eventos', 'Hobbies'] },
+  { categoria: 'Salud y Cuidado', icono: 'heart',         items: ['Farmacia / Consultas', 'Peluquería', 'Ropa'] },
+  { categoria: 'Educación',       icono: 'book-open',     items: ['Material escolar', 'Cursos'] },
+  { categoria: 'Otros',           icono: 'grid-2x2',      items: ['Regalos', 'Gastos hormiga'] },
 ];
 
 // ---- STEP 5: Metas ----
@@ -1159,11 +1159,11 @@ function renderStep6Body(showForm = false) {
             <i data-lucide="${m.icono || 'target'}" style="width:20px;height:20px;stroke-width:1.75;color:var(--accent)"></i>
           </div>
           <div class="item-row-info">
-            <div class="item-row-name">${m.nombre}</div>
+            <div class="item-row-name">${escapeHtml(m.nombre)}</div>
             <div class="item-row-detail">
               ${formatMXN(m.monto_objetivo)}
               ${m.frecuencia_ahorro && m.frecuencia_ahorro !== 'libre' ? ` · ${m.frecuencia_ahorro}` : ''}
-              ${m.cuenta_nombre ? ` · ${m.cuenta_nombre}` : ''}
+              ${m.cuenta_nombre ? ` · ${escapeHtml(m.cuenta_nombre)}` : ''}
               ${m.fecha_limite ? ` · hasta ${new Date(m.fecha_limite + 'T00:00:00').toLocaleDateString('es-MX')}` : ''}
             </div>
           </div>
@@ -1176,8 +1176,8 @@ function renderStep6Body(showForm = false) {
     <div class="mini-form">
       <div class="form-group" style="margin-bottom:10px">
         <div class="custom-form-row">
-          <button class="emoji-picker-btn" onclick="toggleMetaIconPanel()">
-            <i data-lucide="${window._metaIcono || 'target'}"></i>
+          <button class="emoji-picker-btn" onclick="toggleOnboardingMetaIconPanel()">
+            <i data-lucide="${window._onbMetaIcono || 'target'}"></i>
           </button>
           <input class="form-input" id="m-nombre" placeholder="Nombre de la meta" />
         </div>
@@ -1185,7 +1185,7 @@ function renderStep6Body(showForm = false) {
         <div class="icon-panel" style="margin-top:8px">
           <div class="icon-grid">
             ${TODOS_ICONOS.map(ic => `
-              <div class="icon-grid-item${ic === window._metaIcono ? ' selected' : ''}" onclick="selectIconoMeta('${ic}')">
+              <div class="icon-grid-item${ic === window._onbMetaIcono ? ' selected' : ''}" onclick="selectOnboardingMetaIcono('${ic}')">
                 <i data-lucide="${ic}"></i>
               </div>`).join('')}
           </div>
@@ -1270,9 +1270,9 @@ function addMeta() {
   const cuenta_nombre   = document.getElementById('m-cuenta-nombre')?.value || null;
   const fecha_limite    = document.getElementById('m-fecha-limite')?.value || null;
   const frecuencia_ahorro = document.getElementById('m-frecuencia')?.value || null;
-  if (!nombre || !monto_objetivo) { showSnackbar('Completa nombre y monto', 'error'); return; }
-  onboardingData.metas.push({ icono: window._metaIcono || 'target', nombre, monto_objetivo, cuenta_nombre, fecha_limite, frecuencia_ahorro });
-  window._metaIcono = 'target';
+  if (!nombre || !monto_objetivo || monto_objetivo <= 0 || !isFinite(monto_objetivo)) { showSnackbar('Completa nombre y monto', 'error'); return; }
+  onboardingData.metas.push({ icono: window._onbMetaIcono || 'target', nombre, monto_objetivo, cuenta_nombre, fecha_limite, frecuencia_ahorro });
+  window._onbMetaIcono = 'target';
   window._showMetaIconPanel = false;
   renderStep6Body(false);
 }
@@ -1329,10 +1329,10 @@ function renderGastosDiariosBody(customFormOpen = false) {
       <div style="background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:8px">
         <button type="button" onclick="toggleGdCategoria('${catKey}')"
           style="width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;background:none;border:none;cursor:pointer;font-family:var(--font-body);text-align:left">
-          <i class="${grupo.icono}" style="font-size:20px;color:${isOpen || count > 0 ? 'var(--accent)' : 'var(--text-muted)'};flex-shrink:0"></i>
+          <i data-lucide="${grupo.icono}" style="width:20px;height:20px;stroke-width:1.75;color:${isOpen || count > 0 ? 'var(--accent)' : 'var(--text-muted)'};flex-shrink:0"></i>
           <span style="font-weight:600;font-size:14px;flex:1">${grupo.categoria}</span>
           ${count > 0 ? `<span style="background:var(--accent);color:#fff;border-radius:9999px;min-width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;padding:0 5px">${count}</span>` : ''}
-          <i class="bx ${isOpen ? 'bx-chevron-up' : 'bx-chevron-down'}" style="font-size:20px;color:var(--text-muted)"></i>
+          <i data-lucide="${isOpen ? 'chevron-up' : 'chevron-down'}" style="width:20px;height:20px;stroke-width:2;color:var(--text-muted)"></i>
         </button>
         ${isOpen ? `<div style="padding-bottom:8px">${subcatsHTML}</div>` : ''}
       </div>`;
@@ -1357,7 +1357,7 @@ function renderGastosDiariosBody(customFormOpen = false) {
       </div>
     </div>` : `
     <button class="btn-add-item" onclick="renderGastosDiariosBody(true)" style="margin-top:4px">
-      <i class="bx bx-plus"></i> Agregar gasto personalizado
+      <i data-lucide="plus" style="width:16px;height:16px;stroke-width:2;vertical-align:middle;margin-right:4px"></i> Agregar gasto personalizado
     </button>`;
 
   document.getElementById('onboarding-body').innerHTML = `
@@ -1396,7 +1396,7 @@ window.guardarGdCustom = function() {
   const categoria = document.getElementById('gd-custom-cat')?.value;
   if (!nombre) { showSnackbar('Escribe el nombre del gasto', 'error'); return; }
   const grupo = GASTOS_DIARIOS_CATALOGO.find(g => g.categoria === categoria);
-  const icono = grupo ? grupo.icono : 'bx bx-grid-alt';
+  const icono = grupo ? grupo.icono : 'grid-2x2';
   const yaExiste = onboardingData.gastosDiarios.some(
     g => g.categoria === categoria && g.subcategoria === nombre
   );
@@ -1453,7 +1453,7 @@ function renderStep6resumen() {
       <strong style="display:block;margin-bottom:10px">Deudas</strong>
       ${onboardingData.deudas.length === 0 ? '<p class="form-hint">Ninguna</p>' : onboardingData.deudas.map(d => `
         <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light)">
-          <span>${d.acreedor}</span>
+          <span>${escapeHtml(d.acreedor)}</span>
           <span style="color:var(--text-secondary)">${formatMXN(d.monto_actual || 0)}</span>
         </div>
       `).join('')}
@@ -1464,7 +1464,7 @@ function renderStep6resumen() {
       <strong style="display:block;margin-bottom:10px">Metas</strong>
       ${onboardingData.metas.length === 0 ? '<p class="form-hint">Ninguna</p>' : onboardingData.metas.map(m => `
         <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light)">
-          <span>${m.nombre}</span>
+          <span>${escapeHtml(m.nombre)}</span>
           <span style="color:var(--text-secondary)">${formatMXN(m.monto_objetivo || 0)}</span>
         </div>
       `).join('')}
@@ -1521,6 +1521,21 @@ async function finishOnboarding() {
         es_default: false
       }));
       await db.from('categorias').insert(cats_ingreso);
+
+      const programados = onboardingData.tiposIngreso
+        .filter(t => t.monto && t.frecuencia)
+        .map(t => ({
+          descripcion: t.nombre,
+          monto_estimado: Number(t.monto),
+          frecuencia: t.frecuencia || 'mensual',
+          dia_pago: t.dia_pago ?? null,
+          dia_semana: t.dia_semana ?? null,
+          activo: true,
+          usuario_id: userId
+        }));
+      if (programados.length > 0) {
+        await db.from('ingresos_programados').insert(programados);
+      }
     }
 
     const cats_gasto_predef = GASTOS_VARIABLES_CATALOGO.flatMap(g => g.items.map(it => ({
@@ -1593,6 +1608,8 @@ async function finishOnboarding() {
         dia_pago: d.dia_pago ?? null,
         dia_semana: d.dia_semana ?? null,
         tipo_deuda: d.tipo_deuda || 'simple',
+        activa: true,
+        tasa_interes_anual: 0,
         usuario_id: userId
       }));
       await db.from('deudas').insert(deudas);
@@ -1605,10 +1622,13 @@ async function finishOnboarding() {
         monto_objetivo: m.monto_objetivo,
         monto_actual: 0,
         activa: true,
+        fecha_limite: m.fecha_limite || null,
+        frecuencia_ahorro: m.frecuencia_ahorro || null,
         cuenta_id: m.cuenta_nombre ? (cuentaNombreAId[m.cuenta_nombre] || null) : null,
         usuario_id: userId
       }));
-      await db.from('metas_ahorro').insert(metas);
+      const { error: errMetas } = await db.from('metas_ahorro').insert(metas);
+      if (errMetas) throw errMetas;
     }
 
     showSnackbar('¡Todo listo! Bienvenido', 'success');
@@ -1618,7 +1638,7 @@ async function finishOnboarding() {
     console.error(err);
     showSnackbar('Error al guardar. Intenta de nuevo.', 'error');
     const btn = document.getElementById('btn-finish');
-    if (btn) { btn.innerHTML = '<i class="bx bx-send" style="font-size:16px;vertical-align:middle;margin-right:6px"></i>¡Listo, empecemos!'; btn.disabled = false; }
+    if (btn) { btn.innerHTML = '<i data-lucide="send" style="width:16px;height:16px;stroke-width:1.75;vertical-align:middle;margin-right:6px"></i>¡Listo, empecemos!'; btn.disabled = false; renderLucideIcons(); }
   }
 }
 
@@ -2012,13 +2032,13 @@ window.removeDeuda     = removeDeuda;
 window.nextStep5       = nextStep5;
 
 
-window.toggleMetaIconPanel = function() {
+window.toggleOnboardingMetaIconPanel = function() {
   window._showMetaIconPanel = !window._showMetaIconPanel;
   renderStep6Body(true);
 };
 
-window.selectIconoMeta = function(icono) {
-  window._metaIcono = icono;
+window.selectOnboardingMetaIcono = function(icono) {
+  window._onbMetaIcono = icono;
   window._showMetaIconPanel = false;
   renderStep6Body(true);
 };

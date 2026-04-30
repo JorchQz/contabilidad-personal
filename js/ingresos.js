@@ -607,10 +607,29 @@ async function guardarIngreso() {
 
   const pagosPendientes = await getPagosPendientes();
 
-  const totalComprometido = pagosPendientes.reduce((acc, pago) => acc + Number(pago.monto || 0), 0);
-  const libre = monto - totalComprometido;
+  const _uid = await getUsuarioId();
+  const { data: _metas } = await db
+    .from('metas_ahorro')
+    .select('nombre, emoji, monto_objetivo, monto_actual, fecha_limite, frecuencia_ahorro')
+    .eq('usuario_id', _uid)
+    .eq('activa', true);
 
-  console.log('Abriendo modal de dinero comprometido', { monto, fecha, pagosPendientes, totalComprometido, libre });
+  const _hoy = new Date(); _hoy.setHours(0, 0, 0, 0);
+  const _divs = { diaria: 1, semanal: 7, quincenal: 15, mensual: 30 };
+  const metasConCuota = (_metas || [])
+    .filter(m => m.fecha_limite && m.frecuencia_ahorro && m.frecuencia_ahorro !== 'libre')
+    .map(m => {
+      const restante = Math.max(Number(m.monto_objetivo || 0) - Number(m.monto_actual || 0), 0);
+      if (restante <= 0) return null;
+      const dias = Math.max(Math.ceil((new Date(m.fecha_limite + 'T00:00:00') - _hoy) / 86400000), 0);
+      const periodos = Math.max(Math.ceil(dias / (_divs[m.frecuencia_ahorro] || 30)), 1);
+      return { nombre: m.nombre, emoji: m.emoji, cuota: restante / periodos };
+    })
+    .filter(Boolean);
+
+  const totalMetas = metasConCuota.reduce((s, m) => s + m.cuota, 0);
+  const totalComprometido = pagosPendientes.reduce((acc, pago) => acc + Number(pago.monto || 0), 0) + totalMetas;
+  const libre = monto - totalComprometido;
 
   openModal('Dinero comprometido', `
     <div class="card" style="margin-bottom:12px;background:var(--bg-elevated)">
@@ -634,6 +653,22 @@ async function guardarIngreso() {
         </div>
       `).join('')}
     </div>
+
+    ${metasConCuota.length > 0 ? `
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;padding:0 2px">Metas de ahorro</div>
+      ${metasConCuota.map(m => `
+        <div class="item-row" style="margin-bottom:0">
+          <div class="item-row-emoji">${renderEmojiOrIcon(m.emoji, 'target', 18)}</div>
+          <div class="item-row-info">
+            <div class="item-row-name">${String(m.nombre ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+            <div class="item-row-detail">Aporte sugerido</div>
+          </div>
+          <div class="item-row-amount">${formatMXN(m.cuota)}</div>
+        </div>
+      `).join('')}
+    </div>
+    ` : ''}
 
     <div class="card" style="margin-bottom:16px;background:var(--bg-elevated)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">

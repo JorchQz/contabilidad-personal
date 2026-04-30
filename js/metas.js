@@ -8,6 +8,15 @@ import {
 import { getSaldoCuentaEspecifica } from './balance.js';
 import { loadCuentas } from './cuentas.js';
 
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 let currentEditMetaId = null;
 
 const TODOS_ICONOS = [
@@ -48,15 +57,15 @@ export async function loadMetas() {
           <p>Aún no tienes metas de ahorro.<br>¡Crea una para empezar!</p>
         </div>
       ` : metas.map(m => {
-        const pct = Math.min(Math.round((m.monto_actual / m.monto_objetivo) * 100), 100);
+        const pct = m.monto_objetivo > 0 ? Math.min(Math.round((m.monto_actual / m.monto_objetivo) * 100), 100) : 0;
         return `
           <div class="card">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
               <div style="display:flex;align-items:center;gap:12px">
                 <span style="font-size:28px;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px">${renderEmojiOrIcon(m.emoji, 'target', 22)}</span>
                 <div>
-                  <div style="font-weight:600;font-size:14px">${m.nombre}</div>
-                  <div style="font-size:12px;color:var(--text-muted)">${m.cuenta_id ? (cuentasPorId[m.cuenta_id] || 'Cuenta eliminada') : 'Sin cuenta vinculada'}</div>
+                  <div style="font-weight:600;font-size:14px">${escapeHtml(m.nombre)}</div>
+                  <div style="font-size:12px;color:var(--text-muted)">${m.cuenta_id ? escapeHtml(cuentasPorId[m.cuenta_id] || 'Cuenta eliminada') : 'Sin cuenta vinculada'}</div>
                   <div style="font-size:12px;color:var(--text-secondary)">Meta: ${formatMXN(m.monto_objetivo)}</div>
                 </div>
               </div>
@@ -106,7 +115,7 @@ async function openAbonarMeta(metaId = null) {
     <div class="form-group">
       <label class="form-label">Meta</label>
       <select class="form-select" id="ma-meta-id" onchange="renderMetaAbonoHint()">
-        ${metas.map(meta => `<option value="${meta.id}" ${metaId && meta.id === metaId ? 'selected' : ''}>${meta.nombre}</option>`).join('')}
+        ${metas.map(meta => `<option value="${meta.id}" ${metaId && meta.id === metaId ? 'selected' : ''}>${escapeHtml(meta.nombre)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group" id="ma-meta-hint" style="font-size:12px;color:var(--text-muted)"></div>
@@ -237,7 +246,7 @@ async function openAgregarMeta(metaId = null) {
   if (metaId) {
     const { data: meta, error } = await db
       .from('metas_ahorro')
-      .select('id, nombre, emoji, monto_objetivo, cuenta_id')
+      .select('id, nombre, emoji, monto_objetivo, monto_actual, fecha_limite, frecuencia_ahorro, cuenta_id')
       .eq('id', metaId)
       .eq('usuario_id', usuarioId)
       .maybeSingle();
@@ -248,11 +257,11 @@ async function openAgregarMeta(metaId = null) {
       return;
     }
 
-    draft = { nombre: meta.nombre || '', monto: meta.monto_objetivo != null ? Number(meta.monto_objetivo) : '', cuenta_id: meta.cuenta_id || '' };
+    draft = { nombre: meta.nombre || '', monto: meta.monto_objetivo != null ? Number(meta.monto_objetivo) : '', monto_actual: Number(meta.monto_actual || 0), cuenta_id: meta.cuenta_id || '', fecha_limite: meta.fecha_limite || '', frecuencia_ahorro: meta.frecuencia_ahorro || 'mensual' };
     iconoInicial = (meta.emoji && /^[a-z][a-z0-9-]*$/.test(meta.emoji)) ? meta.emoji : 'target';
   }
 
-  const cuentasOptions = (cuentas || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+  const cuentasOptions = (cuentas || []).map(c => `<option value="${c.id}">${escapeHtml(c.nombre)}</option>`).join('');
 
   window._metaIcono = iconoInicial;
   window._metaIconPanelOpen = false;
@@ -268,9 +277,7 @@ function renderMetaModal() {
   const draft       = window._metaDraft || { nombre: '', monto: '', cuenta_id: '', fecha_limite: '', frecuencia_ahorro: 'mensual' };
   const titulo      = currentEditMetaId ? 'Editar meta' : 'Nueva meta de ahorro';
   const btnLabel    = currentEditMetaId ? 'Guardar cambios' : 'Guardar meta';
-  const iconoBtn    = (icono === 'target' || !icono)
-    ? `<i class="bx bx-smile" style="font-size:20px"></i>`
-    : `<i data-lucide="${icono}" style="width:20px;height:20px;stroke-width:1.75"></i>`;
+  const iconoBtn    = `<i data-lucide="${icono || 'target'}" style="width:20px;height:20px;stroke-width:1.75"></i>`;
 
   openModal(titulo, `
     <div class="form-group">
@@ -291,7 +298,7 @@ function renderMetaModal() {
     </div>
     <div class="form-group">
       <label class="form-label">Nombre de la meta</label>
-      <input class="form-input" id="nm-nombre" type="text" placeholder="Ej: Fondo de emergencia" value="${draft.nombre}" />
+      <input class="form-input" id="nm-nombre" type="text" placeholder="Ej: Fondo de emergencia" value="${escapeHtml(draft.nombre)}" />
     </div>
     <div class="form-group">
       <label class="form-label">Monto a ahorrar</label>
@@ -373,7 +380,10 @@ window.calcularAhorroMetaDash = function() {
   const periodos  = Math.ceil(dias / (divisores[frecuencia] || 30));
   if (periodos <= 0) { resultado.textContent = ''; return; }
 
-  const cuota    = monto / periodos;
+  const montoActual = Number(window._metaDraft?.monto_actual || 0);
+  const restante    = Math.max(monto - montoActual, 0);
+  if (restante <= 0) { resultado.textContent = 'Ya alcanzaste el objetivo.'; return; }
+  const cuota    = restante / periodos;
   const labelPer = periodos === 1 ? singular[frecuencia] : plural[frecuencia];
   resultado.textContent = `Deberás ahorrar ${formatMXN(cuota)} cada ${singular[frecuencia]} (${periodos} ${labelPer}).`;
 };
@@ -383,8 +393,10 @@ async function guardarMeta() {
   const nombre = document.getElementById('nm-nombre')?.value.trim();
   const monto_objetivo = parseFloat(document.getElementById('nm-monto')?.value);
   const cuenta_id = document.getElementById('meta-cuenta-id')?.value || null;
+  const fecha_limite = document.getElementById('nm-fecha-limite')?.value || null;
+  const frecuencia_ahorro = document.getElementById('nm-frecuencia')?.value || null;
 
-  if (!nombre || Number.isNaN(monto_objetivo) || monto_objetivo <= 0) {
+  if (!nombre || Number.isNaN(monto_objetivo) || monto_objetivo <= 0 || !isFinite(monto_objetivo)) {
     showSnackbar('Completa nombre y monto', 'error');
     return;
   }
@@ -397,22 +409,22 @@ async function guardarMeta() {
 
     const { error } = await db
       .from('metas_ahorro')
-      .update({ emoji, nombre, monto_objetivo, cuenta_id: cuenta_id || null })
+      .update({ emoji, nombre, monto_objetivo, cuenta_id: cuenta_id || null, fecha_limite, frecuencia_ahorro })
       .eq('id', metaId)
       .eq('usuario_id', usuarioId);
 
     if (error) { showSnackbar('No se pudo actualizar la meta', 'error'); return; }
     closeModal();
-    showSnackbar('Meta actualizada ✓', 'success');
+    showSnackbar('Meta actualizada', 'success');
   } else {
     const { error } = await db.from('metas_ahorro').insert({
       usuario_id: usuarioId,
-      emoji, nombre, monto_objetivo, cuenta_id, activa: true
+      emoji, nombre, monto_objetivo, cuenta_id, activa: true, fecha_limite, frecuencia_ahorro
     });
 
     if (error) { showSnackbar('No se pudo crear la meta', 'error'); return; }
     closeModal();
-    showSnackbar('Meta creada ✓', 'success');
+    showSnackbar('Meta creada', 'success');
   }
 
   await loadMetas();

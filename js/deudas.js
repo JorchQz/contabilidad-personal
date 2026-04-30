@@ -5,7 +5,38 @@ import {
   openModal, closeModal, openActionSheet, loadDashboard
 } from './app.js';
 
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 let currentEditDeudaId = null;
+
+function calcularProyeccionLiquidacion(montoActual, montoPago, tasaAnual, tipoPago) {
+  if (!montoPago || montoPago <= 0 || !montoActual || montoActual <= 0) return null;
+  const periodosPorAnio = { mensual: 12, quincenal: 24, semanal: 52, unico: 1 };
+  const diasPorPeriodo  = { mensual: 30, quincenal: 15, semanal: 7,  unico: 1 };
+  const freq = periodosPorAnio[tipoPago] || 12;
+  const dias = diasPorPeriodo[tipoPago]  || 30;
+  const tasa = Number(tasaAnual || 0);
+  let nPeriodos;
+  if (tasa <= 0) {
+    nPeriodos = Math.ceil(montoActual / montoPago);
+  } else {
+    const r = (tasa / 100) / freq;
+    if (montoPago <= r * montoActual) return { sinSalida: true };
+    nPeriodos = Math.ceil(-Math.log(1 - (r * montoActual) / montoPago) / Math.log(1 + r));
+  }
+  if (!isFinite(nPeriodos) || nPeriodos <= 0) return null;
+  if (nPeriodos > 600) return { lejano: true, anios: Math.round(nPeriodos / freq) };
+  const meses = Math.round(nPeriodos / (freq / 12));
+  const fechaLiq = new Date(Date.now() + nPeriodos * dias * 86400000);
+  return { fecha: fechaLiq, nPeriodos, meses };
+}
 
 export async function loadDeudas() {
   const uid = (await getUsuarioId());
@@ -14,7 +45,7 @@ export async function loadDeudas() {
   const getBadgeDeuda = (tipo) => {
     const badges = {
       simple: '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>',
-      variable: '<i data-lucide="chart-line" style="width:18px;height:18px;stroke-width:1.75"></i>',
+      variable: '<i data-lucide="line-chart" style="width:18px;height:18px;stroke-width:1.75"></i>',
       tabla: '<i data-lucide="table" style="width:18px;height:18px;stroke-width:1.75"></i>'
     };
     return badges[tipo] || '<i data-lucide="trending-down" style="width:18px;height:18px;stroke-width:1.75"></i>';
@@ -30,8 +61,22 @@ export async function loadDeudas() {
     `;
   } else {
     for (const d of deudas) {
-      const pct = Math.round(((d.monto_inicial - d.monto_actual) / d.monto_inicial) * 100);
+      const pct = d.monto_inicial > 0 ? Math.round(((d.monto_inicial - d.monto_actual) / d.monto_inicial) * 100) : 0;
       const badgeEmoji = getBadgeDeuda(d.tipo_deuda);
+
+      let proyeccionHtml = '';
+      if (d.tipo_deuda !== 'tabla' && d.tipo_deuda !== 'flexible' && d.monto_pago) {
+        const proy = calcularProyeccionLiquidacion(d.monto_actual, d.monto_pago, d.tasa_interes_anual, d.tipo_pago);
+        if (proy?.sinSalida) {
+          proyeccionHtml = `<div style="margin-top:6px;font-size:12px;color:var(--red);display:flex;align-items:center;gap:4px"><i data-lucide="alert-triangle" style="width:12px;height:12px;stroke-width:2.5"></i> El pago no cubre los intereses</div>`;
+        } else if (proy?.lejano) {
+          proyeccionHtml = `<div style="margin-top:6px;font-size:12px;color:var(--text-muted)">Proyección: ~${proy.anios} año${proy.anios !== 1 ? 's' : ''} con el pago actual</div>`;
+        } else if (proy?.fecha) {
+          const cerca = proy.meses <= 3;
+          const label = proy.meses <= 1 ? 'menos de un mes' : `${proy.meses} mese${proy.meses !== 1 ? 's' : ''}`;
+          proyeccionHtml = `<div style="margin-top:6px;font-size:12px;color:${cerca ? 'var(--green)' : 'var(--text-secondary)'};display:flex;align-items:center;gap:4px"><i data-lucide="calendar-check" style="width:12px;height:12px;stroke-width:1.75"></i> Libre en ${label} · ${proy.fecha.toLocaleDateString('es-MX', {month:'long', year:'numeric'})}</div>`;
+        }
+      }
 
       let botonPagoHTML = '';
       let sinTablaConfigurada = false;
@@ -53,7 +98,7 @@ export async function loadDeudas() {
                 <span style="font-weight:700;color:var(--accent)">${formatMXN(proximoPago.monto_esperado)}</span>
               </div>
               <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Vence: ${new Date(proximoPago.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-MX')}</div>
-              <button onclick="openPagarDeuda('${d.id}', '${d.acreedor}', ${d.monto_actual}, '${d.tipo_deuda}', ${d.monto_ultimo_pago || null})" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
+              <button data-action="pagar-deuda" data-deuda-id="${escapeHtml(d.id)}" data-acreedor="${escapeHtml(d.acreedor)}" data-monto-actual="${d.monto_actual}" data-tipo-deuda="${escapeHtml(d.tipo_deuda)}" data-monto-ultimo-pago="${d.monto_ultimo_pago || ''}" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
                 Registrar pago
               </button>
             </div>
@@ -61,7 +106,7 @@ export async function loadDeudas() {
         }
       } else {
         botonPagoHTML = `
-          <button onclick="openPagarDeuda('${d.id}', '${d.acreedor}', ${d.monto_actual}, '${d.tipo_deuda}', ${d.monto_ultimo_pago || null})" style="margin-top:12px;background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
+          <button data-action="pagar-deuda" data-deuda-id="${escapeHtml(d.id)}" data-acreedor="${escapeHtml(d.acreedor)}" data-monto-actual="${d.monto_actual}" data-tipo-deuda="${escapeHtml(d.tipo_deuda)}" data-monto-ultimo-pago="${d.monto_ultimo_pago || ''}" style="margin-top:12px;background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
             Registrar pago
           </button>
         `;
@@ -70,10 +115,10 @@ export async function loadDeudas() {
       deudaCardsHTML += `
         <div class="deuda-card">
           <div class="deuda-header">
-            <span class="deuda-acreedor">${badgeEmoji} ${d.acreedor}</span>
+            <span class="deuda-acreedor">${badgeEmoji} ${escapeHtml(d.acreedor)}</span>
             <div style="display:flex;align-items:center;gap:8px">
               ${sinTablaConfigurada ? `<span title="Sin tabla de pagos cargada" style="display:inline-flex;align-items:center;gap:3px;background:rgba(245,158,11,0.15);color:#d97706;border:1px solid rgba(245,158,11,0.35);border-radius:9999px;padding:2px 7px;font-size:11px;font-weight:600"><i data-lucide="alert-triangle" style="width:11px;height:11px;stroke-width:2.5"></i> Sin tabla</span>` : ''}
-              <span class="deuda-badge ${d.tipo_pago}">${d.tipo_pago || d.tipo_deuda}</span>
+              <span class="deuda-badge ${escapeHtml(d.tipo_pago || d.tipo_deuda || '')}">${escapeHtml(d.tipo_pago || d.tipo_deuda || '')}</span>
               <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuDeuda('${d.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
             </div>
           </div>
@@ -84,14 +129,16 @@ export async function loadDeudas() {
             <span>Pagado ${pct}%</span>
             <span>Deuda: ${formatMXN(d.monto_actual)}</span>
           </div>
-          ${d.monto_pago ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">Pago ${d.tipo_pago}: ${formatMXN(d.monto_pago)}</div>` : ''}
+          ${d.monto_pago ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">Pago ${escapeHtml(d.tipo_pago || '')}: ${formatMXN(d.monto_pago)}</div>` : ''}
+          ${proyeccionHtml}
           ${botonPagoHTML}
         </div>
       `;
     }
   }
 
-  document.getElementById('page-deudas').innerHTML = `
+  const pageDeudas = document.getElementById('page-deudas');
+  pageDeudas.innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Mis deudas</h1>
     </div>
@@ -99,6 +146,18 @@ export async function loadDeudas() {
       ${deudaCardsHTML}
     </div>
   `;
+
+  pageDeudas.onclick = (e) => {
+    const btn = e.target.closest('[data-action="pagar-deuda"]');
+    if (!btn) return;
+    openPagarDeuda(
+      btn.dataset.deudaId,
+      btn.dataset.acreedor,
+      parseFloat(btn.dataset.montoActual),
+      btn.dataset.tipoDeuda,
+      btn.dataset.montoUltimoPago ? parseFloat(btn.dataset.montoUltimoPago) : null
+    );
+  };
 
   renderLucideIcons();
 }
@@ -169,7 +228,7 @@ async function openEditarDeuda(deudaId) {
 
   const { data: deuda, error } = await db
     .from('deudas')
-    .select('id, acreedor, monto_actual, tipo_pago, dia_pago, dia_semana, monto_pago, tipo_deuda')
+    .select('id, acreedor, monto_actual, tipo_pago, dia_pago, dia_semana, monto_pago, tipo_deuda, tasa_interes_anual')
     .eq('id', deudaId)
     .eq('usuario_id', (await getUsuarioId()))
     .maybeSingle();
@@ -205,17 +264,21 @@ async function openEditarDeuda(deudaId) {
   openModal('Editar deuda', `
     <div class="form-group">
       <label class="form-label">Acreedor</label>
-      <input class="form-input" id="ed-acreedor" type="text" value="${deuda.acreedor || ''}" />
+      <input class="form-input" id="ed-acreedor" type="text" value="${escapeHtml(deuda.acreedor || '')}" />
     </div>
     <div class="form-group">
       <label class="form-label">Monto actual</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
       <input class="form-input" id="ed-monto" type="number" min="0" value="${Number(deuda.monto_actual || 0)}" /></div>
     </div>
+    <div class="form-group">
+      <label class="form-label">Tasa de interés anual % <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+      <input class="form-input" id="ed-tasa" type="number" min="0" max="999" value="${Number(deuda.tasa_interes_anual || 0)}" placeholder="Ej: 70 tarjeta · 30 caja popular · 0 sin interés" />
+    </div>
     ${formFrecuencia}
     ${esTabla ? `
     <p class="form-hint" style="margin-bottom:8px">Esta deuda tiene una tabla de pagos programados.</p>
-    <button class="btn btn-secondary" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px" onclick="abrirCargarPagosDesdeEdicion('${deuda.id}', '${deuda.acreedor.replace(/'/g, "\\'")}')">
+    <button class="btn btn-secondary" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px" onclick="abrirCargarPagosDesdeEdicion('${deuda.id}')">
       <i data-lucide="table-2" style="width:16px;height:16px;stroke-width:1.75;pointer-events:none"></i> Cargar / ver pagos programados
     </button>` : ''}
     <button class="btn btn-primary" onclick="guardarEdicionDeuda(${esTabla})">Guardar cambios</button>
@@ -249,7 +312,8 @@ async function guardarEdicionDeuda(esTabla = false) {
     return;
   }
 
-  const payload = { acreedor, monto_actual, activa: monto_actual > 0 };
+  const tasa_interes_anual_edit = parseFloat(document.getElementById('ed-tasa')?.value) || 0;
+  const payload = { acreedor, monto_actual, activa: monto_actual > 0, tasa_interes_anual: isFinite(tasa_interes_anual_edit) ? tasa_interes_anual_edit : 0 };
 
   if (!esTabla) {
     const tipo_pago = document.getElementById('ed-freq')?.value || 'libre';
@@ -352,7 +416,7 @@ async function openPagarDeuda(deudaId, acreedor, montoActual, tipoDeuda, montoUl
     `;
   }
 
-  openModal(`Pagar: ${acreedor}`, `
+  openModal(`Pagar: ${escapeHtml(acreedor)}`, `
     <div class="card" style="margin-bottom:16px;background:var(--red-soft);border-color:rgba(240,93,110,0.2)">
       <div style="font-size:12px;color:var(--text-secondary)">Deuda actual</div>
       <div style="font-family:var(--font-display);font-size:15px;font-weight:700;color:var(--red)">${formatMXN(montoActual)}</div>
@@ -367,7 +431,7 @@ async function openPagarDeuda(deudaId, acreedor, montoActual, tipoDeuda, montoUl
       <label class="form-label">Cuenta</label>
       <select class="form-select" id="pd-cuenta">
         <option value="">— Sin cuenta —</option>
-        ${(cuentas || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+        ${(cuentas || []).map(c => `<option value="${c.id}">${escapeHtml(c.nombre)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
@@ -428,13 +492,14 @@ async function guardarPagoDeuda(deudaId, montoActual, tipoDeuda) {
       return;
     }
 
-    await db.from('pagos_deuda').insert({
+    const { error: errInsert } = await db.from('pagos_deuda').insert({
       deuda_id: deudaId,
       usuario_id: usuarioId,
       cuenta_id,
       monto, nota,
       fecha: fechaHoy
     });
+    if (errInsert) { showSnackbar('Error al registrar el pago', 'error'); return; }
   }
 
   if (tipoDeuda === 'tabla') {
@@ -447,20 +512,22 @@ async function guardarPagoDeuda(deudaId, montoActual, tipoDeuda) {
       .maybeSingle();
 
     if (proximoPago) {
-      await db.from('pagos_programados').update({
+      const { error: errProg } = await db.from('pagos_programados').update({
         pagado: true,
         fecha_pago: fechaHoy,
         monto_pagado: monto
       }).eq('id', proximoPago.id);
+      if (errProg) { showSnackbar('Error al marcar cuota como pagada', 'error'); return; }
     }
   }
 
-  await db.from('deudas').update({
+  const { error: errDeuda } = await db.from('deudas').update({
     monto_actual: nuevoMonto,
     activa: nuevoMonto > 0,
     ultimo_pago: fechaHoy,
     monto_ultimo_pago: monto
   }).eq('id', deudaId);
+  if (errDeuda) { showSnackbar('Error al actualizar la deuda', 'error'); return; }
 
   closeModal();
   showSnackbar(nuevoMonto === 0 ? 'Deuda saldada' : 'Pago registrado ✓', 'success');
@@ -511,6 +578,10 @@ function openFormularioNuevaDeuda(tipo) {
       <label class="form-label">Monto total</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
       <input class="form-input" id="nd-monto" type="number" placeholder="0.00" min="0" /></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tasa de interés anual % <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+      <input class="form-input" id="nd-tasa" type="number" placeholder="Ej: 70 tarjeta · 30 caja popular · 0 sin interés" min="0" max="999" />
     </div>
   `;
 
@@ -610,7 +681,8 @@ async function guardarNuevaDeuda(tipo) {
   let dia_pago = null;
   let dia_semana = null;
 
-  if (!acreedor || !monto) { showSnackbar('Completa los campos requeridos', 'error'); return; }
+  const tasa_interes_anual = parseFloat(document.getElementById('nd-tasa')?.value) || 0;
+  if (!acreedor || !monto || monto <= 0 || !isFinite(monto)) { showSnackbar('Completa los campos requeridos', 'error'); return; }
 
   if (tipo === 'flexible') {
     tipo_pago = 'libre';
@@ -647,7 +719,8 @@ async function guardarNuevaDeuda(tipo) {
 
   const { data: deudaInsertada, error } = await db.from('deudas').insert({
     usuario_id: (await getUsuarioId()),
-    acreedor, monto_inicial: monto, monto_actual: monto, tipo_pago, monto_pago, dia_pago, dia_semana, tipo_deuda: tipo
+    acreedor, monto_inicial: monto, monto_actual: monto, tipo_pago, monto_pago, dia_pago, dia_semana, tipo_deuda: tipo,
+    tasa_interes_anual: isFinite(tasa_interes_anual) ? tasa_interes_anual : 0
   }).select();
 
   if (error) {
@@ -667,7 +740,8 @@ async function guardarNuevaDeuda(tipo) {
   }
 }
 
-function abrirCargarPagosDesdeEdicion(deudaId, acreedor) {
+function abrirCargarPagosDesdeEdicion(deudaId) {
+  const acreedor = document.getElementById('ed-acreedor')?.value.trim() || '';
   closeModal();
   setTimeout(() => openAgregarPagosProgramados(deudaId, acreedor), 200);
 }
@@ -686,7 +760,7 @@ function openAgregarPagosProgramados(deudaId, acreedor) {
     <button class="btn btn-primary" onclick="guardarTablaPagesProgramados('${deudaId}')">Guardar tabla</button>
   `;
 
-  openModal(`Pagos programados: ${acreedor}`, filasHTML);
+  openModal(`Pagos programados: ${escapeHtml(acreedor)}`, filasHTML);
   renderFilasPagos();
 }
 
@@ -702,10 +776,17 @@ function agregarFilaPago() {
     return;
   }
 
+  const numeroInt = parseInt(numero, 10);
+  const montoFloat = parseFloat(monto);
+  if (Number.isNaN(numeroInt) || numeroInt < 1 || Number.isNaN(montoFloat) || montoFloat <= 0) {
+    showSnackbar('Número y monto deben ser valores válidos', 'error');
+    return;
+  }
+
   filasPagesProgramados.push({
-    numero: parseInt(numero),
+    numero: numeroInt,
     fecha_vencimiento: fecha,
-    monto_esperado: parseFloat(monto)
+    monto_esperado: montoFloat
   });
 
   document.getElementById('pp-numero').value = '';
