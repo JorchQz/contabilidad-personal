@@ -6,22 +6,26 @@ export async function getSaldoDisponibleTotal(usuarioId) {
     { data: cuentas, error: errorCuentas },
     { data: ingresos, error: errorIngresos },
     { data: gastos, error: errorGastos },
-    { data: pagosDeuda, error: errorPagosDeuda }
+    { data: pagosDeuda, error: errorPagosDeuda },
+    { data: traspasosSalida, error: errorTraspasosSalida },
+    { data: traspasosEntrada, error: errorTraspasosEntrada }
   ] = await Promise.all([
     db.from('cuentas').select('saldo_inicial').eq('usuario_id', usuarioId).eq('activa', true),
     db.from('ingresos').select('monto').eq('usuario_id', usuarioId),
     db.from('gastos').select('monto').eq('usuario_id', usuarioId),
-    db.from('pagos_deuda').select('monto').eq('usuario_id', usuarioId)
+    db.from('pagos_deuda').select('monto').eq('usuario_id', usuarioId),
+    db.from('transferencias').select('monto').eq('usuario_id', usuarioId),
+    db.from('transferencias').select('monto').eq('usuario_id', usuarioId)
   ]);
 
   if (errorCuentas || errorIngresos || errorGastos || errorPagosDeuda) {
     return { error: true, saldoDisponible: null };
   }
 
-  const totalSaldoInicial = (cuentas || []).reduce((acc, cuenta) => acc + Number(cuenta.saldo_inicial || 0), 0);
-  const totalIngresos = (ingresos || []).reduce((acc, movimiento) => acc + Number(movimiento.monto || 0), 0);
-  const totalGastos = (gastos || []).reduce((acc, movimiento) => acc + Number(movimiento.monto || 0), 0);
-  const totalPagosDeuda = (pagosDeuda || []).reduce((acc, movimiento) => acc + Number(movimiento.monto || 0), 0);
+  const totalSaldoInicial  = (cuentas       || []).reduce((acc, c) => acc + Number(c.saldo_inicial || 0), 0);
+  const totalIngresos      = (ingresos      || []).reduce((acc, m) => acc + Number(m.monto || 0), 0);
+  const totalGastos        = (gastos        || []).reduce((acc, m) => acc + Number(m.monto || 0), 0);
+  const totalPagosDeuda    = (pagosDeuda    || []).reduce((acc, m) => acc + Number(m.monto || 0), 0);
 
   return {
     error: false,
@@ -342,8 +346,28 @@ export async function getPagosPendientes() {
       continue;
     }
 
+    // Deudas sin fecha fija (libre/flexible): siempre visibles como recordatorio
+    if (d.tipo_pago === 'libre' || !d.tipo_pago) {
+      pendientes.push({
+        item_id: `deuda-${d.id}`,
+        deuda_id: d.id,
+        tipo_deuda: d.tipo_deuda || 'flexible',
+        monto_actual: Number(d.monto_actual || 0),
+        monto_ultimo_pago: Number(d.monto_ultimo_pago || 0),
+        nombre: d.acreedor,
+        monto: Number(d.monto_pago || 0),
+        fecha_esperada: fechaLimite,
+        sin_fecha: true,
+        tipo: 'deuda',
+        urgente: false
+      });
+      continue;
+    }
+
     let fechaEsperada = null;
-    if (d.tipo_pago === 'semanal' && Number.isInteger(d.dia_semana)) {
+    if (d.tipo_pago === 'unico' && d.dia_pago) {
+      fechaEsperada = getNextMonthlyDate(d.dia_pago, hoy);
+    } else if (d.tipo_pago === 'semanal' && Number.isInteger(d.dia_semana)) {
       fechaEsperada = getNextWeeklyDate(d.dia_semana, hoy);
     } else if (d.tipo_pago === 'mensual' && d.dia_pago) {
       fechaEsperada = getNextMonthlyDate(d.dia_pago, hoy);
@@ -374,6 +398,9 @@ export async function getPagosPendientes() {
 
   pendientes.sort((a, b) => a.fecha_esperada - b.fecha_esperada);
   pendientes.proxima_fecha_cobro = proximaFechaCobro;
-  pendientes.total_periodo = pendientes.reduce((acc, p) => acc + Number(p.monto || 0), 0);
+  pendientes.total_periodo = pendientes.reduce((acc, p) => {
+    const m = Number(p.monto);
+    return acc + (isFinite(m) ? m : 0);
+  }, 0);
   return pendientes;
 }

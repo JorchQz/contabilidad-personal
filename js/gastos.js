@@ -527,13 +527,13 @@ async function openEditarGastoFijo(gastoFijoId) {
   const mv = !!gasto.fecha_flexible;
   const ap = !!gasto.monto_estimado;
   const tipoInicial = !mv && !ap ? 'exacto' : !mv && ap ? 'monto-variable' : mv && !ap ? 'fecha-flexible' : 'aproximado';
-  const catOptions = (categorias || []).map(c => `<option value="${c.id}" ${c.id === gasto.categoria_id ? 'selected' : ''}>${c.nombre}</option>`).join('');
+  const catOptions = (categorias || []).map(c => `<option value="${c.id}" ${c.id === gasto.categoria_id ? 'selected' : ''}>${escapeHtml(c.nombre)}</option>`).join('');
   const sinCatSel = !gasto.categoria_id ? 'selected' : '';
 
   openModal('Editar gasto fijo', `
     <div class="form-group">
       <label class="form-label">Descripción</label>
-      <input class="form-input" id="egf-desc" type="text" value="${gasto.descripcion || ''}" />
+      <input class="form-input" id="egf-desc" type="text" value="${escapeHtml(gasto.descripcion || '')}" />
     </div>
     <div class="form-group">
       <label class="form-label">Tipo de monto</label>
@@ -591,7 +591,7 @@ async function guardarEdicionGastoFijo(gastoFijoId) {
   if (!descripcion) { showSnackbar('Escribe una descripción', 'error'); return; }
 
   const monto = parseFloat(document.getElementById('egf-monto')?.value);
-  if (Number.isNaN(monto) || monto <= 0) {
+  if (Number.isNaN(monto) || monto <= 0 || !isFinite(monto)) {
     showSnackbar('Ingresa un monto válido', 'error');
     return;
   }
@@ -679,7 +679,7 @@ async function guardarNuevoGastoFijo() {
   if (!descripcion) { showSnackbar('Escribe una descripción', 'error'); return; }
 
   const monto = parseFloat(document.getElementById('fgf-monto')?.value);
-  if (Number.isNaN(monto) || monto <= 0) {
+  if (Number.isNaN(monto) || monto <= 0 || !isFinite(monto)) {
     showSnackbar('Ingresa un monto válido', 'error');
     return;
   }
@@ -876,7 +876,7 @@ function renderGastoPickerSheet() {
     const icono = cat.emoji || iconoFallback || 'package';
     return `<button class="fijo-sugerido-chip" onclick="seleccionarCategoriaDesdeSheet(${idx})">
       <i data-lucide="${icono}"></i>
-      <span>${cat.nombre}</span>
+      <span>${escapeHtml(cat.nombre)}</span>
     </button>`;
   };
 
@@ -992,7 +992,7 @@ export async function toggleCamposGastoEspecial() {
         <div class="form-group">
           <label class="form-label">Meta</label>
           <select class="form-select" id="rg-meta-id">
-            ${lista.map(m => `<option value="${m.id}">${m.nombre} · ${formatMXN(m.monto_actual || 0)} / ${formatMXN(m.monto_objetivo || 0)}</option>`).join('')}
+            ${lista.map(m => `<option value="${m.id}">${escapeHtml(m.nombre)} · ${formatMXN(m.monto_actual || 0)} / ${formatMXN(m.monto_objetivo || 0)}</option>`).join('')}
           </select>
         </div>
       `;
@@ -1020,7 +1020,7 @@ export async function toggleCamposGastoEspecial() {
         <div class="form-group">
           <label class="form-label">Deuda</label>
           <select class="form-select" id="rg-deuda-id">
-            ${lista.map(d => `<option value="${d.id}" data-tipo="${d.tipo_deuda}" data-max="${d.monto_actual}">${d.acreedor} · ${formatMXN(d.monto_actual)}</option>`).join('')}
+            ${lista.map(d => `<option value="${d.id}" data-tipo="${d.tipo_deuda}" data-max="${d.monto_actual}">${escapeHtml(d.acreedor)} · ${formatMXN(d.monto_actual)}</option>`).join('')}
           </select>
         </div>
       `;
@@ -1090,7 +1090,7 @@ async function openRegistrarGasto(gastoId = null) {
     <div class="form-group">
       <label class="form-label">Cuenta</label>
       <select class="form-select" id="rg-cuenta">
-        ${(cuentas || []).map(c => `<option value="${c.id}" ${c.id === cuentaDefault ? 'selected' : ''}>${c.nombre}</option>`).join('')}
+        ${(cuentas || []).map(c => `<option value="${c.id}" ${c.id === cuentaDefault ? 'selected' : ''}>${escapeHtml(c.nombre)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
@@ -1111,7 +1111,7 @@ async function guardarGasto() {
   const fecha = document.getElementById('rg-fecha').value;
   const usuarioId = (await getUsuarioId());
   const especial = window._gastoEspecial || null;
-  if (!monto || monto <= 0) { showSnackbar('Ingresa un monto válido', 'error'); return; }
+  if (!monto || monto <= 0 || !isFinite(monto)) { showSnackbar('Ingresa un monto válido', 'error'); return; }
   if (!categoria_id) { showSnackbar('Selecciona una categoría', 'error'); return; }
   if (!especial && !descripcion) { showSnackbar('Escribe una descripción', 'error'); return; }
 

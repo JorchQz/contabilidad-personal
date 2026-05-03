@@ -380,7 +380,7 @@ export async function loadDashboard() {
     db.from('ingresos').select('monto').eq('usuario_id', uid),
     db.from('gastos').select('monto').eq('usuario_id', uid).neq('es_ahorro', true),
     db.from('deudas').select('monto_actual').eq('usuario_id', uid).eq('activa', true),
-    db.from('cuentas').select('id, nombre, tipo, saldo_inicial').eq('usuario_id', uid).eq('activa', true),
+    db.from('cuentas').select('id, nombre, tipo, saldo_inicial, es_disponible').eq('usuario_id', uid).eq('activa', true),
     db.from('ingresos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
     db.from('gastos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
     db.from('pagos_deuda').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
@@ -407,7 +407,7 @@ export async function loadDashboard() {
     return (Number(monto) || 0) * (f[freq] || 1);
   };
   const ingresoMensualEst = (ingProgramados || []).reduce((s, i) => s + _normMens(i.monto_estimado, i.frecuencia), 0);
-  const gastosFijosMens   = (gastosFijosData || []).reduce((s, g) => !g.monto_estimado && g.monto ? s + _normMens(g.monto, g.frecuencia) : s, 0);
+  const gastosFijosMens   = (gastosFijosData || []).reduce((s, g) => g.monto ? s + _normMens(g.monto, g.frecuencia) : s, 0);
   const servDeudaMens     = (deudasConPago || []).reduce((s, d) => s + _normMens(d.monto_pago, d.tipo_pago || 'mensual'), 0);
 
   let semaforoHtml = '';
@@ -435,7 +435,7 @@ export async function loadDashboard() {
     `;
   }
 
-  const { totalGeneralCuentas } = calcularCuentasConSaldo(
+  const { totalGeneralCuentas, totalDisponible } = calcularCuentasConSaldo(
     cuentas || [],
     ingresosPorCuenta || [],
     gastosPorCuenta || [],
@@ -447,7 +447,7 @@ export async function loadDashboard() {
   const totalIngresos = (ingresos || []).reduce((s, i) => s + Number(i.monto), 0);
   const totalGastos = (gastos || []).reduce((s, g) => s + Number(g.monto), 0);
   const totalDeuda = (deudas || []).reduce((s, d) => s + Number(d.monto_actual), 0);
-  const disponible = totalGeneralCuentas;
+  const disponible = totalDisponible;
   const realParaGastar = disponible - totalPendientePeriodo;
 
   const horaActual = new Date().getHours();
@@ -473,7 +473,7 @@ export async function loadDashboard() {
         <div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 4px;padding:10px 14px;background:rgba(255,255,255,0.05);border-radius:var(--radius-sm)">
           <div style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:5px">
             <i data-lucide="calendar-clock" style="width:13px;height:13px;stroke-width:1.75"></i>
-            Real para gastar
+            Libre en tu bolsillo
             <span style="opacity:0.65"> · hasta ${proximaFechaCobro.toLocaleDateString('es-MX', {day:'numeric', month:'short'})}</span>
           </div>
           <strong style="font-size:14px;color:${realParaGastar >= 0 ? 'var(--green)' : 'var(--red)'}">${formatMXN(realParaGastar)}</strong>
@@ -529,7 +529,7 @@ export async function loadDashboard() {
                 }
                 <div>
                   <div class="item-row-name">${escapeHtml(p.nombre || '')}</div>
-                  <div class="item-row-detail">${fechaTxt}</div>
+                  <div class="item-row-detail">${p.sin_fecha ? 'Sin fecha fija — pendiente' : fechaTxt}</div>
                 </div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
@@ -580,9 +580,9 @@ function openFabMenu() {
 
   const menu = document.createElement('div');
   menu.id = 'fab-menu';
-  menu.style.cssText = 'position:fixed;bottom:145px;right:calc(50% - 215px + 16px);z-index:40;display:flex;flex-direction:column;gap:10px;align-items:flex-end;opacity:0;transform:translateY(10px);transition:opacity 180ms ease,transform 180ms ease;';
+  menu.style.cssText = 'position:fixed;bottom:145px;right:16px;z-index:40;display:flex;flex-direction:column;gap:10px;align-items:flex-end;opacity:0;transform:translateY(10px);transition:opacity 180ms ease,transform 180ms ease;';
   menu.innerHTML = currentFabItems.map(item => `
-    <button onclick="closeFabMenu(); ${item.action}" style="display:flex;align-items:center;gap:10px;width:180px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text-primary);font-size:14px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font-body)">
+    <button onclick="closeFabMenu(); ${item.action}" style="display:flex;align-items:center;gap:10px;width:min(180px,calc(100vw - 80px));background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text);font-size:14px;font-weight:600;box-shadow:0 8px 22px rgba(0,0,0,0.12);cursor:pointer;font-family:var(--font)">
       <span style="font-size:20px;line-height:1"><i data-lucide="${item.icon}" style="width:18px;height:18px;stroke-width:1.75;pointer-events:none"></i></span>
       <span>${item.label}</span>
     </button>
@@ -676,7 +676,7 @@ async function guardarTraspaso() {
   const fecha = document.getElementById('tr-fecha')?.value;
   const descripcion = document.getElementById('tr-nota')?.value.trim() || '';
 
-  if (!cuenta_origen_id || !cuenta_destino_id || !monto || monto <= 0 || !fecha) {
+  if (!cuenta_origen_id || !cuenta_destino_id || !monto || monto <= 0 || !isFinite(monto) || !fecha) {
     showSnackbar('Completa origen, destino, monto y fecha', 'error');
     return;
   }
@@ -1017,10 +1017,10 @@ function escapeHtml(str) {
 
 export function openConfirmModal(mensaje, onConfirmJs, labelConfirm = 'Eliminar') {
   openModal('Confirmar', `
-    <p style="font-size:14px;line-height:1.5;margin-bottom:20px;color:var(--text-secondary)">${mensaje}</p>
+    <p style="font-size:14px;line-height:1.5;margin-bottom:20px;color:var(--text-secondary)">${escapeHtml(mensaje)}</p>
     <div style="display:flex;gap:8px">
       <button class="btn btn-secondary" style="flex:1" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-danger" style="flex:1" onclick="closeModal();${onConfirmJs}">${labelConfirm}</button>
+      <button class="btn btn-danger" style="flex:1" onclick="closeModal();${onConfirmJs}">${escapeHtml(labelConfirm)}</button>
     </div>
   `);
 }

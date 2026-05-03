@@ -18,8 +18,17 @@ let currentEditDeudaId = null;
 
 function calcularProyeccionLiquidacion(montoActual, montoPago, tasaAnual, tipoPago) {
   if (!montoPago || montoPago <= 0 || !montoActual || montoActual <= 0) return null;
-  const periodosPorAnio = { mensual: 12, quincenal: 24, semanal: 52, unico: 1 };
-  const diasPorPeriodo  = { mensual: 30, quincenal: 15, semanal: 7,  unico: 1 };
+
+  // Pago único: se liquida de una sola vez, no aplicar fórmula de amortización
+  if (tipoPago === 'unico') {
+    if (montoPago >= montoActual) {
+      return { fecha: new Date(Date.now() + 30 * 86400000), nPeriodos: 1, meses: 0 };
+    }
+    return null; // pago único configurado por debajo del saldo — no proyectar
+  }
+
+  const periodosPorAnio = { mensual: 12, quincenal: 24, semanal: 52 };
+  const diasPorPeriodo  = { mensual: 30, quincenal: 15, semanal: 7  };
   const freq = periodosPorAnio[tipoPago] || 12;
   const dias = diasPorPeriodo[tipoPago]  || 30;
   const tasa = Number(tasaAnual || 0);
@@ -40,8 +49,8 @@ function calcularProyeccionLiquidacion(montoActual, montoPago, tasaAnual, tipoPa
 
 function renderPlanPago(deudas) {
   const atacables = deudas.filter(d =>
-    d.monto_pago > 0 && d.monto_actual > 0 &&
-    d.tipo_deuda !== 'flexible' && d.tipo_deuda !== 'tabla'
+    d.monto_actual > 0 && d.tipo_deuda !== 'flexible' &&
+    (d.monto_pago > 0 || d.tipo_deuda === 'tabla')
   );
   if (atacables.length < 2) return '';
 
@@ -151,7 +160,7 @@ export async function loadDeudas() {
                 <span style="font-weight:700;color:var(--accent)">${formatMXN(proximoPago.monto_esperado)}</span>
               </div>
               <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Vence: ${new Date(proximoPago.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-MX')}</div>
-              <button data-action="pagar-deuda" data-deuda-id="${escapeHtml(d.id)}" data-acreedor="${escapeHtml(d.acreedor)}" data-monto-actual="${d.monto_actual}" data-tipo-deuda="${escapeHtml(d.tipo_deuda)}" data-monto-ultimo-pago="${d.monto_ultimo_pago || ''}" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
+              <button data-action="pagar-deuda" data-deuda-id="${escapeHtml(d.id)}" data-acreedor="${escapeHtml(d.acreedor)}" data-monto-actual="${d.monto_actual}" data-tipo-deuda="${escapeHtml(d.tipo_deuda)}" data-monto-ultimo-pago="${d.monto_ultimo_pago || ''}" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font);width:100%">
                 Registrar pago
               </button>
             </div>
@@ -159,7 +168,7 @@ export async function loadDeudas() {
         }
       } else {
         botonPagoHTML = `
-          <button data-action="pagar-deuda" data-deuda-id="${escapeHtml(d.id)}" data-acreedor="${escapeHtml(d.acreedor)}" data-monto-actual="${d.monto_actual}" data-tipo-deuda="${escapeHtml(d.tipo_deuda)}" data-monto-ultimo-pago="${d.monto_ultimo_pago || ''}" style="margin-top:12px;background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
+          <button data-action="pagar-deuda" data-deuda-id="${escapeHtml(d.id)}" data-acreedor="${escapeHtml(d.acreedor)}" data-monto-actual="${d.monto_actual}" data-tipo-deuda="${escapeHtml(d.tipo_deuda)}" data-monto-ultimo-pago="${d.monto_ultimo_pago || ''}" style="margin-top:12px;background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font);width:100%">
             Registrar pago
           </button>
         `;
@@ -477,7 +486,7 @@ async function openPagarDeuda(deudaId, acreedor, montoActual, tipoDeuda, montoUl
   openModal(`Pagar: ${escapeHtml(acreedor)}`, `
     <div class="card" style="margin-bottom:16px;background:var(--red-soft);border-color:rgba(240,93,110,0.2)">
       <div style="font-size:12px;color:var(--text-secondary)">Deuda actual</div>
-      <div style="font-family:var(--font-display);font-size:15px;font-weight:700;color:var(--red)">${formatMXN(montoActual)}</div>
+      <div style="font-family:var(--font);font-size:15px;font-weight:700;color:var(--red)">${formatMXN(montoActual)}</div>
     </div>
     ${infoReferenciaHTML}
     <div class="form-group">
@@ -514,7 +523,7 @@ async function guardarPagoDeuda(deudaId, montoActual, tipoDeuda) {
   const esHistorico = document.getElementById('pd-historico')?.checked || false;
   const usuarioId = (await getUsuarioId());
 
-  if (!monto || monto <= 0) { showSnackbar('Ingresa un monto válido', 'error'); return; }
+  if (!monto || monto <= 0 || !isFinite(monto)) { showSnackbar('Ingresa un monto válido', 'error'); return; }
   if (monto > montoActual) { showSnackbar('El pago no puede ser mayor a la deuda', 'error'); return; }
 
   const nuevoMonto = montoActual - monto;
@@ -596,22 +605,22 @@ async function guardarPagoDeuda(deudaId, montoActual, tipoDeuda) {
 function openAgregarDeuda() {
   openModal('Nueva deuda', `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      <button onclick="selectTipoDeuda('simple')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font-body);text-align:left;transition:all 180ms ease">
+      <button onclick="selectTipoDeuda('simple')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
         <i data-lucide="credit-card" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block;stroke-width:1.75"></i>
         <div style="font-weight:600;font-size:14px">Simple</div>
         <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Fijo<br>Fecha: Fija</div>
       </button>
-      <button onclick="selectTipoDeuda('variable')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font-body);text-align:left;transition:all 180ms ease">
+      <button onclick="selectTipoDeuda('variable')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
         <i data-lucide="trending-down" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block;stroke-width:1.75"></i>
         <div style="font-weight:600;font-size:14px">Variable</div>
         <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Cambia<br>Fecha: Fija</div>
       </button>
-      <button onclick="selectTipoDeuda('tabla')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font-body);text-align:left;transition:all 180ms ease">
+      <button onclick="selectTipoDeuda('tabla')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
         <i data-lucide="calendar" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block;stroke-width:1.75"></i>
         <div style="font-weight:600;font-size:14px">Con tabla</div>
         <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Cambia<br>Fecha: Cambia</div>
       </button>
-      <button onclick="selectTipoDeuda('flexible')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font-body);text-align:left;transition:all 180ms ease">
+      <button onclick="selectTipoDeuda('flexible')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
         <i data-lucide="wallet" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block;stroke-width:1.75"></i>
         <div style="font-weight:600;font-size:14px">Flexible</div>
         <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Libre<br>Fecha: Libre</div>

@@ -44,13 +44,14 @@ const TODOS_ICONOS = [
 ];
 
 function renderIcono(icono, size = 18) {
-  return (icono && icono.startsWith('bx'))
-    ? `<i class="${icono}" style="font-size:${size}px;pointer-events:none"></i>`
-    : `<i data-lucide="${icono || 'circle'}" style="width:${size}px;height:${size}px;stroke-width:1.75;pointer-events:none"></i>`;
+  return `<i data-lucide="${icono || 'help-circle'}" style="width:${size}px;height:${size}px;stroke-width:1.75;pointer-events:none"></i>`;
 }
 
 // ---- NÚCLEO ----
 export function renderOnboarding() {
+  onboardingData = { nombre: '', tiposIngreso: [], cuentas: [], deudas: [], gastosFijos: [], metas: [], gastosDiarios: [] };
+  currentStep = 1;
+
   const app = document.getElementById('app');
   app.innerHTML = `
     <div class="onboarding" id="onboarding">
@@ -96,8 +97,8 @@ function renderStep(step) {
     2: renderStep3nuevo,
     3: renderStep4,
     4: renderStep5,
-    5: renderStep6,
-    6: renderStepGastosDiarios,
+    5: renderStepGastosDiarios,
+    6: renderStep6,
     7: renderStep6resumen
   };
 
@@ -109,13 +110,17 @@ function onboardingBack() {
   renderStep(currentStep - 1);
 }
 
+const STEP_LABELS = ['Ingresos', 'Gastos fijos', 'Cuentas', 'Deudas', 'Gastos diarios', 'Metas', 'Resumen'];
+
 function updateStepIndicator() {
   const indicator = document.getElementById('step-indicator');
-  indicator.innerHTML = Array.from({ length: TOTAL_STEPS }, (_, i) => {
+  const dots = Array.from({ length: TOTAL_STEPS }, (_, i) => {
     const n = i + 1;
     const cls = n < currentStep ? 'done' : n === currentStep ? 'active' : '';
     return `<div class="step-dot ${cls}"></div>`;
   }).join('');
+  const label = STEP_LABELS[currentStep - 1] || '';
+  indicator.innerHTML = `<div style="display:flex;gap:5px;align-items:center;margin-bottom:4px">${dots}</div><div style="font-size:11px;color:var(--text-muted);font-weight:500">Paso ${currentStep} de ${TOTAL_STEPS} · ${label}</div>`;
 }
 
 function setHeader(title, subtitle) {
@@ -366,8 +371,8 @@ function renderStep2nuevo() {
 
   setFooter(`
     <div class="footer-nav-row">
-      <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
-      <button class="btn btn-primary" id="btn-continuar-ingresos" onclick="nextStep2nuevo()">Continuar →</button>
+      <button class="btn btn-ghost" onclick="onboardingBack()"><i data-lucide="arrow-left" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i> Atrás</button>
+      <button class="btn btn-primary" id="btn-continuar-ingresos" onclick="nextStep2nuevo()">Continuar <i data-lucide="arrow-right" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i></button>
     </div>
   `);
 }
@@ -382,7 +387,9 @@ function nextStep2nuevo() {
     return !t.monto || !t.frecuencia;
   });
   if (sinConfig.length > 0) {
-    showSnackbar(`Configura: ${sinConfig.map(t => t.nombre).join(', ')}`, 'error');
+    const primero = sinConfig[0];
+    const queFalta = !primero.monto ? 'el monto' : 'la frecuencia';
+    showSnackbar(`Falta configurar ${queFalta} de "${primero.nombre}"`, 'error');
     return;
   }
   renderStep(2);
@@ -681,16 +688,17 @@ function renderStep3nuevo() {
 
   setFooter(`
     <div class="footer-nav-row">
-      <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
-      <button class="btn btn-primary" onclick="nextStep3nuevo()">Continuar →</button>
+      <button class="btn btn-ghost" onclick="onboardingBack()"><i data-lucide="arrow-left" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i> Atrás</button>
+      <button class="btn btn-primary" onclick="nextStep3nuevo()">Continuar <i data-lucide="arrow-right" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i></button>
     </div>
   `);
 }
 
 function nextStep3nuevo() {
-  const faltantes = onboardingData.gastosFijos.filter(f => !f.fecha_flexible && (!Number.isFinite(f.monto) || f.monto <= 0));
+  const faltantes = onboardingData.gastosFijos.filter(f =>
+    !f.monto_estimado && (!Number.isFinite(f.monto) || f.monto <= 0 || f.monto > 999_999_999));
   if (faltantes.length > 0) {
-    showSnackbar(`Falta monto en "${faltantes[0].nombre}" o márcalo como Variable`, 'error');
+    showSnackbar(`Falta monto válido en "${faltantes[0].nombre}"`, 'error');
     return;
   }
   renderStep(3);
@@ -723,7 +731,7 @@ const INSTITUCIONES = [
 
 function renderStep4() {
   const primerNombre = (window._regNombre || '').split(' ')[0];
-  const headerTitle = primerNombre ? `¿Dónde tienes tu dinero, ${primerNombre}?` : '¿Dónde tienes tu dinero?';
+  const headerTitle = primerNombre ? `¿Dónde tienes tu dinero, ${escapeHtml(primerNombre)}?` : '¿Dónde tienes tu dinero?';
   setHeader(headerTitle, 'Registra tus cuentas activas — efectivo, débito, lo que uses.');
   renderStep4Body();
   const efectivoYaAgregado = onboardingData.cuentas.some(c => c.tipo === 'efectivo');
@@ -735,8 +743,8 @@ function renderStep4() {
   }
   setFooter(`
     <div class="footer-nav-row">
-      <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
-      <button class="btn btn-primary" onclick="nextStep4()">Continuar →</button>
+      <button class="btn btn-ghost" onclick="onboardingBack()"><i data-lucide="arrow-left" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i> Atrás</button>
+      <button class="btn btn-primary" onclick="nextStep4()">Continuar <i data-lucide="arrow-right" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i></button>
     </div>
   `);
 }
@@ -866,8 +874,8 @@ function renderStep5() {
   renderStep5Body();
   setFooter(`
     <div class="footer-nav-row">
-      <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
-      <button class="btn btn-primary" onclick="nextStep5()">Continuar →</button>
+      <button class="btn btn-ghost" onclick="onboardingBack()"><i data-lucide="arrow-left" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i> Atrás</button>
+      <button class="btn btn-primary" onclick="nextStep5()">Continuar <i data-lucide="arrow-right" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i></button>
     </div>
   `);
 }
@@ -908,7 +916,7 @@ function renderStep5Body(showForm = false) {
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
       <div class="form-group">
         <label class="form-label">¿A quién le debes?</label>
-        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Caja Popular, mamá…" />
+        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Caja Popular, mamá…" maxlength="80" />
       </div>
       <div class="form-group">
         <label class="form-label">Monto total</label>
@@ -937,6 +945,10 @@ function renderStep5Body(showForm = false) {
           <span class="currency-prefix">$</span>
           <input class="form-input" id="d-cuota" type="number" placeholder="0.00" min="0" ${cuotaRequired} />
         </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tasa de interés % <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <input class="form-input" id="d-tasa" type="number" placeholder="Ej: 70 tarjeta · 30 caja popular · 0 familiar" min="0" max="999" />
       </div>
     </div>
   `;
@@ -968,7 +980,7 @@ function renderStep5Body(showForm = false) {
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
       <div class="form-group">
         <label class="form-label">¿A quién le debes?</label>
-        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Caja Popular, mamá…" />
+        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Caja Popular, mamá…" maxlength="80" />
       </div>
       <div class="form-group">
         <label class="form-label">Monto total</label>
@@ -1104,6 +1116,9 @@ function addDeuda() {
     }
   }
 
+  const tasa_raw = parseFloat(document.getElementById('d-tasa')?.value);
+  const tasa_interes_anual = (Number.isFinite(tasa_raw) && tasa_raw >= 0) ? tasa_raw : 0;
+
   onboardingData.deudas.push({
     acreedor,
     monto_inicial: monto,
@@ -1112,7 +1127,8 @@ function addDeuda() {
     monto_pago,
     dia_pago,
     dia_semana,
-    tipo_deuda
+    tipo_deuda,
+    tasa_interes_anual
   });
 
   window._onboardingTipoDeuda = null;
@@ -1145,8 +1161,8 @@ function renderStep6() {
   renderStep6Body();
   setFooter(`
     <div class="footer-nav-row">
-      <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
-      <button class="btn btn-primary" onclick="nextStep6()">Continuar →</button>
+      <button class="btn btn-ghost" onclick="onboardingBack()"><i data-lucide="arrow-left" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i> Atrás</button>
+      <button class="btn btn-primary" onclick="nextStep6()">Continuar <i data-lucide="arrow-right" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i></button>
     </div>
   `);
 }
@@ -1184,7 +1200,7 @@ function renderStep6Body(showForm = false) {
           <button class="emoji-picker-btn" onclick="toggleOnboardingMetaIconPanel()">
             <i data-lucide="${window._onbMetaIcono || 'target'}"></i>
           </button>
-          <input class="form-input" id="m-nombre" placeholder="Nombre de la meta" />
+          <input class="form-input" id="m-nombre" placeholder="Nombre de la meta" maxlength="80" />
         </div>
         ${window._showMetaIconPanel ? `
         <div class="icon-panel" style="margin-top:8px">
@@ -1275,7 +1291,9 @@ function addMeta() {
   const cuenta_nombre   = document.getElementById('m-cuenta-nombre')?.value || null;
   const fecha_limite    = document.getElementById('m-fecha-limite')?.value || null;
   const frecuencia_ahorro = document.getElementById('m-frecuencia')?.value || null;
-  if (!nombre || !monto_objetivo || monto_objetivo <= 0 || !isFinite(monto_objetivo)) { showSnackbar('Completa nombre y monto', 'error'); return; }
+  if (!nombre || nombre.length > 80) { showSnackbar('Nombre de meta inválido', 'error'); return; }
+  if (!monto_objetivo || monto_objetivo <= 0 || !isFinite(monto_objetivo) || monto_objetivo > 999_999_999) { showSnackbar('Completa nombre y monto', 'error'); return; }
+  if (fecha_limite && new Date(fecha_limite + 'T00:00:00') <= new Date()) { showSnackbar('La fecha límite debe ser futura', 'error'); return; }
   onboardingData.metas.push({ icono: window._onbMetaIcono || 'target', nombre, monto_objetivo, cuenta_nombre, fecha_limite, frecuencia_ahorro });
   window._onbMetaIcono = 'target';
   window._showMetaIconPanel = false;
@@ -1298,8 +1316,8 @@ function renderStepGastosDiarios() {
   renderGastosDiariosBody();
   setFooter(`
     <div class="footer-nav-row">
-      <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
-      <button class="btn btn-primary" onclick="nextStepGastosDiarios()">Continuar →</button>
+      <button class="btn btn-ghost" onclick="onboardingBack()"><i data-lucide="arrow-left" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i> Atrás</button>
+      <button class="btn btn-primary" onclick="nextStepGastosDiarios()">Continuar <i data-lucide="arrow-right" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i></button>
     </div>
   `);
 }
@@ -1321,7 +1339,7 @@ function renderGastosDiariosBody(customFormOpen = false) {
           const itemKey = item.replace(/'/g, "\\'");
           return `<button type="button"
             onclick="toggleGdSubcategoria('${catKey}','${icoKey}','${itemKey}')"
-            style="padding:7px 14px;border-radius:9999px;font-size:13px;font-family:var(--font-body);cursor:pointer;transition:all 150ms ease;
+            style="padding:7px 14px;border-radius:9999px;font-size:13px;font-family:var(--font);cursor:pointer;transition:all 150ms ease;
               background:${active ? 'var(--accent)' : 'var(--bg-elevated)'};
               color:${active ? '#fff' : 'var(--text)'};
               border:1.5px solid ${active ? 'var(--accent)' : 'var(--border)'}">
@@ -1333,7 +1351,7 @@ function renderGastosDiariosBody(customFormOpen = false) {
     return `
       <div style="background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:8px">
         <button type="button" onclick="toggleGdCategoria('${catKey}')"
-          style="width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;background:none;border:none;cursor:pointer;font-family:var(--font-body);text-align:left">
+          style="width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;background:none;border:none;cursor:pointer;font-family:var(--font);text-align:left">
           <i data-lucide="${grupo.icono}" style="width:20px;height:20px;stroke-width:1.75;color:${isOpen || count > 0 ? 'var(--accent)' : 'var(--text-muted)'};flex-shrink:0"></i>
           <span style="font-weight:600;font-size:14px;flex:1">${grupo.categoria}</span>
           ${count > 0 ? `<span style="background:var(--accent);color:#fff;border-radius:9999px;min-width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;padding:0 5px">${count}</span>` : ''}
@@ -1484,8 +1502,8 @@ function renderStep6resumen() {
 
   setFooter(`
     <div class="footer-nav-row">
-      <button class="btn btn-ghost" onclick="onboardingBack()">← Atrás</button>
-      <button class="btn btn-success" id="btn-finish" onclick="finishOnboarding()">¡Listo, empecemos!</button>
+      <button class="btn btn-ghost" onclick="onboardingBack()"><i data-lucide="arrow-left" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i> Atrás</button>
+      <button class="btn btn-primary" id="btn-finish" onclick="finishOnboarding()">Comenzar a usar JM Finance</button>
     </div>
   `);
 
@@ -1509,12 +1527,12 @@ async function finishOnboarding() {
     const userId = user.id;
     const nombre = window._regNombre || (user.email ? user.email.split('@')[0] : 'Usuario');
 
+    // Insertar usuario con onboarding_completo=false — se actualiza al FINAL si todo sale bien
     const { error: errUsuario } = await db.from('usuarios').insert({
       id: userId,
       nombre: nombre,
-      onboarding_completo: true
+      onboarding_completo: false
     });
-
     if (errUsuario) throw errUsuario;
 
     if (onboardingData.tiposIngreso.length > 0) {
@@ -1525,7 +1543,8 @@ async function finishOnboarding() {
         usuario_id: userId,
         es_default: false
       }));
-      await db.from('categorias').insert(cats_ingreso);
+      const { error: errCatsIngreso } = await db.from('categorias').insert(cats_ingreso);
+      if (errCatsIngreso) throw errCatsIngreso;
 
       const programados = onboardingData.tiposIngreso
         .filter(t => t.monto && t.frecuencia)
@@ -1539,7 +1558,8 @@ async function finishOnboarding() {
           usuario_id: userId
         }));
       if (programados.length > 0) {
-        await db.from('ingresos_programados').insert(programados);
+        const { error: errProg } = await db.from('ingresos_programados').insert(programados);
+        if (errProg) throw errProg;
       }
     }
 
@@ -1551,7 +1571,8 @@ async function finishOnboarding() {
       es_default: true
     })));
     if (cats_gasto_predef.length > 0) {
-      await db.from('categorias').insert(cats_gasto_predef);
+      const { error: errCatsGasto } = await db.from('categorias').insert(cats_gasto_predef);
+      if (errCatsGasto) throw errCatsGasto;
     }
 
     if (onboardingData.gastosFijos.length > 0) {
@@ -1599,7 +1620,8 @@ async function finishOnboarding() {
         activa: true,
         usuario_id: userId
       }));
-      const { data: insertedCuentas } = await db.from('cuentas').insert(cuentasPayload).select();
+      const { data: insertedCuentas, error: errCuentas } = await db.from('cuentas').insert(cuentasPayload).select();
+      if (errCuentas) throw errCuentas;
       (insertedCuentas || []).forEach(c => { cuentaNombreAId[c.nombre] = c.id; });
     }
 
@@ -1614,10 +1636,11 @@ async function finishOnboarding() {
         dia_semana: d.dia_semana ?? null,
         tipo_deuda: d.tipo_deuda || 'simple',
         activa: true,
-        tasa_interes_anual: 0,
+        tasa_interes_anual: d.tasa_interes_anual || 0,
         usuario_id: userId
       }));
-      await db.from('deudas').insert(deudas);
+      const { error: errDeudas } = await db.from('deudas').insert(deudas);
+      if (errDeudas) throw errDeudas;
     }
 
     if (onboardingData.metas.length > 0) {
@@ -1636,14 +1659,20 @@ async function finishOnboarding() {
       if (errMetas) throw errMetas;
     }
 
-    showSnackbar('¡Todo listo! Bienvenido', 'success');
-    setTimeout(() => renderApp(), 800);
+    // Todo exitoso — marcar onboarding completo
+    const { error: errComplete } = await db.from('usuarios')
+      .update({ onboarding_completo: true })
+      .eq('id', userId);
+    if (errComplete) throw errComplete;
+
+    showSnackbar('Bienvenido a JM Finance', 'success');
+    setTimeout(() => renderApp(), 300);
 
   } catch (err) {
     console.error(err);
     showSnackbar('Error al guardar. Intenta de nuevo.', 'error');
     const btn = document.getElementById('btn-finish');
-    if (btn) { btn.innerHTML = '<i data-lucide="send" style="width:16px;height:16px;stroke-width:1.75;vertical-align:middle;margin-right:6px"></i>¡Listo, empecemos!'; btn.disabled = false; renderLucideIcons(); }
+    if (btn) { btn.innerHTML = '<i data-lucide="send" style="width:16px;height:16px;stroke-width:1.75;vertical-align:middle;margin-right:6px"></i>Comenzar a usar JM Finance'; btn.disabled = false; renderLucideIcons(); }
   }
 }
 
@@ -1665,7 +1694,7 @@ window.toggleTipoIngreso = function(nombre, icono) {
 };
 
 window.updateIngresoTipo = function(enc, tipo) {
-  const nombre = decodeURIComponent(enc);
+  let nombre; try { nombre = decodeURIComponent(enc); } catch(e) { return; }
   const ing = onboardingData.tiposIngreso.find(t => t.nombre === nombre);
   if (!ing) return;
   ing.tipo_ingreso = tipo;
@@ -1680,17 +1709,24 @@ window.toggleIngresoExpansion = function(nombre) {
 };
 
 window.updateIngresoField = function(enc, campo, valor) {
-  const nombre = decodeURIComponent(enc);
+  let nombre;
+  try { nombre = decodeURIComponent(enc); } catch(e) { return; }
   const ing = onboardingData.tiposIngreso.find(t => t.nombre === nombre);
   if (!ing) return;
-  ing[campo] = valor;
+  if (campo === 'monto') {
+    const n = parseFloat(valor);
+    if (!Number.isFinite(n) || n <= 0 || n > 999_999_999) return;
+    ing.monto = n;
+  } else {
+    ing[campo] = valor;
+  }
   const allOk = onboardingData.tiposIngreso.length > 0 && onboardingData.tiposIngreso.every(t => !!(t.monto && t.frecuencia));
   const btn = document.getElementById('btn-continuar-ingresos');
   if (btn) btn.disabled = !allOk;
 };
 
 window.updateIngresoFrecuencia = function(enc, freq) {
-  const nombre = decodeURIComponent(enc);
+  let nombre; try { nombre = decodeURIComponent(enc); } catch(e) { return; }
   const ing = onboardingData.tiposIngreso.find(t => t.nombre === nombre);
   if (!ing) return;
   ing.frecuencia = freq;
@@ -1962,8 +1998,12 @@ window.filtrarBancos = function(q) {
 
   resultadosDiv.style.display = 'block';
 
-  let html = ordered.map((inst, idx) => `
-    <div class="banco-result-item" onclick="seleccionarBancoIdx(${idx})">
+  let html = ordered.map(inst => `
+    <div class="banco-result-item"
+         data-banco-nombre="${escapeHtml(inst.nombre)}"
+         data-banco-tipo="${escapeHtml(inst.tipo)}"
+         data-banco-icono="${escapeHtml(inst.icono)}"
+         onclick="seleccionarBancoDesdeData(this)">
       <i data-lucide="${inst.icono}" style="width:16px;height:16px;color:var(--text-secondary);pointer-events:none"></i>
       <span>${inst.nombre}</span>
     </div>`).join('');
@@ -1971,7 +2011,7 @@ window.filtrarBancos = function(q) {
   if (qRaw) {
     html += `<div class="banco-result-item accent" onclick="seleccionarBancoCustom()">
       <i data-lucide="plus" style="width:16px;height:16px;pointer-events:none"></i>
-      <span>+ Crear cuenta "${qRaw}"</span>
+      <span>+ Crear cuenta "${escapeHtml(qRaw)}"</span>
     </div>`;
   }
 
@@ -1979,14 +2019,16 @@ window.filtrarBancos = function(q) {
   lucide.createIcons();
 };
 
-window.seleccionarBancoIdx = function(idx) {
-  const inst = window._bancosFiltered[idx];
-  if (!inst) return;
-  window._selectedBancoTipo = inst.tipo;
-  window._selectedBancoIcono = inst.icono;
+window.seleccionarBancoDesdeData = function(el) {
+  const nombre = el.dataset.bancoNombre;
+  const tipo   = el.dataset.bancoTipo;
+  const icono  = el.dataset.bancoIcono;
+  if (!nombre) return;
+  window._selectedBancoTipo  = tipo;
+  window._selectedBancoIcono = icono;
   document.getElementById('cuenta-search-row').style.display = 'none';
   document.getElementById('banco-search').value = '';
-  _abrirFormCuenta({ nombre: inst.nombre, readOnly: true, focusSaldo: true });
+  _abrirFormCuenta({ nombre, readOnly: true, focusSaldo: true });
 };
 
 window.seleccionarBancoCustom = function() {

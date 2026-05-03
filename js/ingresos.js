@@ -655,7 +655,7 @@ async function guardarIngreso() {
   openModal('Dinero comprometido', `
     <div class="card" style="margin-bottom:12px;background:var(--bg-elevated)">
       <div style="font-size:12px;color:var(--text-secondary)">Ingreso recibido</div>
-      <div style="font-family:var(--font-display);font-size:15px;font-weight:700;color:var(--green)">${formatMXN(monto)}</div>
+      <div style="font-family:var(--font);font-size:15px;font-weight:700;color:var(--green)">${formatMXN(monto)}</div>
     </div>
 
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;max-height:280px;overflow:auto">
