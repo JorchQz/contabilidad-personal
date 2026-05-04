@@ -216,7 +216,7 @@ async function _doEliminarPresupuesto(presupuestoId) {
 }
 
 function eliminarPresupuesto(presupuestoId) {
-  openConfirmModal('¿Eliminar este presupuesto?', `_doEliminarPresupuesto('${presupuestoId}')`);
+  openConfirmModal('¿Eliminar este presupuesto? No se puede deshacer.', `_doEliminarPresupuesto('${presupuestoId}')`);
 }
 window._doEliminarPresupuesto = _doEliminarPresupuesto;
 

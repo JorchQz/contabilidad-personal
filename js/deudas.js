@@ -133,8 +133,9 @@ export async function loadDeudas() {
   if (!deudas || deudas.length === 0) {
     deudaCardsHTML = `
       <div class="empty-state">
-        <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
-        <p>¡Sin deudas registradas!</p>
+        <div class="empty-icon"><i data-lucide="shield-check" style="width:40px;height:40px;stroke-width:1.5"></i></div>
+        <p style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px">Sin deudas registradas</p>
+        <p>Registra lo que debes para llevar control de tus pagos y saber cuándo te liberas.</p>
       </div>
     `;
   } else {
@@ -471,7 +472,7 @@ async function _doEliminarDeuda(deudaId) {
   await loadDashboard();
 }
 function eliminarDeuda(deudaId) {
-  openConfirmModal('¿Eliminar esta deuda?', `_doEliminarDeuda('${deudaId}')`);
+  openConfirmModal('¿Eliminar esta deuda? No se puede deshacer.', `_doEliminarDeuda('${deudaId}')`);
 }
 window._doEliminarDeuda = _doEliminarDeuda;
 
@@ -580,7 +581,7 @@ async function guardarPagoDeuda(deudaId, montoActual, tipoDeuda) {
       monto, nota,
       fecha: fechaHoy
     });
-    if (errInsert) { showSnackbar('Error al registrar el pago', 'error'); return; }
+    if (errInsert) { showSnackbar('No se pudo registrar el pago. Revisa tu conexión.', 'error'); return; }
   }
 
   if (tipoDeuda === 'tabla') {
@@ -609,7 +610,7 @@ async function guardarPagoDeuda(deudaId, montoActual, tipoDeuda) {
     ultimo_pago: fechaHoy,
     monto_ultimo_pago: monto
   }).eq('id', deudaId);
-  if (errDeuda) { showSnackbar('Error al actualizar la deuda', 'error'); return; }
+  if (errDeuda) { showSnackbar('No se pudo actualizar el saldo de la deuda. Revisa tu conexión.', 'error'); return; }
 
   closeModal();
   showSnackbar(nuevoMonto < 1 ? 'Deuda saldada' : 'Pago registrado', 'success');
@@ -813,7 +814,7 @@ async function guardarNuevaDeuda(tipo) {
   }).select();
 
   if (error) {
-    showSnackbar('Error al guardar deuda', 'error');
+    showSnackbar('No se pudo guardar la deuda. Revisa tu conexión.', 'error');
     return;
   }
 
@@ -936,7 +937,7 @@ async function guardarTablaPagesProgramados(deudaId) {
   const { error } = await db.from('pagos_programados').insert(filasAGuardar);
 
   if (error) {
-    showSnackbar('Error al guardar tabla de pagos', 'error');
+    showSnackbar('No se pudo guardar la tabla de pagos. Revisa tu conexión.', 'error');
     return;
   }
 

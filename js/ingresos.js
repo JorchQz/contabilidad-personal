@@ -93,8 +93,10 @@ export async function loadIngresos() {
     : (!ingresosProgramados || ingresosProgramados.length === 0
       ? `
         <div class="empty-state" style="padding:20px 0">
-          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
-          <p>Sin ingresos programados.</p>
+          <div class="empty-icon"><i data-lucide="calendar-days" style="width:36px;height:36px;stroke-width:1.5"></i></div>
+          <p style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px">Sin ingresos programados</p>
+          <p style="margin-bottom:12px">Registra tu quincena o semana para que la app sepa cuándo llega tu dinero.</p>
+          <button class="btn btn-secondary" style="width:auto;padding:10px 20px;margin:0 auto" onclick="openAgregarIngresoProgramado()">+ Agregar ingreso</button>
         </div>
       `
       : ingresosProgramados.map(i => `
@@ -119,8 +121,9 @@ export async function loadIngresos() {
     : (!ingresos || ingresos.length === 0
       ? `
         <div class="empty-state" style="padding:20px 0">
-          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
-          <p>Sin ingresos registrados.</p>
+          <div class="empty-icon"><i data-lucide="trending-up" style="width:36px;height:36px;stroke-width:1.5"></i></div>
+          <p style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px">Aún no hay ingresos</p>
+          <p>Registra lo que recibiste hoy para llevar control de tu dinero.</p>
         </div>
       `
       : ingresos.map(i => {
@@ -585,7 +588,7 @@ async function guardarIngreso() {
   if (!monto || monto <= 0 || !isFinite(monto)) { showSnackbar('Ingresa un monto válido', 'error'); return; }
   if (descripcion.length > 200) { showSnackbar('La descripción es muy larga (máx. 200 caracteres)', 'error'); return; }
   const fechaDate = new Date(fecha + 'T00:00:00');
-  if (!fecha || isNaN(fechaDate) || fechaDate.getFullYear() < 2020 || fechaDate > new Date()) {
+  if (!fecha || isNaN(fechaDate) || fechaDate.getFullYear() < 2000 || fechaDate > new Date()) {
     showSnackbar('Fecha inválida', 'error'); return;
   }
   if (tipo === 'prestamo' && !prestamista) { showSnackbar('Escribe quién te prestó', 'error'); return; }
@@ -609,7 +612,7 @@ async function guardarIngreso() {
     ({ error } = await db.from('ingresos').insert(ingresoPayload));
   }
 
-  if (error) { showSnackbar('Error al guardar', 'error'); return; }
+  if (error) { showSnackbar('No se pudo guardar el ingreso. Revisa tu conexión.', 'error'); return; }
 
   let mensajeExito = 'Ingreso registrado ✓';
   let recargarConDeudas = false;

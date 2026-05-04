@@ -272,7 +272,7 @@ async function _doEliminarMeta(metaId) {
   await loadDashboard();
 }
 function eliminarMeta(metaId) {
-  openConfirmModal('¿Eliminar esta meta?', `_doEliminarMeta('${metaId}')`);
+  openConfirmModal('¿Eliminar esta meta? No se puede deshacer.', `_doEliminarMeta('${metaId}')`);
 }
 window._doEliminarMeta = _doEliminarMeta;
 

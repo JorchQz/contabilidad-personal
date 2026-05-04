@@ -155,8 +155,10 @@ export async function loadCuentas() {
     <div class="page-body" style="padding-top:0">
       ${!cuentasConSaldo.length ? `
         <div class="empty-state" style="margin-top:0">
-          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
-          <p>No tienes cuentas activas.</p>
+          <div class="empty-icon"><i data-lucide="wallet" style="width:40px;height:40px;stroke-width:1.5"></i></div>
+          <p style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px">Sin cuentas activas</p>
+          <p style="margin-bottom:12px">Agrega tu cuenta de débito, efectivo o tarjeta para empezar a llevar control.</p>
+          <button class="btn btn-secondary" style="width:auto;padding:10px 20px;margin:0 auto" onclick="openAgregarCuenta()">+ Nueva cuenta</button>
         </div>
       ` : `
         ${cuentasConSaldo.map(cuenta => `
