@@ -757,10 +757,11 @@ function renderCamposFechaDeuda() {
 
   if (frecuencia === 'quincenal') {
     campos.innerHTML = `
-      <label class="form-label">¿Qué día del mes cae tu primer pago?</label>
-      <input class="form-input" id="nd-dia-pago" type="number" min="1" max="15" placeholder="Ej: 1, 5, 15…" inputmode="numeric" oninput="actualizarHintQuincenal('nd')" style="${H}" />
-      <p class="form-hint" id="nd-quincena-hint" style="margin-top:6px">Escribe un día entre 1 y 15 para ver cuándo caen tus pagos.</p>
+      <label class="form-label">Día del primer pago del mes</label>
+      <input class="form-input" id="nd-dia-pago" type="number" min="1" max="15" value="15" inputmode="numeric" oninput="actualizarHintQuincenal('nd')" style="${H}" />
+      <p class="form-hint" id="nd-quincena-hint" style="margin-top:6px"></p>
     `;
+    actualizarHintQuincenal('nd');
     return;
   }
 
