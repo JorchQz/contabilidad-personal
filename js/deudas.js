@@ -296,7 +296,13 @@ function renderCamposFechaEditarDeuda() {
   }
 
   if (frecuencia === 'quincenal') {
-    campos.innerHTML = `<p class="form-hint" style="margin:4px 0 0">Se programa para los días 15 y último de cada mes.</p>`;
+    const valActual = document.getElementById('ed-dia-pago')?.value || '';
+    campos.innerHTML = `
+      <label class="form-label">¿Qué día del mes cae tu primer pago?</label>
+      <input class="form-input" id="ed-dia-pago" type="number" min="1" max="15" placeholder="Ej: 1, 5, 15…" inputmode="numeric" value="${valActual}" oninput="actualizarHintQuincenal('ed')" style="${H}" />
+      <p class="form-hint" id="ed-quincena-hint" style="margin-top:6px"></p>
+    `;
+    actualizarHintQuincenal('ed');
     return;
   }
 
@@ -418,7 +424,7 @@ async function guardarEdicionDeuda(esTabla = false) {
     } else if (tipo_pago === 'quincenal') {
       dia_pago = parseInt(document.getElementById('ed-dia-pago')?.value, 10);
       if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
-        showSnackbar('Ingresa un día de la quincena entre 1 y 15', 'error');
+        showSnackbar('Indica el día del primer pago del mes (1-15)', 'error');
         return;
       }
     }
@@ -750,7 +756,11 @@ function renderCamposFechaDeuda() {
   }
 
   if (frecuencia === 'quincenal') {
-    campos.innerHTML = `<p class="form-hint" style="margin:4px 0 0">Se programa para los días 15 y último de cada mes.</p>`;
+    campos.innerHTML = `
+      <label class="form-label">¿Qué día del mes cae tu primer pago?</label>
+      <input class="form-input" id="nd-dia-pago" type="number" min="1" max="15" placeholder="Ej: 1, 5, 15…" inputmode="numeric" oninput="actualizarHintQuincenal('nd')" style="${H}" />
+      <p class="form-hint" id="nd-quincena-hint" style="margin-top:6px">Escribe un día entre 1 y 15 para ver cuándo caen tus pagos.</p>
+    `;
     return;
   }
 
@@ -801,7 +811,7 @@ async function guardarNuevaDeuda(tipo) {
     } else if (tipo_pago === 'quincenal') {
       dia_pago = parseInt(document.getElementById('nd-dia-pago')?.value, 10);
       if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 15) {
-        showSnackbar('Ingresa un día de la quincena entre 1 y 15', 'error');
+        showSnackbar('Indica el día del primer pago del mes (1-15)', 'error');
         return;
       }
     }
@@ -966,6 +976,18 @@ window.openPagarDeuda = openPagarDeuda;
 window.guardarPagoDeuda = guardarPagoDeuda;
 window.openAgregarDeuda = openAgregarDeuda;
 window.selectTipoDeuda = selectTipoDeuda;
+window.actualizarHintQuincenal = function(prefix) {
+  const val = parseInt(document.getElementById(`${prefix}-dia-pago`)?.value, 10);
+  const hint = document.getElementById(`${prefix}-quincena-hint`);
+  if (!hint) return;
+  if (!val || val < 1 || val > 15) {
+    hint.textContent = 'Ingresa un día entre 1 y 15.';
+    return;
+  }
+  const d2 = val + 15;
+  const label2 = d2 >= 29 ? 'último día del mes' : `día ${d2}`;
+  hint.textContent = `Pagos cada mes: día ${val} y ${label2}.`;
+};
 window.renderCamposFechaDeuda = renderCamposFechaDeuda;
 window.guardarNuevaDeuda = guardarNuevaDeuda;
 window.renderCamposFechaEditarDeuda = renderCamposFechaEditarDeuda;
