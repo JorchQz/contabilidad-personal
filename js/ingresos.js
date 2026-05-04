@@ -238,7 +238,7 @@ async function openEditarIngresoProgramado(ingresoProgramadoId) {
     <div class="form-group">
       <label class="form-label">Monto estimado</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="eip-monto" type="number" min="0" value="${Number(ingresoProgramado.monto_estimado || 0)}" /></div>
+      <input class="form-input" id="eip-monto" type="number" min="0" inputmode="decimal" value="${Number(ingresoProgramado.monto_estimado || 0)}" /></div>
     </div>
     <div class="form-group">
       <label class="form-label">Frecuencia</label>
@@ -326,7 +326,7 @@ function openAgregarIngresoProgramado() {
     <div class="form-group">
       <label class="form-label">Monto estimado</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="ip-monto" type="number" placeholder="0.00" min="0" /></div>
+      <input class="form-input" id="ip-monto" type="number" placeholder="0.00" min="0" inputmode="decimal" /></div>
     </div>
     <div class="form-group">
       <label class="form-label">Frecuencia</label>
@@ -504,7 +504,7 @@ async function openRegistrarIngreso() {
     <div class="form-group">
       <label class="form-label">Monto</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="ri-monto" type="number" placeholder="0.00" min="0" /></div>
+      <input class="form-input" id="ri-monto" type="number" placeholder="0.00" min="0" inputmode="decimal" autofocus /></div>
     </div>
     <div class="form-group">
       <label class="form-label">Tipo</label>
@@ -568,7 +568,11 @@ export function toggleCamposPrestamo() {
 }
 
 async function guardarIngreso() {
-  const monto = parseFloat(document.getElementById('ri-monto').value);
+  const _btn = document.querySelector('#modal-overlay .btn-primary');
+  if (_btn?.disabled) return;
+  if (_btn) _btn.disabled = true;
+  try {
+  const monto = parseFloat(String(document.getElementById('ri-monto').value).replace(/,/g, ''));
   const tipo = currentIngresoTipo || 'otro';
   const categoria_id = getCurrentCatId();
   const descripcion = document.getElementById('ri-desc').value.trim();
@@ -721,6 +725,9 @@ async function guardarIngreso() {
   if (recargarConDeudas) {
     await loadDashboard();
     await loadDeudas();
+  }
+  } finally {
+    if (_btn?.isConnected) _btn.disabled = false;
   }
 }
 

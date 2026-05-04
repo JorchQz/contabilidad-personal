@@ -108,6 +108,8 @@ export function showSnackbar(msg, type = '') {
     sb = document.createElement('div');
     sb.id = 'snackbar';
     sb.className = 'snackbar';
+    sb.setAttribute('aria-live', 'assertive');
+    sb.setAttribute('role', 'alert');
     document.body.appendChild(sb);
   }
   sb.textContent = msg;
@@ -210,6 +212,7 @@ function updateFab(pageId) {
   if (currentFabItems.length === 1) {
     const item = currentFabItems[0];
     fab.innerHTML = `<i data-lucide="plus" style="width:22px;height:22px;pointer-events:none"></i>`;
+    fab.setAttribute('aria-label', item.label || 'Agregar');
     fab.onclick = () => runFabAction(item.action);
   } else {
     fab.onclick = toggleFabMenu;
@@ -407,7 +410,7 @@ export async function loadDashboard() {
     return (Number(monto) || 0) * (f[freq] || 1);
   };
   const ingresoMensualEst = (ingProgramados || []).reduce((s, i) => s + _normMens(i.monto_estimado, i.frecuencia), 0);
-  const gastosFijosMens   = (gastosFijosData || []).reduce((s, g) => g.monto ? s + _normMens(g.monto, g.frecuencia) : s, 0);
+  const gastosFijosMens   = (gastosFijosData || []).reduce((s, g) => s + _normMens(g.monto || g.monto_estimado || 0, g.frecuencia), 0);
   const servDeudaMens     = (deudasConPago || []).reduce((s, d) => s + _normMens(d.monto_pago, d.tipo_pago || 'mensual'), 0);
 
   let semaforoHtml = '';
@@ -415,11 +418,11 @@ export async function loadDashboard() {
     const ratio = (gastosFijosMens + servDeudaMens) / ingresoMensualEst;
     const comprometidosPor100 = Math.min(Math.round(ratio * 100), 100);
     const libresPor100 = Math.max(100 - comprometidosPor100, 0);
-    const color = ratio < 0.6 ? 'var(--green)' : ratio < 0.8 ? 'var(--yellow)' : 'var(--red)';
-    const icon  = ratio < 0.6 ? 'smile' : ratio < 0.8 ? 'alert-circle' : 'alert-triangle';
-    const msg   = ratio < 0.6
+    const color = ratio < 0.5 ? 'var(--green)' : ratio < 0.7 ? 'var(--yellow)' : 'var(--red)';
+    const icon  = ratio < 0.5 ? 'smile' : ratio < 0.7 ? 'alert-circle' : 'alert-triangle';
+    const msg   = ratio < 0.5
       ? 'Tus finanzas tienen margen'
-      : ratio < 0.8
+      : ratio < 0.7
       ? 'Gran parte de tu ingreso ya está comprometido'
       : 'Casi todo tu ingreso está comprometido';
     semaforoHtml = `
@@ -481,11 +484,11 @@ export async function loadDashboard() {
       ` : ''}
       <div class="balance-row">
         <div class="balance-stat">
-          <span class="balance-stat-label">Ingresos</span>
+          <span class="balance-stat-label">Ingresos del mes</span>
           <span class="balance-stat-value income">${formatMXN(totalIngresos)}</span>
         </div>
         <div class="balance-stat">
-          <span class="balance-stat-label">Gastos</span>
+          <span class="balance-stat-label">Gastos del mes</span>
           <span class="balance-stat-value expense">${formatMXN(totalGastos)}</span>
         </div>
         <div class="balance-stat">
@@ -973,6 +976,14 @@ window.closeFabMenu = closeFabMenu;
 window.showPage = showPage;
 window.updateFab = updateFab;
 window.loadPresupuestos = loadPresupuestos;
+window.loadDashboard = loadDashboard;
+window.loadGastos = loadGastos;
+window.loadIngresos = loadIngresos;
+window.loadDeudas = loadDeudas;
+window.loadMetas = loadMetas;
+window.loadFijos = loadFijos;
+window.loadCuentas = loadCuentas;
+window.loadAjustes = loadAjustes;
 
 // ---- RENDER APP PRINCIPAL ----
 export async function renderApp() {
@@ -991,17 +1002,19 @@ export async function renderApp() {
   `;
 
   renderNav();
-  showPage('dashboard');
   initSwipeNavigation();
-  await loadDashboard();
-  await loadCuentas();
-  await loadDeudas();
-  await loadMetas();
-  await loadPresupuestos();
-  await loadFijos();
-  await loadGastos();
-  await loadIngresos();
-  await loadAjustes();
+  showPage('dashboard');
+  await Promise.all([
+    loadDashboard(),
+    loadCuentas(),
+    loadDeudas(),
+    loadMetas(),
+    loadPresupuestos(),
+    loadFijos(),
+    loadGastos(),
+    loadIngresos(),
+    loadAjustes(),
+  ]);
   if (typeof updateFab === 'function') updateFab('dashboard');
 }
 
@@ -1075,23 +1088,34 @@ window.addEventListener('DOMContentLoaded', async () => {
   initTheme();
   await new Promise(r => setTimeout(r, 1200)); // splash
 
-  const { data: { session } } = await db.auth.getSession();
+  try {
+    const { data: { session } } = await db.auth.getSession();
 
-  if (session) {
-    const userId = session.user.id;
-    const { data: usuario } = await db.from('usuarios')
-      .select('onboarding_completo')
-      .eq('id', userId)
-      .maybeSingle();
+    if (session) {
+      const userId = session.user.id;
+      const { data: usuario } = await db.from('usuarios')
+        .select('onboarding_completo')
+        .eq('id', userId)
+        .maybeSingle();
 
-    if (usuario?.onboarding_completo) {
-      renderApp();
+      if (usuario?.onboarding_completo) {
+        renderApp();
+      } else {
+        renderOnboarding();
+      }
     } else {
-      renderOnboarding();
+      renderAuth();
+      initAuthEvents();
     }
-  } else {
-    renderAuth();
-    initAuthEvents();
+  } catch (e) {
+    document.getElementById('app').innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:16px;padding:24px;text-align:center">
+        <i data-lucide="wifi-off" style="width:48px;height:48px;color:var(--text-muted)"></i>
+        <p style="font-size:16px;font-weight:600;color:var(--text)">Sin conexión</p>
+        <p style="font-size:14px;color:var(--text-secondary)">Verifica tu internet y recarga la app.</p>
+        <button class="btn btn-secondary" style="width:auto;padding:12px 24px" onclick="location.reload()">Reintentar</button>
+      </div>`;
+    if (window.lucide) lucide.createIcons();
   }
 });
 

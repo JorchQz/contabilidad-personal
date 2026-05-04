@@ -145,7 +145,7 @@ async function openAbonarMeta(metaId = null) {
     <div class="form-group">
       <label class="form-label">Monto del abono</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="ma-abono" type="number" min="0" placeholder="0.00" /></div>
+      <input class="form-input" id="ma-abono" type="number" min="0" placeholder="0.00" inputmode="decimal" autofocus /></div>
     </div>
     <button class="btn btn-primary" onclick="guardarAbonoMeta(document.getElementById('ma-meta-id').value)">Guardar abono</button>
   `);
@@ -164,7 +164,11 @@ function renderMetaAbonoHint() {
 }
 
 async function guardarAbonoMeta(metaId) {
-  const abono = parseFloat(document.getElementById('ma-abono')?.value);
+  const _btn = document.querySelector('#modal-overlay .btn-primary');
+  if (_btn?.disabled) return;
+  if (_btn) _btn.disabled = true;
+  try {
+  const abono = parseFloat(String(document.getElementById('ma-abono')?.value || '').replace(/,/g, ''));
 
   if (!abono || abono <= 0 || !isFinite(abono) || abono > 999_999_999) {
     showSnackbar('Ingresa un monto válido', 'error');
@@ -244,6 +248,9 @@ async function guardarAbonoMeta(metaId) {
   await loadMetas();
   await loadDashboard();
   await loadCuentas();
+  } finally {
+    if (_btn?.isConnected) _btn.disabled = false;
+  }
 }
 
 

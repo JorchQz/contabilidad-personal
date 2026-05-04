@@ -49,7 +49,7 @@ export async function loadPresupuestos() {
     const limite = p ? Number(p.monto_limite) : 0;
     const pct = limite > 0 ? Math.min(Math.round((gastado / limite) * 100), 100) : 0;
     const color = pct >= 100 ? 'var(--red)' : pct >= 80 ? 'var(--yellow)' : 'var(--green)';
-    const proyeccion = diaActual > 0 && gastado > 0 ? Math.round(gastado * (diasMes / diaActual)) : 0;
+    const proyeccion = diaActual >= 5 && gastado > 0 ? Math.round(gastado * (diasMes / diaActual)) : 0;
     const proyeccionLabel = limite > 0 && proyeccion > limite
       ? `<span style="font-size:11px;color:var(--yellow)">~${formatMXN(proyeccion)} al mes a este ritmo</span>` : '';
     const icono = cat.emoji || 'package';

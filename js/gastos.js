@@ -1136,8 +1136,12 @@ async function openRegistrarGasto(gastoId = null) {
 }
 
 async function guardarGasto() {
+  const _btn = document.querySelector('#modal-overlay .btn-primary');
+  if (_btn?.disabled) return;
+  if (_btn) _btn.disabled = true;
+  try {
   const descripcion = document.getElementById('rg-desc').value.trim();
-  const monto = parseFloat(document.getElementById('rg-monto').value);
+  const monto = parseFloat(String(document.getElementById('rg-monto').value).replace(/,/g, ''));
   const categoria_id = getCurrentCatId();
   const cuenta_id = document.getElementById('rg-cuenta')?.value || null;
   const fecha = document.getElementById('rg-fecha').value;
@@ -1317,6 +1321,9 @@ async function guardarGasto() {
   showSnackbar('Gasto registrado ✓', 'success');
   await loadDashboard();
   await loadGastos();
+  } finally {
+    if (_btn?.isConnected) _btn.disabled = false;
+  }
 }
 
 // Funciones invocadas desde atributos onclick en HTML generado dinámicamente

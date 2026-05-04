@@ -687,7 +687,7 @@ html, body {
 
 .btn-cancel-custom:hover {
   border-color: var(--text-secondary);
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 /* ---- MINI FORM ---- */

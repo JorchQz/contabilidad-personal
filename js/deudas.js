@@ -325,7 +325,7 @@ async function openEditarDeuda(deudaId) {
     <div class="form-group">
       <label class="form-label">Monto por pago</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="ed-monto-pago" type="number" min="0" value="${deuda.monto_pago ? Number(deuda.monto_pago) : ''}" placeholder="0.00" /></div>
+      <input class="form-input" id="ed-monto-pago" type="number" min="0" inputmode="decimal" value="${deuda.monto_pago ? Number(deuda.monto_pago) : ''}" placeholder="0.00" /></div>
     </div>
   `;
 
@@ -337,7 +337,7 @@ async function openEditarDeuda(deudaId) {
     <div class="form-group">
       <label class="form-label">Monto actual</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="ed-monto" type="number" min="0" value="${Number(deuda.monto_actual || 0)}" /></div>
+      <input class="form-input" id="ed-monto" type="number" min="0" inputmode="decimal" value="${Number(deuda.monto_actual || 0)}" /></div>
     </div>
     <div class="form-group">
       <label class="form-label">Tasa de interés anual % <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
@@ -648,7 +648,7 @@ function openFormularioNuevaDeuda(tipo) {
     <div class="form-group">
       <label class="form-label">Monto total</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="nd-monto" type="number" placeholder="0.00" min="0" /></div>
+      <input class="form-input" id="nd-monto" type="number" placeholder="0.00" min="0" inputmode="decimal" autofocus /></div>
     </div>
     <div class="form-group">
       <label class="form-label">Tasa de interés anual % <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
@@ -681,7 +681,7 @@ function openFormularioNuevaDeuda(tipo) {
     <div class="form-group">
       <label class="form-label">${cuotaLabel}</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="nd-cuota" type="number" placeholder="0.00" min="0" ${cuotaReq} /></div>
+      <input class="form-input" id="nd-cuota" type="number" placeholder="0.00" min="0" inputmode="decimal" ${cuotaReq} /></div>
     </div>
     `;
   }
@@ -746,8 +746,12 @@ function renderCamposFechaDeuda() {
 }
 
 async function guardarNuevaDeuda(tipo) {
+  const _btn = document.querySelector('#modal-overlay .btn-primary');
+  if (_btn?.disabled) return;
+  if (_btn) _btn.disabled = true;
+  try {
   const acreedor = document.getElementById('nd-acreedor').value.trim();
-  const monto = parseFloat(document.getElementById('nd-monto').value);
+  const monto = parseFloat(String(document.getElementById('nd-monto').value).replace(/,/g, ''));
   let tipo_pago = null;
   let monto_pago = null;
   let dia_pago = null;
@@ -811,6 +815,9 @@ async function guardarNuevaDeuda(tipo) {
   } else {
     await loadDeudas();
     await loadDashboard();
+  }
+  } finally {
+    if (_btn?.isConnected) _btn.disabled = false;
   }
 }
 
