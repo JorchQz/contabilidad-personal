@@ -56,7 +56,10 @@ export function renderOnboarding() {
   app.innerHTML = `
     <div class="onboarding" id="onboarding">
       <div class="onboarding-header">
-        <div class="onboarding-step-indicator" id="step-indicator"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div class="onboarding-step-indicator" id="step-indicator" style="flex:1;margin-bottom:0"></div>
+          <button onclick="salirDelOnboarding()" style="background:none;border:none;font-size:12px;color:var(--text-muted);cursor:pointer;padding:4px 0 4px 12px;font-family:var(--font);white-space:nowrap">Cerrar sesión</button>
+        </div>
         <div id="onboarding-header-content"></div>
       </div>
       <div class="onboarding-body" id="onboarding-body"></div>
@@ -1676,6 +1679,12 @@ async function finishOnboarding() {
     if (btn) { btn.innerHTML = 'Comenzar a usar JM Finance'; btn.disabled = false; }
   }
 }
+
+async function salirDelOnboarding() {
+  await db.auth.signOut();
+  location.reload();
+}
+window.salirDelOnboarding = salirDelOnboarding;
 
 // ---- EXPONER AL ENTORNO GLOBAL (onclick en HTML dinámico) ----
 window.renderStep           = renderStep;
