@@ -103,7 +103,22 @@ function renderPlanPago(deudas) {
 
 export async function loadDeudas() {
   const uid = (await getUsuarioId());
-  const { data: deudas } = await db.from('deudas').select('*').eq('usuario_id', uid).eq('activa', true).order('created_at');
+  const [
+    { data: deudas },
+    { data: todosPagosProgramados }
+  ] = await Promise.all([
+    db.from('deudas').select('*').eq('usuario_id', uid).eq('activa', true).order('created_at'),
+    db.from('pagos_programados')
+      .select('id, deuda_id, numero_pago, fecha_vencimiento, monto_esperado, pagado')
+      .eq('usuario_id', uid)
+      .order('fecha_vencimiento')
+  ]);
+
+  const pagosPorDeuda = {};
+  for (const p of (todosPagosProgramados || [])) {
+    if (!pagosPorDeuda[p.deuda_id]) pagosPorDeuda[p.deuda_id] = [];
+    pagosPorDeuda[p.deuda_id].push(p);
+  }
 
   const getBadgeDeuda = (tipo) => {
     const badges = {
@@ -146,13 +161,9 @@ export async function loadDeudas() {
       let botonPagoHTML = '';
       let sinTablaConfigurada = false;
       if (d.tipo_deuda === 'tabla') {
-        const { data: todosPagosProg } = await db.from('pagos_programados')
-          .select('id, numero_pago, fecha_vencimiento, monto_esperado, pagado')
-          .eq('deuda_id', d.id)
-          .order('fecha_vencimiento');
-
-        sinTablaConfigurada = !todosPagosProg || todosPagosProg.length === 0;
-        const proximoPago = (todosPagosProg || []).find(p => !p.pagado) || null;
+        const pagosProg = pagosPorDeuda[d.id] || [];
+        sinTablaConfigurada = pagosProg.length === 0;
+        const proximoPago = pagosProg.find(p => !p.pagado) || null;
 
         if (proximoPago) {
           botonPagoHTML = `

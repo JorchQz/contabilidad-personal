@@ -291,8 +291,8 @@ export async function getPagosPendientes() {
     { data: gastosFijos },
     { data: deudas }
   ] = await Promise.all([
-    db.from('gastos_fijos').select('*').eq('usuario_id', usuarioId).eq('activo', true),
-    db.from('deudas').select('*').eq('usuario_id', usuarioId).eq('activa', true)
+    db.from('gastos_fijos').select('id,descripcion,monto,monto_estimado,frecuencia,dia_pago,dia_semana,proximo_pago,ultimo_pago,fecha_flexible').eq('usuario_id', usuarioId).eq('activo', true),
+    db.from('deudas').select('id,acreedor,monto_actual,monto_pago,tipo_pago,tipo_deuda,dia_pago,dia_semana,activa').eq('usuario_id', usuarioId).eq('activa', true)
   ]);
 
   for (const gf of (gastosFijos || [])) {
