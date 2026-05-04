@@ -120,7 +120,7 @@ function updateStepIndicator() {
     return `<div class="step-dot ${cls}"></div>`;
   }).join('');
   const label = STEP_LABELS[currentStep - 1] || '';
-  indicator.innerHTML = `<div style="display:flex;gap:5px;align-items:center;margin-bottom:4px">${dots}</div><div style="font-size:11px;color:var(--text-muted);font-weight:500">Paso ${currentStep} de ${TOTAL_STEPS} · ${label}</div>`;
+  indicator.innerHTML = `<div style="display:flex;gap:5px;align-items:center;margin-bottom:4px;justify-content:flex-end">${dots}</div><div style="font-size:11px;color:var(--text-muted);font-weight:500;text-align:right">Paso ${currentStep} de ${TOTAL_STEPS} · ${label}</div>`;
 }
 
 function setHeader(title, subtitle) {
@@ -1306,7 +1306,7 @@ function removeMeta(i) {
 }
 
 function nextStep6() {
-  renderStep(6);
+  renderStep(7);
 }
 
 // ---- STEP 6: Gastos Diarios ----
@@ -1430,7 +1430,7 @@ window.guardarGdCustom = function() {
 };
 
 function nextStepGastosDiarios() {
-  renderStep(7);
+  renderStep(6);
 }
 window.nextStepGastosDiarios = nextStepGastosDiarios;
 
