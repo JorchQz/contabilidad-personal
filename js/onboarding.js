@@ -120,7 +120,7 @@ function updateStepIndicator() {
     return `<div class="step-dot ${cls}"></div>`;
   }).join('');
   const label = STEP_LABELS[currentStep - 1] || '';
-  indicator.innerHTML = `<div style="display:flex;gap:5px;align-items:center;margin-bottom:4px;justify-content:flex-end">${dots}</div><div style="font-size:11px;color:var(--text-muted);font-weight:500;text-align:right">Paso ${currentStep} de ${TOTAL_STEPS} · ${label}</div>`;
+  indicator.innerHTML = `<div style="display:flex;gap:5px;align-items:center;margin-bottom:4px;justify-content:flex-end">${dots}</div><div style="font-size:11px;color:var(--text-muted);font-weight:500;text-align:right">Paso ${currentStep} de ${TOTAL_STEPS}</div>`;
 }
 
 function setHeader(title, subtitle) {
@@ -1527,12 +1527,12 @@ async function finishOnboarding() {
     const userId = user.id;
     const nombre = window._regNombre || (user.email ? user.email.split('@')[0] : 'Usuario');
 
-    // Insertar usuario con onboarding_completo=false — se actualiza al FINAL si todo sale bien
-    const { error: errUsuario } = await db.from('usuarios').insert({
+    // Upsert usuario — si ya existe (reintento tras fallo parcial), actualiza nombre sin romper
+    const { error: errUsuario } = await db.from('usuarios').upsert({
       id: userId,
       nombre: nombre,
       onboarding_completo: false
-    });
+    }, { onConflict: 'id' });
     if (errUsuario) throw errUsuario;
 
     if (onboardingData.tiposIngreso.length > 0) {
@@ -1543,7 +1543,7 @@ async function finishOnboarding() {
         usuario_id: userId,
         es_default: false
       }));
-      const { error: errCatsIngreso } = await db.from('categorias').insert(cats_ingreso);
+      const { error: errCatsIngreso } = await db.from('categorias').upsert(cats_ingreso, { onConflict: 'usuario_id,nombre,tipo', ignoreDuplicates: true });
       if (errCatsIngreso) throw errCatsIngreso;
 
       const programados = onboardingData.tiposIngreso
@@ -1571,7 +1571,7 @@ async function finishOnboarding() {
       es_default: true
     })));
     if (cats_gasto_predef.length > 0) {
-      const { error: errCatsGasto } = await db.from('categorias').insert(cats_gasto_predef);
+      const { error: errCatsGasto } = await db.from('categorias').upsert(cats_gasto_predef, { onConflict: 'usuario_id,nombre,tipo', ignoreDuplicates: true });
       if (errCatsGasto) throw errCatsGasto;
     }
 
@@ -1669,10 +1669,11 @@ async function finishOnboarding() {
     setTimeout(() => renderApp(), 300);
 
   } catch (err) {
-    console.error(err);
-    showSnackbar('Error al guardar. Intenta de nuevo.', 'error');
+    console.error('[finishOnboarding]', err);
+    const detalle = err?.message ? ` (${err.message})` : '';
+    showSnackbar(`No se pudo guardar${detalle}. Revisa tu conexión e intenta de nuevo.`, 'error');
     const btn = document.getElementById('btn-finish');
-    if (btn) { btn.innerHTML = '<i data-lucide="send" style="width:16px;height:16px;stroke-width:1.75;vertical-align:middle;margin-right:6px"></i>Comenzar a usar JM Finance'; btn.disabled = false; renderLucideIcons(); }
+    if (btn) { btn.innerHTML = 'Comenzar a usar JM Finance'; btn.disabled = false; }
   }
 }
 
