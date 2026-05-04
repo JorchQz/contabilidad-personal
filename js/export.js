@@ -1,8 +1,13 @@
 // js/export.js — Exportación de datos financieros a CSV y PDF
 import { db, getUsuarioId } from './supabase.js';
 
+function _exportError(msg) {
+  if (typeof window.showSnackbar === 'function') window.showSnackbar(msg, 'error');
+  else console.error(msg);
+}
+
 export async function exportarReportePDF() {
-  if (!window.jspdf) { alert('El módulo PDF no está cargado. Recarga la app.'); return; }
+  if (!window.jspdf) { _exportError('El módulo PDF no está cargado. Recarga la app.'); return; }
   const uid = await getUsuarioId();
   if (!uid) return;
 
@@ -11,21 +16,27 @@ export async function exportarReportePDF() {
   const finMes    = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).toISOString().split('T')[0];
 
   const [
-    { data: gastosMes },
-    { data: ingresosMes },
-    { data: deudas },
-    { data: metas }
+    { data: gastosMes,  error: e1 },
+    { data: ingresosMes, error: e2 },
+    { data: deudas,     error: e3 },
+    { data: metas,      error: e4 },
+    { data: cuentas,    error: e5 },
+    { data: gastosFijos, error: e6 }
   ] = await Promise.all([
     db.from('gastos').select('fecha, monto, descripcion, categorias(nombre)').eq('usuario_id', uid).neq('es_ahorro', true).gte('fecha', inicioMes).lte('fecha', finMes).order('fecha', { ascending: false }),
     db.from('ingresos').select('fecha, monto, descripcion').eq('usuario_id', uid).gte('fecha', inicioMes).lte('fecha', finMes).order('fecha', { ascending: false }),
-    db.from('deudas').select('acreedor, monto_inicial, monto_actual').eq('usuario_id', uid).eq('activa', true).order('monto_actual', { ascending: false }),
-    db.from('metas_ahorro').select('nombre, monto_objetivo, monto_actual, fecha_limite').eq('usuario_id', uid).eq('activa', true).order('nombre', { ascending: true })
+    db.from('deudas').select('acreedor, monto_inicial, monto_actual, tasa_interes_anual').eq('usuario_id', uid).eq('activa', true).order('monto_actual', { ascending: false }),
+    db.from('metas_ahorro').select('nombre, monto_objetivo, monto_actual, fecha_limite').eq('usuario_id', uid).eq('activa', true).order('nombre', { ascending: true }),
+    db.from('cuentas').select('nombre, tipo, saldo_inicial, es_disponible, es_pasivo').eq('usuario_id', uid).eq('activa', true),
+    db.from('gastos_fijos').select('descripcion, monto, frecuencia, monto_estimado').eq('usuario_id', uid).eq('activo', true)
   ]);
 
-  const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0 }).format(n || 0);
-  const totalGastos   = (gastosMes  || []).reduce((s, g) => s + Number(g.monto), 0);
-  const totalIngresos = (ingresosMes || []).reduce((s, i) => s + Number(i.monto), 0);
-  const totalDeuda    = (deudas || []).reduce((s, d) => s + Number(d.monto_actual), 0);
+  if (e1 || e2 || e3 || e4) { _exportError('No se pudieron cargar los datos para el reporte'); return; }
+
+  const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0 }).format(Number.isFinite(Number(n)) ? n : 0);
+  const totalGastos   = (gastosMes  || []).reduce((s, g) => s + (Number(g.monto) || 0), 0);
+  const totalIngresos = (ingresosMes || []).reduce((s, i) => s + (Number(i.monto) || 0), 0);
+  const totalDeuda    = (deudas || []).reduce((s, d) => s + (Number(d.monto_actual) || 0), 0);
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -131,6 +142,36 @@ export async function exportarReportePDF() {
     didDrawPage: pie,
   });
 
+  // Cuentas
+  if ((cuentas || []).length > 0) {
+    const _normMens = (m, f) => { const d = {semanal:4.33,quincenal:2,mensual:1,bimestral:.5,trimestral:.33,semestral:.17,anual:.083}; return (Number(m)||0)*(d[f]||1); };
+    const fijosMens = (gastosFijos||[]).reduce((s,f) => !f.monto_estimado&&f.monto ? s+_normMens(f.monto,f.frecuencia) : s, 0);
+    const deudaMens = (deudas||[]).reduce((s,d) => s+(Number(d.monto_actual&&d.tasa_interes_anual?(d.monto_actual*(d.tasa_interes_anual/100)/12):0)||0),0);
+    const ratioEndeud = totalIngresos > 0 ? Math.round(((fijosMens + deudaMens) / (totalIngresos / 2)) * 100) : 0;
+    const semaforo = ratioEndeud < 30 ? 'Saludable' : ratioEndeud < 50 ? 'Con carga' : 'Atención';
+
+    startY = tituloSeccion(doc.lastAutoTable.finalY + 8, 'Estado de cuentas');
+    doc.autoTable({
+      startY, margin: { left: M, right: M },
+      head: [['Cuenta', 'Tipo', 'Saldo']],
+      body: cuentas.map(c => [c.nombre||'', c.tipo||'', fmt(c.saldo_inicial)]),
+      styles: { fontSize: 9, cellPadding: 2.5 },
+      headStyles: { fillColor: AZUL, textColor: [255,255,255], fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [248,250,252] },
+      columnStyles: { 2: { halign: 'right' } },
+      didDrawPage: pie,
+    });
+
+    // Diagnóstico financiero rápido
+    const diagY = doc.lastAutoTable.finalY + 10;
+    doc.setFillColor(248,250,252); doc.setDrawColor(200,200,200);
+    doc.roundedRect(M, diagY, PW-M*2, 18, 2, 2, 'FD');
+    doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(0,0,0);
+    doc.text('Diagnóstico: ' + semaforo, M+4, diagY+8);
+    doc.setFont('helvetica','normal'); doc.setTextColor(...GRIS);
+    doc.text(`Ratio endeudamiento estimado: ${ratioEndeud}% del ingreso mensual`, M+4, diagY+14);
+  }
+
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
   const nombre = `jm_finance_${hoy.toISOString().slice(0, 7)}.pdf`;
   if (isIOS) { window.open(doc.output('bloburl'), '_blank'); }
@@ -153,12 +194,13 @@ export async function exportarDatosCSV() {
   if (!uid) return;
 
   const [
-    { data: gastos },
-    { data: ingresos },
-    { data: gastosFijos },
-    { data: deudas },
-    { data: pagosDeuda },
-    { data: metas }
+    { data: gastos,      error: ce1 },
+    { data: ingresos,    error: ce2 },
+    { data: gastosFijos, error: ce3 },
+    { data: deudas,      error: ce4 },
+    { data: pagosDeuda,  error: ce5 },
+    { data: metas,       error: ce6 },
+    { data: cuentasCsv,  error: ce7 }
   ] = await Promise.all([
     db.from('gastos')
       .select('fecha, monto, descripcion, es_ahorro, categorias(nombre), cuentas(nombre)')
@@ -185,8 +227,14 @@ export async function exportarDatosCSV() {
       .select('nombre, monto_objetivo, monto_actual, fecha_limite, frecuencia_ahorro')
       .eq('usuario_id', uid)
       .eq('activa', true)
-      .order('nombre', { ascending: true })
+      .order('nombre', { ascending: true }),
+    db.from('cuentas')
+      .select('nombre, tipo, saldo_inicial')
+      .eq('usuario_id', uid)
+      .eq('activa', true)
   ]);
+
+  if (ce1 || ce2) { _exportError('No se pudieron cargar los movimientos para exportar'); return; }
 
   const filas = [];
   const hoy = new Date().toISOString().split('T')[0];
@@ -231,6 +279,17 @@ export async function exportarDatosCSV() {
   filas.push(csvRow(['', '', '', '', '', '']));
 
   // --- SECCIÓN 2: Progreso de Deudas ---
+  // --- SECCIÓN CUENTAS ---
+  if ((cuentasCsv || []).length > 0) {
+    filas.push(csvRow(['', '', '', '', '', '']));
+    filas.push(csvRow(['=== CUENTAS ===', '', '', '', '', '']));
+    filas.push(csvRow(['Cuenta', 'Tipo', 'Saldo inicial', '', '', '']));
+    for (const c of cuentasCsv) {
+      filas.push(csvRow([c.nombre||'', c.tipo||'', c.saldo_inicial||0, '', '', '']));
+    }
+  }
+
+  filas.push(csvRow(['', '', '', '', '', '']));
   filas.push(csvRow(['=== DEUDAS ===', '', '', '', '', '']));
   filas.push(csvRow(['Acreedor', 'Tipo', 'Monto Inicial', 'Saldo Actual', '% Pagado', 'Cuota', 'Frecuencia', 'Tasa %']));
 

@@ -40,7 +40,7 @@ export async function loadMetas() {
     { data: metas },
     { data: cuentas }
   ] = await Promise.all([
-    db.from('metas_ahorro').select('*').eq('usuario_id', uid).eq('activa', true),
+    db.from('metas_ahorro').select('*').eq('usuario_id', uid).eq('activa', true).order('fecha_limite', { ascending: true, nullsFirst: false }),
     db.from('cuentas').select('id, nombre').eq('usuario_id', uid).eq('activa', true)
   ]);
 
@@ -48,31 +48,54 @@ export async function loadMetas() {
 
   document.getElementById('page-metas').innerHTML = `
     <div class="page-header">
-      <h1 class="page-title">Metas de ahorro</h1>
+      <h1 class="page-title">Mis sobres</h1>
     </div>
     <div class="page-body">
       ${!metas || metas.length === 0 ? `
-        <div class="empty-state">
-          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
-          <p>Aún no tienes metas de ahorro.<br>¡Crea una para empezar!</p>
+        <div class="empty-state" style="padding:32px 16px;text-align:center">
+          <div class="empty-icon" style="margin-bottom:16px"><i data-lucide="piggy-bank" style="width:56px;height:56px;stroke-width:1.5;color:var(--green)"></i></div>
+          <div style="font-size:16px;font-weight:600;margin-bottom:8px">Empieza tu primer sobre</div>
+          <p style="color:var(--text-secondary);font-size:14px;line-height:1.5">Ahorra poco a poco para emergencias,<br>vacaciones o lo que sueñes.</p>
         </div>
       ` : metas.map(m => {
         const pct = m.monto_objetivo > 0 ? Math.min(Math.round((m.monto_actual / m.monto_objetivo) * 100), 100) : 0;
+        const completada = pct >= 100;
+        const hoy = new Date(); hoy.setHours(0,0,0,0);
+        let urgencia = '';
+        let barraColor = 'linear-gradient(90deg,var(--accent),var(--green))';
+        if (!completada && m.fecha_limite) {
+          const fechaLim = new Date(m.fecha_limite + 'T00:00:00');
+          const diasRestantes = Math.ceil((fechaLim - hoy) / 86400000);
+          if (diasRestantes <= 0) {
+            urgencia = `<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(239,68,68,0.15);color:var(--red);border-radius:9999px;padding:2px 7px;font-size:11px;font-weight:600"><i data-lucide="alert-triangle" style="width:11px;height:11px;stroke-width:2.5"></i> Vencida</span>`;
+            barraColor = 'var(--red)';
+          } else if (diasRestantes <= 15) {
+            urgencia = `<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(245,158,11,0.15);color:var(--yellow);border-radius:9999px;padding:2px 7px;font-size:11px;font-weight:600"><i data-lucide="clock" style="width:11px;height:11px;stroke-width:2.5"></i> ${diasRestantes} días</span>`;
+            barraColor = 'var(--yellow)';
+          }
+        }
+        const cuentaLabel = m.cuenta_id ? escapeHtml(cuentasPorId[m.cuenta_id] || 'Cuenta eliminada') : 'Sobre de efectivo';
         return `
-          <div class="card">
+          <div class="card" style="${completada ? 'border-color:var(--green);' : ''}">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
               <div style="display:flex;align-items:center;gap:12px">
-                <span style="font-size:28px;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px">${renderEmojiOrIcon(m.emoji, 'target', 22)}</span>
+                <span style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px">${renderEmojiOrIcon(m.emoji, 'target', 22)}</span>
                 <div>
-                  <div style="font-weight:600;font-size:14px">${escapeHtml(m.nombre)}</div>
-                  <div style="font-size:12px;color:var(--text-muted)">${m.cuenta_id ? escapeHtml(cuentasPorId[m.cuenta_id] || 'Cuenta eliminada') : 'Sin cuenta vinculada'}</div>
+                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                    <span style="font-weight:600;font-size:14px">${escapeHtml(m.nombre)}</span>
+                    ${completada ? `<span style="display:inline-flex;align-items:center;gap:3px;background:var(--green-soft);color:var(--green);border-radius:9999px;padding:2px 7px;font-size:11px;font-weight:600"><i data-lucide="check-circle" style="width:11px;height:11px;stroke-width:2.5"></i> Completado</span>` : urgencia}
+                  </div>
+                  <div style="font-size:12px;color:var(--text-muted)">${cuentaLabel}</div>
                   <div style="font-size:12px;color:var(--text-secondary)">Meta: ${formatMXN(m.monto_objetivo)}</div>
                 </div>
               </div>
-              <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuMeta('${m.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
+              <div style="display:flex;align-items:center;gap:4px">
+                ${!completada ? `<button style="background:var(--accent-soft);border:1px solid rgba(59,130,246,0.2);border-radius:var(--radius-xs);padding:6px 12px;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)" onclick="openAbonarMeta('${m.id}')">Abonar</button>` : ''}
+                <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuMeta('${m.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
+              </div>
             </div>
             <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:8px">
-              <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:4px;transition:width 0.6s ease"></div>
+              <div style="height:100%;width:${pct}%;background:${barraColor};border-radius:4px;transition:width 0.6s ease"></div>
             </div>
             <div style="display:flex;justify-content:space-between;font-size:13px">
               <span style="color:var(--text-secondary)">${pct}% completado</span>
@@ -143,7 +166,7 @@ function renderMetaAbonoHint() {
 async function guardarAbonoMeta(metaId) {
   const abono = parseFloat(document.getElementById('ma-abono')?.value);
 
-  if (!abono || abono <= 0) {
+  if (!abono || abono <= 0 || !isFinite(abono) || abono > 999_999_999) {
     showSnackbar('Ingresa un monto válido', 'error');
     return;
   }
@@ -151,7 +174,7 @@ async function guardarAbonoMeta(metaId) {
   const usuarioId = (await getUsuarioId());
   const { data: meta, error: errorMeta } = await db
     .from('metas_ahorro')
-    .select('monto_actual, nombre, cuenta_id')
+    .select('monto_actual, monto_objetivo, nombre, cuenta_id')
     .eq('id', metaId)
     .eq('usuario_id', usuarioId)
     .maybeSingle();
@@ -161,24 +184,47 @@ async function guardarAbonoMeta(metaId) {
     return;
   }
 
-  if (!meta.cuenta_id) {
-    showSnackbar('Configura una cuenta para esta meta primero', 'error');
+  const restante = Math.max(Number(meta.monto_objetivo || 0) - Number(meta.monto_actual || 0), 0);
+  if (restante > 0 && abono > restante) {
+    showSnackbar(`El abono excede lo que falta (${formatMXN(restante)})`, 'error');
     return;
   }
 
-  const { error: errorSaldo, saldoDisponible } = await getSaldoCuentaEspecifica(usuarioId, meta.cuenta_id);
+  // Si tiene cuenta vinculada, validar saldo; si es sobre físico, no descuenta
+  if (meta.cuenta_id) {
+    const { error: errorSaldo, saldoDisponible } = await getSaldoCuentaEspecifica(usuarioId, meta.cuenta_id);
 
-  if (errorSaldo) {
-    showSnackbar('No se pudo validar el saldo disponible de la cuenta', 'error');
-    return;
-  }
+    if (errorSaldo) {
+      showSnackbar('No se pudo validar el saldo disponible de la cuenta', 'error');
+      return;
+    }
 
-  if (abono > saldoDisponible) {
-    showSnackbar('Saldo insuficiente — disponible: ' + formatMXN(saldoDisponible), 'error');
-    return;
+    if (abono > saldoDisponible) {
+      showSnackbar('Saldo insuficiente — disponible: ' + formatMXN(saldoDisponible), 'error');
+      return;
+    }
   }
 
   const nuevoMonto = Number(meta.monto_actual || 0) + abono;
+  const fecha = new Date().toISOString().split('T')[0];
+
+  // INSERT gasto primero — si falla, la meta no se modifica (atomicidad parcial)
+  if (meta.cuenta_id) {
+    const { error: errorGasto } = await db.from('gastos').insert({
+      descripcion: 'Abono a meta: ' + meta.nombre,
+      monto: abono,
+      usuario_id: usuarioId,
+      fecha,
+      cuenta_id: meta.cuenta_id,
+      es_ahorro: true,
+      meta_id: metaId
+    });
+    if (errorGasto) {
+      showSnackbar('No se pudo registrar el abono', 'error');
+      return;
+    }
+  }
+
   const { error } = await db
     .from('metas_ahorro')
     .update({ monto_actual: nuevoMonto })
@@ -186,22 +232,7 @@ async function guardarAbonoMeta(metaId) {
     .eq('usuario_id', usuarioId);
 
   if (error) {
-    showSnackbar('No se pudo guardar el abono', 'error');
-    return;
-  }
-
-  const { error: errorGasto } = await db.from('gastos').insert({
-    descripcion: 'Abono a meta: ' + meta.nombre,
-    monto: abono,
-    usuario_id: usuarioId,
-    fecha: new Date().toISOString().split('T')[0],
-    cuenta_id: meta.cuenta_id,
-    es_ahorro: true,
-    meta_id: metaId
-  });
-
-  if (errorGasto) {
-    showSnackbar('El abono se guardó, pero no se pudo registrar el gasto asociado', 'error');
+    showSnackbar('El movimiento se registró pero no se actualizó el sobre', 'error');
     await loadMetas();
     await loadDashboard();
     closeModal();
@@ -209,7 +240,7 @@ async function guardarAbonoMeta(metaId) {
   }
 
   closeModal();
-  showSnackbar('Abono registrado ✓', 'success');
+  showSnackbar('Abono registrado', 'success');
   await loadMetas();
   await loadDashboard();
   await loadCuentas();
@@ -341,11 +372,12 @@ function renderMetaModal() {
 
 function _capturarDraftMeta() {
   return {
-    nombre:           document.getElementById('nm-nombre')?.value || '',
-    monto:            document.getElementById('nm-monto')?.value || '',
-    cuenta_id:        document.getElementById('meta-cuenta-id')?.value || '',
-    fecha_limite:     document.getElementById('nm-fecha-limite')?.value || '',
+    nombre:            document.getElementById('nm-nombre')?.value || '',
+    monto:             document.getElementById('nm-monto')?.value || '',
+    cuenta_id:         document.getElementById('meta-cuenta-id')?.value || '',
+    fecha_limite:      document.getElementById('nm-fecha-limite')?.value || '',
     frecuencia_ahorro: document.getElementById('nm-frecuencia')?.value || 'mensual',
+    monto_actual:      window._metaDraft?.monto_actual || 0,
   };
 }
 
@@ -400,9 +432,14 @@ async function guardarMeta() {
   const fecha_limite = document.getElementById('nm-fecha-limite')?.value || null;
   const frecuencia_ahorro = document.getElementById('nm-frecuencia')?.value || null;
 
-  if (!nombre || Number.isNaN(monto_objetivo) || monto_objetivo <= 0 || !isFinite(monto_objetivo)) {
-    showSnackbar('Completa nombre y monto', 'error');
-    return;
+  if (!nombre || nombre.length > 80) { showSnackbar('Nombre de sobre inválido (máx. 80 caracteres)', 'error'); return; }
+  if (Number.isNaN(monto_objetivo) || monto_objetivo <= 0 || !isFinite(monto_objetivo) || monto_objetivo > 999_999_999) {
+    showSnackbar('Monto objetivo inválido', 'error'); return;
+  }
+  if (fecha_limite) {
+    const fl = new Date(fecha_limite + 'T00:00:00');
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    if (isNaN(fl) || fl <= hoy) { showSnackbar('La fecha límite debe ser futura', 'error'); return; }
   }
 
   const usuarioId = await getUsuarioId();

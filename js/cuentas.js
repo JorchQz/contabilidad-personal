@@ -114,14 +114,14 @@ export function calcularCuentasConSaldo(cuentas = [], ingresosPorCuenta = [], ga
 export async function loadCuentas() {
   const uid = await getUsuarioId();
   const [
-    { data: cuentas },
+    { data: cuentas, error: errCuentas },
     { data: ingresosPorCuenta },
     { data: gastosPorCuenta },
     { data: pagosDeudaPorCuenta },
     { data: traspasosSalida },
     { data: traspasosEntrada }
   ] = await Promise.all([
-    db.from('cuentas').select('id, nombre, tipo, saldo_inicial, es_disponible, es_pasivo').eq('usuario_id', uid).eq('activa', true),
+    db.from('cuentas').select('id, nombre, tipo, saldo_inicial, es_disponible, es_pasivo').eq('usuario_id', uid).eq('activa', true).order('tipo').order('nombre'),
     db.from('ingresos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
     db.from('gastos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
     db.from('pagos_deuda').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
@@ -129,7 +129,13 @@ export async function loadCuentas() {
     db.from('transferencias').select('cuenta_destino_id, monto').eq('usuario_id', uid).not('cuenta_destino_id', 'is', null)
   ]);
 
-  const { cuentasConSaldo, totalGeneralCuentas } = calcularCuentasConSaldo(
+  if (errCuentas) {
+    document.getElementById('page-cuentas').innerHTML = `<div class="page-header"><h1 class="page-title">Mis cuentas</h1></div><div class="page-body"><div class="empty-state"><p>No se pudieron cargar las cuentas.</p></div></div>`;
+    renderLucideIcons();
+    return;
+  }
+
+  const { cuentasConSaldo, totalGeneralCuentas, totalDisponible } = calcularCuentasConSaldo(
     cuentas || [],
     ingresosPorCuenta || [],
     gastosPorCuenta || [],
@@ -138,9 +144,13 @@ export async function loadCuentas() {
     traspasosEntrada || []
   );
 
+  const totalCredito = (cuentasConSaldo || [])
+    .filter(c => c.es_pasivo)
+    .reduce((s, c) => s + Math.abs(Math.min(c.saldoCalculado, 0)), 0);
+
   document.getElementById('page-cuentas').innerHTML = `
     <div class="page-header">
-      <h1 class="page-title">Cuentas</h1>
+      <h1 class="page-title">Mis cuentas</h1>
     </div>
     <div class="page-body" style="padding-top:0">
       ${!cuentasConSaldo.length ? `
@@ -161,9 +171,18 @@ export async function loadCuentas() {
           </div>
         `).join('')}
         <div class="card" style="margin-top:8px;background:var(--bg-elevated)">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-size:12px;color:var(--text-secondary)">Total general</span>
-            <span style="font-size:15px;font-weight:700;font-family:var(--font)">${formatMXN(totalGeneralCuentas)}</span>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-size:12px;color:var(--text-secondary)">Disponible</span>
+            <span style="font-size:14px;font-weight:700;color:var(--green)">${formatMXN(totalDisponible)}</span>
+          </div>
+          ${totalCredito > 0 ? `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-size:12px;color:var(--text-secondary)">Crédito usado</span>
+            <span style="font-size:14px;font-weight:600;color:var(--red)">-${formatMXN(totalCredito)}</span>
+          </div>` : ''}
+          <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border-light)">
+            <span style="font-size:12px;color:var(--text-muted)">Patrimonio neto</span>
+            <span style="font-size:13px;font-weight:700;color:${(totalDisponible - totalCredito) >= 0 ? 'var(--text)' : 'var(--red)'}">${formatMXN(totalDisponible - totalCredito)}</span>
           </div>
         </div>
       `}
@@ -213,7 +232,8 @@ export async function openEditarCuenta(cuentaId) {
     <div class="form-group">
       <label class="form-label">Saldo inicial</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="ec-saldo" type="number" min="0" value="${Number(cuenta.saldo_inicial || 0)}" /></div>
+      <input class="form-input" id="ec-saldo" type="number" min="0" max="999999999" value="${Number(cuenta.saldo_inicial || 0)}" />
+      <p class="form-hint" style="margin-top:4px;color:var(--yellow)"><i data-lucide="alert-triangle" style="width:12px;height:12px;stroke-width:2;vertical-align:middle"></i> Cambiar el saldo inicial recalcula todo el historial</p></div>
     </div>
     <button class="btn btn-primary" onclick="guardarEdicionCuenta('${cuenta.id}')">Guardar cambios</button>
   `);
@@ -226,7 +246,7 @@ export async function guardarEdicionCuenta(cuentaId) {
 
   const TIPOS_VALIDOS = ['efectivo', 'debito', 'credito', 'ahorro'];
   const MAX_SALDO = 999999999;
-  if (!nombre || nombre.length > 100 || !TIPOS_VALIDOS.includes(tipo) || Number.isNaN(saldo_inicial) || saldo_inicial < 0 || saldo_inicial > MAX_SALDO) {
+  if (!nombre || nombre.length > 100 || !TIPOS_VALIDOS.includes(tipo) || !Number.isFinite(saldo_inicial) || saldo_inicial < 0 || saldo_inicial > MAX_SALDO) {
     showSnackbar('Completa los campos correctamente', 'error');
     return;
   }
@@ -244,16 +264,18 @@ export async function guardarEdicionCuenta(cuentaId) {
   }
 
   closeModal();
-  showSnackbar('Cuenta actualizada ✓', 'success');
+  showSnackbar('Cuenta actualizada', 'success');
   await loadCuentas();
   await loadDashboard();
 }
 
 export async function eliminarCuenta(cuentaId) {
+  const uid = await getUsuarioId();
   const { data: cuentaCheck } = await db
     .from('cuentas')
     .select('tipo, nombre')
     .eq('id', cuentaId)
+    .eq('usuario_id', uid)
     .maybeSingle();
 
   if (cuentaCheck?.tipo === 'efectivo') {
@@ -261,8 +283,11 @@ export async function eliminarCuenta(cuentaId) {
     return;
   }
 
-  if (!confirm('¿Eliminar esta cuenta?\n\nLos movimientos de esta cuenta se conservan en el historial.')) return;
+  openConfirmModal(`¿Eliminar "${escapeHtml(cuentaCheck?.nombre || 'esta cuenta')}"? Los movimientos se conservan en el historial.`, `_doEliminarCuentaConfirmada('${cuentaId}')`);
 
+}
+
+async function _doEliminarCuentaConfirmada(cuentaId) {
   const { error } = await db
     .from('cuentas')
     .update({ activa: false })
@@ -316,7 +341,7 @@ export async function guardarNuevaCuenta() {
     showSnackbar('Selecciona un tipo de cuenta válido', 'error');
     return;
   }
-  if (saldo_inicial < 0 || saldo_inicial > MAX_SALDO) {
+  if (!Number.isFinite(saldo_inicial) || saldo_inicial < 0 || saldo_inicial > MAX_SALDO) {
     showSnackbar('Ingresa un saldo entre $0 y $999,999,999', 'error');
     return;
   }
@@ -338,7 +363,7 @@ export async function guardarNuevaCuenta() {
   }
 
   closeModal();
-  showSnackbar('Cuenta guardada ✓', 'success');
+  showSnackbar('Cuenta guardada', 'success');
   await loadCuentas();
   await loadDashboard();
 }
@@ -348,5 +373,6 @@ window.openMenuCuenta = openMenuCuenta;
 window.openEditarCuenta = openEditarCuenta;
 window.eliminarCuenta = eliminarCuenta;
 window.guardarEdicionCuenta = guardarEdicionCuenta;
+window._doEliminarCuentaConfirmada = _doEliminarCuentaConfirmada;
 window.openAgregarCuenta = openAgregarCuenta;
 window.guardarNuevaCuenta = guardarNuevaCuenta;

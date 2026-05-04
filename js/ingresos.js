@@ -579,6 +579,11 @@ async function guardarIngreso() {
   const frecuenciaPrestamo = document.getElementById('ri-freq-prestamo')?.value || 'libre';
   const montoPagoPrestamo = parseFloat(document.getElementById('ri-pago-prestamo')?.value) || null;
   if (!monto || monto <= 0 || !isFinite(monto)) { showSnackbar('Ingresa un monto válido', 'error'); return; }
+  if (descripcion.length > 200) { showSnackbar('La descripción es muy larga (máx. 200 caracteres)', 'error'); return; }
+  const fechaDate = new Date(fecha + 'T00:00:00');
+  if (!fecha || isNaN(fechaDate) || fechaDate.getFullYear() < 2020 || fechaDate > new Date()) {
+    showSnackbar('Fecha inválida', 'error'); return;
+  }
   if (tipo === 'prestamo' && !prestamista) { showSnackbar('Escribe quién te prestó', 'error'); return; }
   if (tipo === 'prestamo' && (!montoPagoPrestamo || montoPagoPrestamo <= 0 || !isFinite(montoPagoPrestamo))) {
     showSnackbar('Ingresa el monto de cada cuota para proyectar tus pagos', 'error'); return;

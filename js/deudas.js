@@ -44,7 +44,8 @@ function calcularProyeccionLiquidacion(montoActual, montoPago, tasaAnual, tipoPa
   if (nPeriodos > 600) return { lejano: true, anios: Math.round(nPeriodos / freq) };
   const meses = Math.round(nPeriodos / (freq / 12));
   const fechaLiq = new Date(Date.now() + nPeriodos * dias * 86400000);
-  return { fecha: fechaLiq, nPeriodos, meses };
+  const interesTotal = Math.max((nPeriodos * montoPago) - montoActual, 0);
+  return { fecha: fechaLiq, nPeriodos, meses, interesTotal };
 }
 
 function renderPlanPago(deudas) {
@@ -130,13 +131,15 @@ export async function loadDeudas() {
       if (d.tipo_deuda !== 'tabla' && d.tipo_deuda !== 'flexible' && d.monto_pago) {
         const proy = calcularProyeccionLiquidacion(d.monto_actual, d.monto_pago, d.tasa_interes_anual, d.tipo_pago);
         if (proy?.sinSalida) {
-          proyeccionHtml = `<div style="margin-top:6px;font-size:12px;color:var(--red);display:flex;align-items:center;gap:4px"><i data-lucide="alert-triangle" style="width:12px;height:12px;stroke-width:2.5"></i> El pago no cubre los intereses</div>`;
+          const iMes = Number(((d.tasa_interes_anual || 0) / 100 / 12) * d.monto_actual) || 0;
+          proyeccionHtml = `<div style="margin-top:6px;font-size:12px;color:var(--yellow);display:flex;align-items:center;gap:4px"><i data-lucide="alert-circle" style="width:12px;height:12px;stroke-width:1.75"></i> Tu saldo crece ${iMes > 0 ? formatMXN(iMes) : ''} cada mes — necesitas abonar más</div>`;
         } else if (proy?.lejano) {
           proyeccionHtml = `<div style="margin-top:6px;font-size:12px;color:var(--text-muted)">Proyección: ~${proy.anios} año${proy.anios !== 1 ? 's' : ''} con el pago actual</div>`;
         } else if (proy?.fecha) {
           const cerca = proy.meses <= 3;
           const label = proy.meses <= 1 ? 'menos de un mes' : `${proy.meses} mese${proy.meses !== 1 ? 's' : ''}`;
-          proyeccionHtml = `<div style="margin-top:6px;font-size:12px;color:${cerca ? 'var(--green)' : 'var(--text-secondary)'};display:flex;align-items:center;gap:4px"><i data-lucide="calendar-check" style="width:12px;height:12px;stroke-width:1.75"></i> Libre en ${label} · ${proy.fecha.toLocaleDateString('es-MX', {month:'long', year:'numeric'})}</div>`;
+          const interesLabel = proy.interesTotal > 0 ? ` · ${formatMXN(proy.interesTotal)} en intereses` : '';
+          proyeccionHtml = `<div style="margin-top:6px;font-size:12px;color:${cerca ? 'var(--green)' : 'var(--text-secondary)'};display:flex;align-items:center;gap:4px"><i data-lucide="calendar-check" style="width:12px;height:12px;stroke-width:1.75"></i> Libre en ${label} · ${proy.fecha.toLocaleDateString('es-MX', {month:'long', year:'numeric'})}${interesLabel}</div>`;
         }
       }
 
@@ -161,7 +164,7 @@ export async function loadDeudas() {
               </div>
               <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Vence: ${new Date(proximoPago.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-MX')}</div>
               <button data-action="pagar-deuda" data-deuda-id="${escapeHtml(d.id)}" data-acreedor="${escapeHtml(d.acreedor)}" data-monto-actual="${d.monto_actual}" data-tipo-deuda="${escapeHtml(d.tipo_deuda)}" data-monto-ultimo-pago="${d.monto_ultimo_pago || ''}" style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font);width:100%">
-                Registrar pago
+                Abonar
               </button>
             </div>
           `;
@@ -590,14 +593,15 @@ async function guardarPagoDeuda(deudaId, montoActual, tipoDeuda) {
 
   const { error: errDeuda } = await db.from('deudas').update({
     monto_actual: nuevoMonto,
-    activa: nuevoMonto > 0,
+    activa: nuevoMonto >= 1,
+    monto_actual: nuevoMonto < 1 ? 0 : nuevoMonto,
     ultimo_pago: fechaHoy,
     monto_ultimo_pago: monto
   }).eq('id', deudaId);
   if (errDeuda) { showSnackbar('Error al actualizar la deuda', 'error'); return; }
 
   closeModal();
-  showSnackbar(nuevoMonto === 0 ? 'Deuda saldada' : 'Pago registrado ✓', 'success');
+  showSnackbar(nuevoMonto < 1 ? 'Deuda saldada' : 'Pago registrado', 'success');
   await loadDeudas();
   await loadDashboard();
 }
@@ -607,23 +611,23 @@ function openAgregarDeuda() {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
       <button onclick="selectTipoDeuda('simple')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
         <i data-lucide="credit-card" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block;stroke-width:1.75"></i>
-        <div style="font-weight:600;font-size:14px">Simple</div>
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Fijo<br>Fecha: Fija</div>
+        <div style="font-weight:600;font-size:14px">Préstamo fijo</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Mensualidades iguales<br>Ej: nómina, caja popular</div>
       </button>
       <button onclick="selectTipoDeuda('variable')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
         <i data-lucide="trending-down" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block;stroke-width:1.75"></i>
-        <div style="font-weight:600;font-size:14px">Variable</div>
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Cambia<br>Fecha: Fija</div>
+        <div style="font-weight:600;font-size:14px">Tarjeta de crédito</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">El pago cambia cada mes<br>Ej: BBVA, Liverpool, Coppel</div>
       </button>
       <button onclick="selectTipoDeuda('tabla')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
         <i data-lucide="calendar" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block;stroke-width:1.75"></i>
-        <div style="font-weight:600;font-size:14px">Con tabla</div>
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Cambia<br>Fecha: Cambia</div>
+        <div style="font-weight:600;font-size:14px">Tengo mi tabla</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Capturo cada cuota<br>Ej: hipoteca, financiera</div>
       </button>
       <button onclick="selectTipoDeuda('flexible')" style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
         <i data-lucide="wallet" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block;stroke-width:1.75"></i>
-        <div style="font-weight:600;font-size:14px">Flexible</div>
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Libre<br>Fecha: Libre</div>
+        <div style="font-weight:600;font-size:14px">Deuda libre</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Pago lo que puedo<br>Ej: familia, amigos, fiado</div>
       </button>
     </div>
   `);
@@ -639,7 +643,7 @@ function openFormularioNuevaDeuda(tipo) {
   let formContent = `
     <div class="form-group">
       <label class="form-label">¿A quién le debes?</label>
-      <input class="form-input" id="nd-acreedor" type="text" placeholder="Ej: Caja Popular, mamá, etc." />
+      <input class="form-input" id="nd-acreedor" type="text" placeholder="Ej: Caja Popular, mamá, etc." maxlength="80" />
     </div>
     <div class="form-group">
       <label class="form-label">Monto total</label>
@@ -648,7 +652,8 @@ function openFormularioNuevaDeuda(tipo) {
     </div>
     <div class="form-group">
       <label class="form-label">Tasa de interés anual % <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
-      <input class="form-input" id="nd-tasa" type="number" placeholder="Ej: 70 tarjeta · 30 caja popular · 0 sin interés" min="0" max="999" />
+      <input class="form-input" id="nd-tasa" type="number" placeholder="Ej: 40 nómina · 55 tarjeta · 28 caja popular · 0 familiar" min="0" max="999" />
+      <p class="form-hint" style="margin-top:4px">Tasa nominal anual (no el CAT). Si no la sabes, revisa tu contrato o estado de cuenta.</p>
     </div>
   `;
 
@@ -749,7 +754,9 @@ async function guardarNuevaDeuda(tipo) {
   let dia_semana = null;
 
   const tasa_interes_anual = parseFloat(document.getElementById('nd-tasa')?.value) || 0;
-  if (!acreedor || !monto || monto <= 0 || !isFinite(monto)) { showSnackbar('Completa los campos requeridos', 'error'); return; }
+  if (!acreedor || acreedor.length > 80) { showSnackbar('Nombre del acreedor inválido', 'error'); return; }
+  if (!monto || monto <= 0 || !isFinite(monto) || monto > 999_999_999) { showSnackbar('Monto inválido', 'error'); return; }
+  if (tasa_interes_anual < 0 || tasa_interes_anual > 999 || !isFinite(tasa_interes_anual)) { showSnackbar('Tasa de interés inválida (0-999%)', 'error'); return; }
 
   if (tipo === 'flexible') {
     tipo_pago = 'libre';
@@ -845,9 +852,15 @@ function agregarFilaPago() {
 
   const numeroInt = parseInt(numero, 10);
   const montoFloat = parseFloat(monto);
-  if (Number.isNaN(numeroInt) || numeroInt < 1 || Number.isNaN(montoFloat) || montoFloat <= 0) {
+  if (Number.isNaN(numeroInt) || numeroInt < 1 || Number.isNaN(montoFloat) || montoFloat <= 0 || montoFloat > 999_999_999) {
     showSnackbar('Número y monto deben ser valores válidos', 'error');
     return;
+  }
+  if (fecha < '2000-01-01' || fecha > '2100-12-31') {
+    showSnackbar('Fecha inválida', 'error'); return;
+  }
+  if (filasPagesProgramados.some(f => f.numero === numeroInt)) {
+    showSnackbar(`El pago #${numeroInt} ya existe en la tabla`, 'error'); return;
   }
 
   filasPagesProgramados.push({

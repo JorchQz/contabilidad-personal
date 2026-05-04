@@ -638,17 +638,20 @@ async function openRegistrarTraspaso() {
     return;
   }
 
+  window._cuentasTraspasoCache = cuentas;
+  const primeraId = cuentas[0]?.id || '';
+  const segundaId = cuentas[1]?.id || cuentas[0]?.id || '';
   openModal('Registrar traspaso', `
     <div class="form-group">
       <label class="form-label">De qué cuenta</label>
-      <select class="form-select" id="tr-origen">
+      <select class="form-select" id="tr-origen" onchange="actualizarDestinoTraspaso()">
         ${cuentas.map(c => `<option value="${c.id}">${escapeHtml(c.nombre)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
       <label class="form-label">A qué cuenta</label>
       <select class="form-select" id="tr-destino">
-        ${cuentas.map(c => `<option value="${c.id}">${escapeHtml(c.nombre)}</option>`).join('')}
+        ${cuentas.filter(c => c.id !== primeraId).map(c => `<option value="${c.id}">${escapeHtml(c.nombre)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
@@ -744,8 +747,11 @@ async function guardarTraspaso() {
 
 // ---- AJUSTES ----
 async function loadAjustes() {
-  const { data: { user } } = await db.auth.getUser();
-  const email = user?.email || '';
+  let email = '';
+  try {
+    const { data } = await db.auth.getUser();
+    email = data?.user?.email || '';
+  } catch(e) { /* sesión no disponible */ }
 
   document.getElementById('page-ajustes').innerHTML = `
     <div class="page-header">
@@ -755,7 +761,7 @@ async function loadAjustes() {
       <div class="card" style="margin-bottom:12px">
         <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Cuenta</div>
         <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:12px">${escapeHtml(email)}</div>
-        <button class="btn btn-danger" onclick="cerrarSesion()">Cerrar sesión</button>
+        <button class="btn btn-secondary" onclick="cerrarSesionConConfirm()">Cerrar sesión</button>
       </div>
 
       <div class="theme-toggle" onclick="toggleTheme()" style="margin-bottom:12px">
@@ -774,17 +780,21 @@ async function loadAjustes() {
 
       <div class="card" style="margin-bottom:12px">
         <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Exportar datos</div>
-        <button class="btn btn-secondary" onclick="exportarDatosCSV()" style="width:100%;margin-bottom:8px">
-          <i data-lucide="file-spreadsheet" style="width:16px;height:16px;pointer-events:none"></i>
-          <span>Descargar Historial (CSV)</span>
-        </button>
-        <button class="btn btn-secondary" onclick="exportarReportePDF()" style="width:100%">
-          <i data-lucide="file-text" style="width:16px;height:16px;pointer-events:none"></i>
-          <span>Descargar Reporte (PDF)</span>
-        </button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button class="btn btn-secondary" onclick="exportarDatosCSV()" style="flex-direction:column;gap:4px;height:auto;padding:10px 8px">
+            <i data-lucide="file-spreadsheet" style="width:18px;height:18px;pointer-events:none"></i>
+            <span style="font-size:13px">CSV</span>
+            <span style="font-size:11px;color:var(--text-muted);font-weight:400">Para Excel</span>
+          </button>
+          <button class="btn btn-secondary" onclick="exportarReportePDF()" style="flex-direction:column;gap:4px;height:auto;padding:10px 8px">
+            <i data-lucide="file-text" style="width:18px;height:18px;pointer-events:none"></i>
+            <span style="font-size:13px">PDF</span>
+            <span style="font-size:11px;color:var(--text-muted);font-weight:400">Para compartir</span>
+          </button>
+        </div>
       </div>
 
-      <button class="btn btn-danger" onclick="resetApp()">Resetear datos (desarrollo)</button>
+      ${window.JMF_DEV ? `<button class="btn btn-danger" style="margin-top:8px" onclick="resetApp()">Resetear datos (desarrollo)</button>` : ''}
     </div>
   `;
 
@@ -793,11 +803,17 @@ async function loadAjustes() {
 }
 
 async function resetApp() {
-  if (!window.confirm('¿Cerrar sesión y reiniciar la app?')) return;
-  localStorage.removeItem('jmf_usuario_id');
+  openConfirmModal('¿Cerrar sesión y limpiar datos locales?', '_ejecutarResetApp()', 'Sí, cerrar sesión');
+}
+
+window._ejecutarResetApp = async function() {
   await db.auth.signOut();
   location.reload();
-}
+};
+
+window.cerrarSesionConConfirm = function() {
+  openConfirmModal('¿Cerrar sesión?', 'cerrarSesion()', 'Cerrar sesión');
+};
 
 // ---- MODALES ----
 
@@ -834,6 +850,7 @@ function closeSelectorCategoriaSheet() {
   if (!overlay) return;
   overlay.classList.remove('open');
   setTimeout(() => overlay.remove(), 180);
+  window._gastoPickerCache = null; // forzar recarga en próxima apertura
 }
 
 function seleccionarCategoriaDesdeSheet(index) {
@@ -937,6 +954,16 @@ window.togglePagoPendienteExpand = togglePagoPendienteExpand;
 window.abrirPagoPendienteDeuda = abrirPagoPendienteDeuda;
 window.openMarcarPagoFijo = openMarcarPagoFijo;
 window.confirmarMarcarPagoFijo = confirmarMarcarPagoFijo;
+window.actualizarDestinoTraspaso = function() {
+  const origenId = document.getElementById('tr-origen')?.value;
+  const destino = document.getElementById('tr-destino');
+  if (!destino || !window._cuentasTraspasoCache) return;
+  const selActual = destino.value;
+  destino.innerHTML = window._cuentasTraspasoCache
+    .filter(c => c.id !== origenId)
+    .map(c => `<option value="${c.id}" ${c.id === selActual ? 'selected' : ''}>${escapeHtml(c.nombre)}</option>`)
+    .join('');
+};
 window.openConfirmModal = openConfirmModal;
 window.exportarDatosCSV = exportarDatosCSV;
 window.exportarReportePDF = exportarReportePDF;

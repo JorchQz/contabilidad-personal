@@ -99,11 +99,12 @@ export const GASTOS_VARIABLES_CATALOGO = [
   {
     titulo: 'Servicios', icono: 'zap',
     items: [
-      { nombre: 'Luz',             icono: 'zap' },
-      { nombre: 'Agua',            icono: 'droplets' },
-      { nombre: 'Gas',             icono: 'flame' },
-      { nombre: 'Internet y telefonía', icono: 'wifi' },
-      { nombre: 'Otro servicio',   icono: 'package' },
+      { nombre: 'Luz',                    icono: 'zap' },
+      { nombre: 'Agua',                   icono: 'droplets' },
+      { nombre: 'Gas',                    icono: 'flame' },
+      { nombre: 'Internet y telefonía',   icono: 'wifi' },
+      { nombre: 'Suscripciones digitales',icono: 'smartphone' },
+      { nombre: 'Otro servicio',          icono: 'package' },
     ],
   },
   {
@@ -170,6 +171,16 @@ export const GASTOS_VARIABLES_CATALOGO = [
       { nombre: 'Pago de deudas',  icono: 'trending-down', special: 'pago_deuda' },
       { nombre: 'Comisiones e impuestos', icono: 'percent' },
       { nombre: 'Otro finanzas',   icono: 'coins' },
+    ],
+  },
+  {
+    titulo: 'Gastos hormiga', icono: 'shopping-bag',
+    items: [
+      { nombre: 'OXXO / Tiendita',    icono: 'store' },
+      { nombre: 'Café / Refresco',    icono: 'coffee' },
+      { nombre: 'Antojitos',          icono: 'utensils' },
+      { nombre: 'Propinas',           icono: 'coins' },
+      { nombre: 'Otro hormiga',       icono: 'shopping-bag' },
     ],
   },
   {
@@ -739,22 +750,38 @@ window._doEliminarGastoFijo = _doEliminarGastoFijo;
 // ---- GASTOS (historial) ----
 export async function loadGastos() {
   const uid = (await getUsuarioId());
+  const hoy = new Date();
+  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
+  const finMes    = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).toISOString().split('T')[0];
   const { data: gastos } = await db
     .from('gastos')
     .select('*, categorias(nombre, emoji)')
     .eq('usuario_id', uid)
+    .neq('es_ahorro', true)
+    .gte('fecha', inicioMes)
+    .lte('fecha', finMes)
     .order('fecha', { ascending: false })
-    .limit(50);
+    .limit(200);
+
+  const totalMes = (gastos || []).reduce((s, g) => s + Number(g.monto || 0), 0);
+  const mesLabel = hoy.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
 
   document.getElementById('page-gastos').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Mis gastos</h1>
     </div>
+    ${totalMes > 0 ? `
+    <div style="padding:0 16px;margin-bottom:12px">
+      <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--red-soft);border-color:var(--red-border)">
+        <div style="font-size:12px;color:var(--text-secondary);text-transform:capitalize">${mesLabel}</div>
+        <div style="font-size:16px;font-weight:700;color:var(--red)">${formatMXN(totalMes)}</div>
+      </div>
+    </div>` : ''}
     <div class="page-body">
       ${!gastos || gastos.length === 0 ? `
         <div class="empty-state">
-          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
-          <p>No hay gastos registrados todavía.<br>Usa el botón + para agregar uno.</p>
+          <div class="empty-icon"><i data-lucide="inbox" style="width:40px;height:40px;stroke-width:1.5"></i></div>
+          <p>Sin gastos este mes.<br>Usa el botón + para agregar uno.</p>
         </div>
       ` : gastos.map(g => `
         <div class="item-row" style="margin-bottom:8px">
@@ -1072,30 +1099,35 @@ async function openRegistrarGasto(gastoId = null) {
     }
   }
 
+  const lastCuenta = localStorage.getItem('jmf_last_cuenta_gasto') || cuentaDefault;
   openModal(titulo, `
-    <div class="form-group">
-      <label class="form-label">Descripción</label>
-      <input class="form-input" id="rg-desc" type="text" placeholder="¿En qué gastaste?" value="${descValue}" />
-    </div>
     <div class="form-group">
       <label class="form-label">Monto</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
-      <input class="form-input" id="rg-monto" type="number" placeholder="0.00" min="0" value="${montoValue}" /></div>
+      <input class="form-input" id="rg-monto" type="number" placeholder="0.00" min="0" inputmode="decimal" autofocus value="${montoValue}" /></div>
     </div>
     <div class="form-group">
       <label class="form-label">Categoría</label>
       <button id="btn-cat-selector" class="categoria-btn" type="button" onclick="abrirSelectorCategoria('gasto')"></button>
     </div>
     <div id="rg-extra-campos" style="display:none"></div>
+    ${(cuentas || []).length > 1 ? `
     <div class="form-group">
       <label class="form-label">Cuenta</label>
       <select class="form-select" id="rg-cuenta">
-        ${(cuentas || []).map(c => `<option value="${c.id}" ${c.id === cuentaDefault ? 'selected' : ''}>${escapeHtml(c.nombre)}</option>`).join('')}
+        ${(cuentas || []).map(c => `<option value="${c.id}" ${c.id === lastCuenta ? 'selected' : ''}>${escapeHtml(c.nombre)}</option>`).join('')}
       </select>
-    </div>
+    </div>` : `<input type="hidden" id="rg-cuenta" value="${(cuentas || [])[0]?.id || ''}" />`}
     <div class="form-group">
-      <label class="form-label">Fecha</label>
-      <input class="form-input" id="rg-fecha" type="date" min="2000-01-01" max="${new Date().toISOString().split('T')[0]}" value="${fechaValue}" />
+      <label class="form-label">Nota <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+      <input class="form-input" id="rg-desc" type="text" placeholder="Lugar, detalle..." value="${escapeHtml(descValue)}" maxlength="200" />
+    </div>
+    <div style="margin-bottom:12px">
+      ${!gastoId ? `<button type="button" id="btn-cambiar-fecha" style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--text-muted);padding:4px 0;display:flex;align-items:center;gap:5px" onclick="document.getElementById('rg-fecha-wrap').style.display='flex';this.style.display='none'"><i data-lucide="calendar" style="width:14px;height:14px;stroke-width:1.75"></i>Cambiar fecha (hoy)</button>` : ''}
+      <div id="rg-fecha-wrap" style="display:${gastoId ? 'flex' : 'none'};flex-direction:column;gap:4px">
+        <label class="form-label">Fecha</label>
+        <input class="form-input" id="rg-fecha" type="date" min="2000-01-01" max="${new Date().toISOString().split('T')[0]}" value="${fechaValue}" />
+      </div>
     </div>
     <button class="btn btn-primary" onclick="guardarGasto()">${gastoId ? 'Guardar cambios' : 'Guardar gasto'}</button>
   `);
@@ -1113,7 +1145,13 @@ async function guardarGasto() {
   const especial = window._gastoEspecial || null;
   if (!monto || monto <= 0 || !isFinite(monto)) { showSnackbar('Ingresa un monto válido', 'error'); return; }
   if (!categoria_id) { showSnackbar('Selecciona una categoría', 'error'); return; }
-  if (!especial && !descripcion) { showSnackbar('Escribe una descripción', 'error'); return; }
+  if (!especial && !descripcion) { showSnackbar('Escribe una descripción o nota', 'error'); return; }
+  if (descripcion.length > 200) { showSnackbar('La nota es muy larga (máx. 200 caracteres)', 'error'); return; }
+  const fechaDate = new Date(fecha + 'T00:00:00');
+  if (!fecha || isNaN(fechaDate) || fechaDate.getFullYear() < 2020 || fechaDate > new Date()) {
+    showSnackbar('Fecha inválida', 'error'); return;
+  }
+  if (cuenta_id) localStorage.setItem('jmf_last_cuenta_gasto', cuenta_id);
 
   if (currentEditGastoId) {
     if (cuenta_id) {
