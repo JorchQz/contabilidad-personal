@@ -1060,12 +1060,8 @@ function renderCamposDeudaOnboarding() {
     return;
   }
   if (tipo === 'quincenal') {
-    campos.innerHTML = `
-      <select class="form-select" id="d-quincena" style="width:100%">
-        <option value="1">Primera quincena (día 15)</option>
-        <option value="2">Segunda quincena (último día)</option>
-      </select>`;
-    if (hint) hint.innerHTML = `<p style="color:var(--text-secondary);font-size:12px;margin-top:6px">Selecciona en qué quincena realizas el pago.</p>`;
+    campos.innerHTML = '';
+    if (hint) hint.innerHTML = `<p style="color:var(--text-secondary);font-size:12px;margin-top:6px">Pagos los días 15 y último de cada mes.</p>`;
     return;
   }
   if (tipo === 'mensual') {
@@ -1111,11 +1107,7 @@ function addDeuda() {
         return;
       }
     } else if (tipo_pago === 'quincenal') {
-      dia_pago = parseInt(document.getElementById('d-quincena')?.value, 10);
-      if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 2) {
-        showSnackbar('Ingresa 1 o 2 para la quincena', 'error');
-        return;
-      }
+      dia_pago = 15;
     }
   }
 
