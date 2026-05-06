@@ -121,7 +121,7 @@ export async function loadCuentas() {
     { data: traspasosSalida },
     { data: traspasosEntrada }
   ] = await Promise.all([
-    db.from('cuentas').select('id, nombre, tipo, saldo_inicial, es_disponible, es_pasivo').eq('usuario_id', uid).eq('activa', true).order('tipo').order('nombre'),
+    db.from('cuentas').select('id, nombre, tipo, saldo_inicial, es_disponible, es_pasivo, fecha_corte, fecha_limite_pago, limite_credito').eq('usuario_id', uid).eq('activa', true).order('tipo').order('nombre'),
     db.from('ingresos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
     db.from('gastos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
     db.from('pagos_deuda').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
@@ -161,17 +161,43 @@ export async function loadCuentas() {
           <button class="btn btn-secondary" style="width:auto;padding:10px 20px;margin:0 auto" onclick="openAgregarCuenta()">+ Nueva cuenta</button>
         </div>
       ` : `
-        ${cuentasConSaldo.map(cuenta => `
-          <div class="item-row" style="margin-bottom:8px">
+        ${cuentasConSaldo.map(cuenta => {
+          const esTDC = cuenta.tipo === 'credito';
+          const saldoUsado = esTDC ? Math.abs(Math.min(cuenta.saldoCalculado, 0)) : 0;
+          const limiteCredito = Number(cuenta.limite_credito || 0);
+          const pctUtilizacion = (esTDC && limiteCredito > 0) ? Math.min(Math.round((saldoUsado / limiteCredito) * 100), 100) : 0;
+          const colorUtilizacion = pctUtilizacion >= 80 ? 'var(--red)' : pctUtilizacion >= 50 ? 'var(--yellow)' : 'var(--green)';
+          const proximoCorte = (esTDC && cuenta.fecha_corte)
+            ? (() => {
+                const hoy = new Date();
+                const dia = hoy.getDate();
+                const mes = dia > cuenta.fecha_corte
+                  ? new Date(hoy.getFullYear(), hoy.getMonth() + 1, cuenta.fecha_corte)
+                  : new Date(hoy.getFullYear(), hoy.getMonth(), cuenta.fecha_corte);
+                return mes.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
+              })() : null;
+
+          return `
+          <div class="item-row" style="margin-bottom:${esTDC && limiteCredito > 0 ? '4' : '8'}px;flex-wrap:wrap">
             <div class="item-row-emoji">${cuenta.emoji}</div>
             <div class="item-row-info">
               <div class="item-row-name">${escapeHtml(cuenta.nombre)}</div>
-              <div class="item-row-detail">${escapeHtml(cuenta.tipoLabel)}</div>
+              <div class="item-row-detail">${escapeHtml(cuenta.tipoLabel)}${proximoCorte ? ` · Corte ${proximoCorte}` : ''}</div>
             </div>
-            <div class="item-row-amount">${formatMXN(cuenta.saldoCalculado)}</div>
+            <div class="item-row-amount" style="color:${esTDC ? 'var(--red)' : 'inherit'}">${esTDC ? '-' : ''}${formatMXN(esTDC ? saldoUsado : cuenta.saldoCalculado)}</div>
             <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuCuenta('${cuenta.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
-          </div>
-        `).join('')}
+            ${esTDC && limiteCredito > 0 ? `
+            <div style="width:100%;padding:0 8px 8px 48px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+                <span style="font-size:10px;color:var(--text-muted)">Límite: ${formatMXN(limiteCredito)}</span>
+                <span style="font-size:10px;font-weight:600;color:${colorUtilizacion}">${pctUtilizacion}% utilizado</span>
+              </div>
+              <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+                <div style="height:100%;background:${colorUtilizacion};width:${pctUtilizacion}%;border-radius:2px;transition:width 300ms ease"></div>
+              </div>
+            </div>` : ''}
+          </div>`;
+        }).join('')}
         <div class="card" style="margin-top:8px;background:var(--bg-elevated)">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
             <span style="font-size:12px;color:var(--text-secondary)">Disponible</span>
@@ -208,7 +234,7 @@ export function openMenuCuenta(cuentaId) {
 export async function openEditarCuenta(cuentaId) {
   const { data: cuenta, error } = await db
     .from('cuentas')
-    .select('id, nombre, tipo, saldo_inicial, es_disponible, es_pasivo')
+    .select('id, nombre, tipo, saldo_inicial, es_disponible, es_pasivo, fecha_corte, fecha_limite_pago, limite_credito')
     .eq('id', cuentaId)
     .eq('usuario_id', await getUsuarioId())
     .maybeSingle();
@@ -227,7 +253,7 @@ export async function openEditarCuenta(cuentaId) {
     </div>
     <div class="form-group">
       <label class="form-label">Tipo</label>
-      <select class="form-select" id="ec-tipo">
+      <select class="form-select" id="ec-tipo" onchange="toggleCamposTDC('ec')">
         ${opciones.map(op => `<option value="${op.value}" ${op.value === cuenta.tipo ? 'selected' : ''}>${op.label}</option>`).join('')}
       </select>
     </div>
@@ -237,8 +263,11 @@ export async function openEditarCuenta(cuentaId) {
       <input class="form-input" id="ec-saldo" type="number" min="0" max="999999999" value="${Number(cuenta.saldo_inicial || 0)}" />
       <p class="form-hint" style="margin-top:4px;color:var(--yellow)"><i data-lucide="alert-triangle" style="width:12px;height:12px;stroke-width:2;vertical-align:middle"></i> Cambiar el saldo inicial recalcula todo el historial</p></div>
     </div>
+    <div id="ec-tdc-campos">${cuenta.tipo === 'credito' ? renderTdcFormFields('ec', cuenta) : ''}</div>
     <button class="btn btn-primary" onclick="guardarEdicionCuenta('${cuenta.id}')">Guardar cambios</button>
   `);
+
+  renderLucideIcons();
 }
 
 export async function guardarEdicionCuenta(cuentaId) {
@@ -254,9 +283,11 @@ export async function guardarEdicionCuenta(cuentaId) {
   }
 
   const { es_disponible, es_pasivo } = getEsDisponiblePasivo(tipo);
+  const tdcPayload = tipo === 'credito' ? leerCamposTDC('ec') : { fecha_corte: null, fecha_limite_pago: null, limite_credito: null };
+
   const { error } = await db
     .from('cuentas')
-    .update({ nombre, tipo, saldo_inicial, es_disponible, es_pasivo })
+    .update({ nombre, tipo, saldo_inicial, es_disponible, es_pasivo, ...tdcPayload })
     .eq('id', cuentaId)
     .eq('usuario_id', await getUsuarioId());
 
@@ -311,11 +342,11 @@ export async function openAgregarCuenta() {
   openModal('Nueva cuenta', `
     <div class="form-group">
       <label class="form-label">Nombre de la cuenta</label>
-      <input class="form-input" id="nc-nombre" type="text" placeholder="Ej: Efectivo, banco, negocio" />
+      <input class="form-input" id="nc-nombre" type="text" placeholder="Ej: Efectivo, BBVA, Coppel" />
     </div>
     <div class="form-group">
       <label class="form-label">Tipo</label>
-      <select class="form-select" id="nc-tipo">
+      <select class="form-select" id="nc-tipo" onchange="toggleCamposTDC('nc')">
         ${getCuentaTipos().map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
       </select>
     </div>
@@ -324,6 +355,7 @@ export async function openAgregarCuenta() {
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
       <input class="form-input" id="nc-saldo" type="number" min="0" max="999999999" placeholder="0.00" /></div>
     </div>
+    <div id="nc-tdc-campos"></div>
     <button class="btn btn-primary" onclick="guardarNuevaCuenta()">Guardar cuenta</button>
   `);
 }
@@ -349,14 +381,11 @@ export async function guardarNuevaCuenta() {
   }
 
   const { es_disponible, es_pasivo } = getEsDisponiblePasivo(tipo);
+  const tdcPayload = tipo === 'credito' ? leerCamposTDC('nc') : {};
   const { error } = await db.from('cuentas').insert({
     usuario_id: await getUsuarioId(),
-    nombre,
-    tipo,
-    saldo_inicial,
-    es_disponible,
-    es_pasivo,
-    activa: true
+    nombre, tipo, saldo_inicial, es_disponible, es_pasivo, activa: true,
+    ...tdcPayload
   });
 
   if (error) {
@@ -369,6 +398,59 @@ export async function guardarNuevaCuenta() {
   await loadCuentas();
   await loadDashboard();
 }
+
+// ── CAMPOS TDC ───────────────────────────────────────────────────────────────
+
+function renderTdcFormFields(prefix, cuenta = {}) {
+  return `
+    <div style="background:var(--bg-elevated);border:1px solid var(--border-light);border-radius:var(--radius-sm);padding:12px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px;display:flex;align-items:center;gap:5px">
+        <i data-lucide="credit-card" style="width:12px;height:12px;stroke-width:2;pointer-events:none"></i> Datos de la tarjeta
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:11px">Día de corte</label>
+          <input class="form-input" id="${prefix}-fecha-corte" type="number" min="1" max="28"
+                 placeholder="Ej: 20" value="${cuenta.fecha_corte || ''}"
+                 style="height:40px" />
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:11px">Día límite de pago</label>
+          <input class="form-input" id="${prefix}-fecha-limite" type="number" min="1" max="31"
+                 placeholder="Ej: 10" value="${cuenta.fecha_limite_pago || ''}"
+                 style="height:40px" />
+        </div>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label" style="font-size:11px">Límite de crédito (opcional)</label>
+        <div class="input-money-wrap"><span class="currency-prefix">$</span>
+        <input class="form-input" id="${prefix}-limite" type="number" min="0"
+               placeholder="0.00" value="${cuenta.limite_credito || ''}"
+               inputmode="decimal" style="height:40px" /></div>
+      </div>
+      <p class="form-hint" style="margin-top:6px">El día de corte es cuando se cierra tu estado de cuenta. El límite de pago es cuando vence.</p>
+    </div>
+  `;
+}
+
+function leerCamposTDC(prefix) {
+  const fechaCorte     = parseInt(document.getElementById(`${prefix}-fecha-corte`)?.value, 10);
+  const fechaLimite    = parseInt(document.getElementById(`${prefix}-fecha-limite`)?.value, 10);
+  const limiteCredito  = parseFloat(document.getElementById(`${prefix}-limite`)?.value) || null;
+  return {
+    fecha_corte:       (Number.isFinite(fechaCorte)  && fechaCorte  >= 1 && fechaCorte  <= 28) ? fechaCorte  : null,
+    fecha_limite_pago: (Number.isFinite(fechaLimite) && fechaLimite >= 1 && fechaLimite <= 31) ? fechaLimite : null,
+    limite_credito:    (limiteCredito !== null && Number.isFinite(limiteCredito) && limiteCredito > 0) ? limiteCredito : null
+  };
+}
+
+window.toggleCamposTDC = function(prefix) {
+  const tipo      = document.getElementById(`${prefix}-tipo`)?.value;
+  const contenedor = document.getElementById(`${prefix}-tdc-campos`);
+  if (!contenedor) return;
+  contenedor.innerHTML = tipo === 'credito' ? renderTdcFormFields(prefix) : '';
+  renderLucideIcons();
+};
 
 // Solo las funciones invocadas desde atributos onclick en HTML generado dinámicamente
 window.openMenuCuenta = openMenuCuenta;

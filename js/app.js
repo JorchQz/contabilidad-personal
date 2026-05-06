@@ -398,11 +398,15 @@ export async function loadDashboard() {
   const [
     { data: ingProgramados },
     { data: gastosFijosData },
-    { data: deudasConPago }
+    { data: deudasConPago },
+    { data: gastosDiferidos },
+    { data: deudasAlerta }
   ] = await Promise.all([
     db.from('ingresos_programados').select('monto_estimado, frecuencia').eq('usuario_id', uid).eq('activo', true),
     db.from('gastos_fijos').select('monto, frecuencia, monto_estimado').eq('usuario_id', uid),
-    db.from('deudas').select('monto_pago, tipo_pago').eq('usuario_id', uid).eq('activa', true).not('monto_pago', 'is', null)
+    db.from('deudas').select('monto_pago, tipo_pago').eq('usuario_id', uid).eq('activa', true).not('monto_pago', 'is', null),
+    db.from('gastos_diferidos').select('id, descripcion, monto_total, monto_cuota, num_meses, cuotas_pagadas, fecha_primer_cargo').eq('usuario_id', uid).eq('activo', true),
+    db.from('deudas').select('acreedor, monto_actual, monto_pago, tasa_interes_anual, tipo_pago').eq('usuario_id', uid).eq('activa', true).gt('tasa_interes_anual', 0)
   ]);
 
   const _normMens = (monto, freq) => {
@@ -412,6 +416,60 @@ export async function loadDashboard() {
   const ingresoMensualEst = (ingProgramados || []).reduce((s, i) => s + _normMens(i.monto_estimado, i.frecuencia), 0);
   const gastosFijosMens   = (gastosFijosData || []).reduce((s, g) => s + _normMens(g.monto || g.monto_estimado || 0, g.frecuencia), 0);
   const servDeudaMens     = (deudasConPago || []).reduce((s, d) => s + _normMens(d.monto_pago, d.tipo_pago || 'mensual'), 0);
+
+  // ── ALERTAS PROACTIVAS ───────────────────────────────────────────────────
+  const hoyAlerta = new Date(); hoyAlerta.setHours(0, 0, 0, 0);
+  const alertas = [];
+
+  // 1. MSI próximo a vencer (últimas 2 cuotas o menos de 60 días para el fin)
+  for (const gd of (gastosDiferidos || [])) {
+    const cuotasPendientes = gd.num_meses - (gd.cuotas_pagadas || 0);
+    if (cuotasPendientes <= 0) continue;
+    const fechaFin = new Date(gd.fecha_primer_cargo + 'T00:00:00');
+    fechaFin.setMonth(fechaFin.getMonth() + gd.num_meses);
+    const diasParaFin = Math.ceil((fechaFin.getTime() - hoyAlerta.getTime()) / 86400000);
+    if (diasParaFin <= 60 && cuotasPendientes <= 2) {
+      alertas.push({
+        tipo: 'rojo',
+        icono: 'alert-triangle',
+        titulo: `MSI a punto de vencer — ${escapeHtml(gd.descripcion)}`,
+        detalle: `Quedan ${cuotasPendientes} cuota${cuotasPendientes > 1 ? 's' : ''}. Si no has pagado el total (${formatMXN(gd.monto_total)}), se cobrarán intereses retroactivos.`
+      });
+    }
+  }
+
+  // 2. Deuda con interés creciente (pago no cubre los intereses)
+  for (const d of (deudasAlerta || [])) {
+    if (!d.monto_pago || !d.monto_actual) continue;
+    const r = (d.tasa_interes_anual / 100) / 12;
+    const interesMes = d.monto_actual * r;
+    if (d.monto_pago > 0 && d.monto_pago <= interesMes * 1.05) {
+      alertas.push({
+        tipo: 'amarillo',
+        icono: 'trending-up',
+        titulo: `Tu deuda con ${escapeHtml(d.acreedor)} crece cada mes`,
+        detalle: `Tu pago de ${formatMXN(d.monto_pago)} apenas cubre los intereses (${formatMXN(interesMes)}/mes). Necesitas pagar más para bajar el saldo.`
+      });
+    }
+  }
+
+  const alertasHtml = alertas.length > 0 ? `
+    <div style="padding:0 16px;margin-bottom:16px;display:flex;flex-direction:column;gap:8px">
+      ${alertas.map(a => {
+        const borde = a.tipo === 'rojo' ? 'var(--red)' : 'var(--yellow)';
+        const fondo = a.tipo === 'rojo' ? 'var(--red-soft)' : 'rgba(245,158,11,0.08)';
+        return `
+          <div style="background:${fondo};border-left:3px solid ${borde};border-radius:var(--radius-sm);padding:12px 14px;display:flex;align-items:flex-start;gap:10px">
+            <i data-lucide="${a.icono}" style="width:16px;height:16px;stroke-width:2;color:${borde};flex-shrink:0;margin-top:1px;pointer-events:none"></i>
+            <div>
+              <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">${a.titulo}</div>
+              <div style="font-size:12px;color:var(--text-secondary);line-height:1.4">${a.detalle}</div>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>
+  ` : '';
+  // ─────────────────────────────────────────────────────────────────────────
 
   let semaforoHtml = '';
   if (ingresoMensualEst > 0) {
@@ -498,6 +556,7 @@ export async function loadDashboard() {
       </div>
     </div>
 
+    ${alertasHtml}
     ${semaforoHtml}
 
     <div style="padding: 0 16px; margin-bottom: 16px">

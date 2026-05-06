@@ -51,6 +51,7 @@ function renderIcono(icono, size = 18) {
 export function renderOnboarding() {
   onboardingData = { nombre: '', tiposIngreso: [], cuentas: [], deudas: [], gastosFijos: [], metas: [], gastosDiarios: [] };
   currentStep = 1;
+  window._onboardingTipoDeuda = null;
 
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -873,6 +874,7 @@ function nextStep4() {
 
 // ---- STEP 4: Deudas ----
 function renderStep5() {
+  window._onboardingTipoDeuda = null;
   setHeader('¿Qué debes actualmente?', 'Registra tus deudas para tener el panorama completo y hacer un plan de pago.');
   renderStep5Body();
   setFooter(`
@@ -886,153 +888,285 @@ function renderStep5() {
 function renderStep5Body(showForm = false) {
   const tipoDeuda = window._onboardingTipoDeuda || null;
 
+  const btnStyle = (tipo) => `background:${tipoDeuda === tipo ? 'var(--accent-soft)' : 'var(--bg-elevated)'};border:2px solid ${tipoDeuda === tipo ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 12px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease`;
+
   const selectorTipoHtml = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      <button onclick="selectTipoDeudaOnboarding('simple')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'simple' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
-        <i data-lucide="credit-card" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block"></i>
-        <div style="font-weight:600;font-size:14px">Simple</div>
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Fijo<br>Fecha: Fija</div>
+    <p style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:10px">¿Cómo es esta deuda?</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
+      <button onclick="selectTipoDeudaOnboarding('simple')" style="${btnStyle('simple')}">
+        <i data-lucide="landmark" style="width:20px;height:20px;color:var(--accent);margin-bottom:8px;display:block;stroke-width:1.75;pointer-events:none"></i>
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px;line-height:1.2">Préstamo fijo</div>
+        <div style="font-size:11px;color:var(--text-secondary);line-height:1.5">Caja popular, SOFOM,<br>crédito de nómina, INFONACOT</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:5px">Siempre pagas lo mismo</div>
       </button>
-      <button onclick="selectTipoDeudaOnboarding('variable')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'variable' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
-        <i data-lucide="trending-down" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block"></i>
-        <div style="font-weight:600;font-size:14px">Variable</div>
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Cambia<br>Fecha: Fija</div>
+      <button onclick="selectTipoDeudaOnboarding('variable')" style="${btnStyle('variable')}">
+        <i data-lucide="credit-card" style="width:20px;height:20px;color:var(--accent);margin-bottom:8px;display:block;stroke-width:1.75;pointer-events:none"></i>
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px;line-height:1.2">Tarjeta de crédito</div>
+        <div style="font-size:11px;color:var(--text-secondary);line-height:1.5">BBVA, Coppel, Liverpool,<br>Banamex, Soriana</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:5px">El pago mínimo cambia cada mes</div>
       </button>
-      <button onclick="selectTipoDeudaOnboarding('tabla')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'tabla' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
-        <i data-lucide="calendar" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block"></i>
-        <div style="font-weight:600;font-size:14px">Con tabla</div>
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Cambia<br>Fecha: Cambia</div>
+      <button onclick="selectTipoDeudaOnboarding('tabla')" style="${btnStyle('tabla')}">
+        <i data-lucide="table-2" style="width:20px;height:20px;color:var(--accent);margin-bottom:8px;display:block;stroke-width:1.75;pointer-events:none"></i>
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px;line-height:1.2">Tengo mi tabla</div>
+        <div style="font-size:11px;color:var(--text-secondary);line-height:1.5">Hipoteca, crédito automotriz,<br>FOVISSSTE, INFONAVIT</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:5px">Tu banco te dio un calendario de pagos</div>
       </button>
-      <button onclick="selectTipoDeudaOnboarding('flexible')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'flexible' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
-        <i data-lucide="wallet" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block"></i>
-        <div style="font-weight:600;font-size:14px">Flexible</div>
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Libre<br>Fecha: Libre</div>
+      <button onclick="selectTipoDeudaOnboarding('flexible')" style="${btnStyle('flexible')}">
+        <i data-lucide="users" style="width:20px;height:20px;color:var(--accent);margin-bottom:8px;display:block;stroke-width:1.75;pointer-events:none"></i>
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px;line-height:1.2">Familiar o amigo</div>
+        <div style="font-size:11px;color:var(--text-secondary);line-height:1.5">"Te presto y me pagas<br>cuando puedas"</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:5px">Sin fecha ni cuota fija</div>
       </button>
     </div>
   `;
 
-  const esSimple = tipoDeuda === 'simple';
-  const cuotaLabel = esSimple ? 'Cuota fija' : 'Pago promedio (Opcional) - Para presupuestar';
-  const cuotaRequired = esSimple ? 'required' : '';
-
-  const formularioSimpleVariable = `
-    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
+  const formularioSimple = `
+    <div style="display:flex;flex-direction:column;gap:0;margin-bottom:12px">
       <div class="form-group">
         <label class="form-label">¿A quién le debes?</label>
-        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Caja Popular, mamá…" maxlength="80" />
+        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Caja Popular San Rafael, FINABIEN…" maxlength="80" autocomplete="off" />
       </div>
       <div class="form-group">
-        <label class="form-label">Monto total</label>
-        <div class="input-money-wrap">
-          <span class="currency-prefix">$</span>
-          <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" />
-        </div>
+        <label class="form-label">¿Cuánto pediste originalmente? <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <div class="input-money-wrap"><span class="currency-prefix">$</span>
+        <input class="form-input" id="d-monto-inicial" type="number" placeholder="Ej: 20,000" min="0" inputmode="decimal" /></div>
+        <p class="form-hint">El monto original del préstamo — para mostrar el porcentaje real que llevas pagado.</p>
       </div>
       <div class="form-group">
-        <label class="form-label">Frecuencia de pago</label>
+        <label class="form-label">Saldo que debes hoy</label>
+        <div class="input-money-wrap"><span class="currency-prefix">$</span>
+        <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" inputmode="decimal" /></div>
+        <p class="form-hint">Lo que aparece en tu cartilla o app del banco como "saldo pendiente".</p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">¿Cuánto pagas cada vez?</label>
+        <div class="input-money-wrap"><span class="currency-prefix">$</span>
+        <input class="form-input" id="d-cuota" type="number" placeholder="0.00" min="0" inputmode="decimal" /></div>
+        <p class="form-hint">La cuota que acordaron al firmar el crédito.</p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">¿Cada cuándo pagas?</label>
         <div style="display:flex;gap:8px">
           <select class="form-select" id="d-freq" onchange="renderCamposDeudaOnboarding()" style="flex:1">
-            <option value="unico">Único</option>
-            <option value="semanal">Semanal</option>
-            <option value="quincenal">Quincenal</option>
-            <option value="mensual" selected>Mensual</option>
-            ${(tipoDeuda === 'simple' || tipoDeuda === 'variable') ? '' : '<option value="libre">Libre</option>'}
+            <option value="semanal">Cada semana</option>
+            <option value="quincenal">Cada quincena</option>
+            <option value="mensual" selected>Cada mes</option>
+            <option value="unico">Un solo pago</option>
           </select>
           <div id="d-fecha-campos" style="flex:1"></div>
         </div>
         <div id="d-freq-hint"></div>
       </div>
       <div class="form-group">
-        <label class="form-label">${cuotaLabel}</label>
-        <div class="input-money-wrap">
-          <span class="currency-prefix">$</span>
-          <input class="form-input" id="d-cuota" type="number" placeholder="0.00" min="0" ${cuotaRequired} />
+        <label class="form-label">¿Cuánto % te cobran al mes? <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <div style="position:relative">
+          <input class="form-input" id="d-tasa-mensual" type="number" placeholder="Ej: 2 para caja popular, 3 para nómina" min="0" max="99" step="0.1" inputmode="decimal" oninput="actualizarTasaAnual()" style="padding-right:28px" />
+          <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--text-secondary);pointer-events:none">%</span>
         </div>
+        <p class="form-hint" id="d-tasa-hint" style="min-height:18px"></p>
+        <p class="form-hint">Si no la sabes, déjalo en blanco — lo ajustas después.</p>
       </div>
       <div class="form-group">
-        <label class="form-label">Tasa de interés % <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
-        <input class="form-input" id="d-tasa" type="number" placeholder="Ej: 70 tarjeta · 30 caja popular · 0 familiar" min="0" max="999" />
+        <label class="form-label">¿Cuántos pagos te faltan? <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <input class="form-input" id="d-pagos-restantes" type="number" placeholder="Ej: si tienes 36 cuotas y llevas 10, escribe 26" min="1" max="9999" inputmode="numeric" />
+        <p class="form-hint">Sirve para calcular con precisión cuándo quedarás libre.</p>
       </div>
+      <input type="hidden" id="d-tasa" value="0" />
+    </div>
+  `;
+
+  const formularioVariable = `
+    <div style="display:flex;flex-direction:column;gap:0;margin-bottom:12px">
+      <div class="form-group">
+        <label class="form-label">¿A quién le debes?</label>
+        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Tarjeta BBVA, Coppel, Liverpool…" maxlength="80" autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Saldo total de la tarjeta</label>
+        <div class="input-money-wrap"><span class="currency-prefix">$</span>
+        <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" inputmode="decimal" /></div>
+        <p class="form-hint">El saldo total de tu estado de cuenta, no solo el pago mínimo.</p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">¿Cuánto es tu pago mínimo habitual? <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <div class="input-money-wrap"><span class="currency-prefix">$</span>
+        <input class="form-input" id="d-cuota" type="number" placeholder="0.00" min="0" inputmode="decimal" /></div>
+        <p class="form-hint">Puede cambiar cada mes — pon el de este mes o un promedio.</p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">¿Cada cuándo pagas?</label>
+        <div style="display:flex;gap:8px">
+          <select class="form-select" id="d-freq" onchange="renderCamposDeudaOnboarding()" style="flex:1">
+            <option value="semanal">Cada semana</option>
+            <option value="quincenal">Cada quincena</option>
+            <option value="mensual" selected>Cada mes</option>
+            <option value="unico">Un solo pago</option>
+          </select>
+          <div id="d-fecha-campos" style="flex:1"></div>
+        </div>
+        <div id="d-freq-hint"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">¿Cuánto % te cobran al mes? <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <div style="position:relative">
+          <input class="form-input" id="d-tasa-mensual" type="number" placeholder="Ej: 5 (tarjetas cobran entre 3 y 8%)" min="0" max="99" step="0.1" inputmode="decimal" oninput="actualizarTasaAnual()" style="padding-right:28px" />
+          <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--text-secondary);pointer-events:none">%</span>
+        </div>
+        <p class="form-hint" id="d-tasa-hint" style="min-height:18px"></p>
+        <p class="form-hint">Lo encuentras en tu estado de cuenta como "Tasa mensual".</p>
+      </div>
+      <input type="hidden" id="d-tasa" value="0" />
     </div>
   `;
 
   const formularioFlexible = `
-    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
+    <div style="display:flex;flex-direction:column;gap:0;margin-bottom:12px">
+      <div style="background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;display:flex;align-items:flex-start;gap:10px">
+        <i data-lucide="info" style="width:16px;height:16px;color:var(--text-muted);flex-shrink:0;margin-top:1px;stroke-width:1.75;pointer-events:none"></i>
+        <p style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin:0">Sin interés ni fecha fija. La app te ayuda a no olvidarlo y a registrar lo que vayas pagando cuando puedas.</p>
+      </div>
       <div class="form-group">
         <label class="form-label">¿A quién le debes?</label>
-        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Amigo, familiar…" />
+        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: tío Roberto, Lupita del trabajo…" maxlength="80" autocomplete="off" />
       </div>
       <div class="form-group">
-        <label class="form-label">Monto total</label>
-        <div class="input-money-wrap">
-          <span class="currency-prefix">$</span>
-          <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" />
-        </div>
+        <label class="form-label">¿Cuánto le debes?</label>
+        <div class="input-money-wrap"><span class="currency-prefix">$</span>
+        <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" inputmode="decimal" /></div>
       </div>
       <div class="form-group">
-        <label class="form-label">Pago estimado (Opcional)</label>
-        <div class="input-money-wrap">
-          <span class="currency-prefix">$</span>
-          <input class="form-input" id="d-cuota" type="number" placeholder="0.00" min="0" />
-        </div>
+        <label class="form-label">¿Cuánto piensas pagar cada vez? <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+        <div class="input-money-wrap"><span class="currency-prefix">$</span>
+        <input class="form-input" id="d-cuota" type="number" placeholder="Lo que puedas cuando puedas" min="0" inputmode="decimal" /></div>
+        <p class="form-hint">Solo para ayudarte a planear — no es un compromiso fijo.</p>
       </div>
+      <input type="hidden" id="d-tasa" value="0" />
+      <input type="hidden" id="d-freq" value="libre" />
     </div>
   `;
 
   const formularioTabla = `
-    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
+    <div style="display:flex;flex-direction:column;gap:0;margin-bottom:12px">
       <div class="form-group">
         <label class="form-label">¿A quién le debes?</label>
-        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Caja Popular, mamá…" maxlength="80" />
+        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: FOVISSSTE, BBVA Hipotecario, INFONAVIT…" maxlength="80" autocomplete="off" />
       </div>
       <div class="form-group">
-        <label class="form-label">Monto total</label>
-        <div class="input-money-wrap">
-          <span class="currency-prefix">$</span>
-          <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" />
+        <label class="form-label">Saldo pendiente total</label>
+        <div class="input-money-wrap"><span class="currency-prefix">$</span>
+        <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" inputmode="decimal" /></div>
+        <p class="form-hint">El total que aparece como "capital restante" o "saldo insoluto" en tu tabla.</p>
+      </div>
+      <div style="background:var(--accent-soft);border:1px solid rgba(59,130,246,0.25);border-radius:var(--radius-sm);padding:12px 14px;display:flex;align-items:flex-start;gap:10px;margin-top:4px">
+        <i data-lucide="calendar-clock" style="width:18px;height:18px;color:var(--accent);flex-shrink:0;margin-top:1px;stroke-width:1.75;pointer-events:none"></i>
+        <div>
+          <p style="font-size:13px;font-weight:600;color:var(--text);margin:0 0 3px">Cargas tu tabla después del registro</p>
+          <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">Al terminar, en "Mis deudas" encontrarás la opción para capturar cada pago de tu calendario. Por ahora solo registra el acreedor y el saldo total.</p>
         </div>
       </div>
-      <p class="form-hint">Podrás agregar los pagos programados después.</p>
+      <input type="hidden" id="d-tasa" value="0" />
+      <input type="hidden" id="d-freq" value="libre" />
     </div>
   `;
 
-  document.getElementById('onboarding-body').innerHTML = `
-    <div class="item-list" id="deudas-list">
-      ${onboardingData.deudas.map((d, i) => `
-        <div class="item-row">
-          <div class="item-row-emoji"><i data-lucide="trending-down" style="width:18px;height:18px;stroke-width:1.75"></i></div>
-          <div class="item-row-info">
-            <div class="item-row-name">${escapeHtml(d.acreedor)}</div>
-            <div class="item-row-detail">${d.tipo_deuda === 'tabla' ? 'con tabla' : (d.tipo_pago || 'sin fecha fija')}${d.monto_pago ? ` · ${formatMXN(d.monto_pago)}/pago` : ''}</div>
-          </div>
-          <div class="item-row-amount">${formatMXN(d.monto_actual)}</div>
-          <button class="item-row-delete" onclick="removeDeuda(${i})"><i data-lucide="x" style="width:18px;height:18px;stroke-width:1.75"></i></button>
-        </div>
-      `).join('')}
-    </div>
+  let formularioActual = '';
+  if (tipoDeuda === 'simple')    formularioActual = formularioSimple;
+  else if (tipoDeuda === 'variable') formularioActual = formularioVariable;
+  else if (tipoDeuda === 'tabla')    formularioActual = formularioTabla;
+  else if (tipoDeuda === 'flexible') formularioActual = formularioFlexible;
+  else if (tipoDeuda) formularioActual = `<p class="form-hint" style="margin-bottom:8px">Selecciona el tipo de deuda para continuar</p>`;
 
+  const introHtml = !showForm && onboardingData.deudas.length === 0 ? `
+    <div style="background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:12px;display:flex;align-items:flex-start;gap:12px">
+      <i data-lucide="shield-check" style="width:20px;height:20px;color:var(--green);flex-shrink:0;margin-top:2px;stroke-width:1.75;pointer-events:none"></i>
+      <div>
+        <p style="font-size:13px;font-weight:600;color:var(--text);margin:0 0 4px">Registrar tus deudas es el primer paso para salir de ellas</p>
+        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.6">La mayoría de los mexicanos tiene al menos una deuda activa. Aquí no se te juzga — solo se te ayuda a verlas todas y hacer un plan. Tus datos son privados.</p>
+      </div>
+    </div>
+  ` : '';
+
+  const listaHtml = onboardingData.deudas.map((d, i) => `
+    <div class="item-row">
+      <div class="item-row-emoji"><i data-lucide="${
+        d.tipo_deuda === 'simple'   ? 'landmark'    :
+        d.tipo_deuda === 'variable' ? 'credit-card' :
+        d.tipo_deuda === 'tabla'    ? 'table-2'     : 'users'
+      }" style="width:18px;height:18px;stroke-width:1.75;pointer-events:none"></i></div>
+      <div class="item-row-info">
+        <div class="item-row-name">${escapeHtml(d.acreedor)}</div>
+        <div class="item-row-detail">${
+          d.tipo_deuda === 'tabla'    ? 'Con tabla de pagos'  :
+          d.tipo_deuda === 'flexible' ? 'Sin fecha fija'      :
+          d.tipo_pago   === 'mensual'   ? 'Mensual'           :
+          d.tipo_pago   === 'quincenal' ? 'Quincenal'         :
+          d.tipo_pago   === 'semanal'   ? 'Semanal'           :
+          d.tipo_pago   === 'unico'     ? 'Único'             : 'Sin fecha fija'
+        }${d.monto_pago ? ' · ' + formatMXN(d.monto_pago) : ''}</div>
+      </div>
+      <div class="item-row-amount">${formatMXN(d.monto_actual)}</div>
+      <button class="item-row-delete" data-action="remove-deuda" data-index="${i}">
+        <i data-lucide="x" style="width:18px;height:18px;stroke-width:1.75;pointer-events:none"></i>
+      </button>
+    </div>
+  `).join('');
+
+  const hintVacioHtml = !showForm && onboardingData.deudas.length === 0 ? `
+    <p class="form-hint" style="padding:0 4px;margin-top:8px">Si ahorita no tienes deudas o prefieres registrarlas después, puedes continuar.</p>
+  ` : '';
+
+  document.getElementById('onboarding-body').innerHTML = `
+    <div class="item-list" id="deudas-list">${listaHtml}</div>
     ${showForm ? `
     <div class="mini-form">
       ${selectorTipoHtml}
-      ${tipoDeuda ? (tipoDeuda === 'tabla' ? formularioTabla : tipoDeuda === 'flexible' ? formularioFlexible : formularioSimpleVariable) : `<p class="form-hint" style="margin-bottom:8px">Selecciona el tipo de deuda para continuar</p>`}
-      ${tipoDeuda ? `<button class="btn btn-secondary" onclick="addDeuda()">+ Agregar</button>` : ''}
+      ${formularioActual}
+      ${tipoDeuda ? `<button class="btn btn-secondary" style="width:100%" onclick="addDeuda()">+ Agregar</button>` : ''}
     </div>
     ` : `
+    ${introHtml}
     <button class="btn-add-item" onclick="openDeudaOnboardingForm()">
       <span>+</span> Agregar deuda
     </button>
+    ${hintVacioHtml}
     `}
-    <p class="form-hint mt-8" style="padding: 0 4px">Si no tienes deudas activas puedes continuar sin agregar ninguna.</p>
   `;
+
+  const deudasEl = document.getElementById('deudas-list');
+  if (deudasEl) {
+    deudasEl.onclick = (e) => {
+      const btn = e.target.closest('[data-action="remove-deuda"]');
+      if (!btn) return;
+      removeDeuda(btn.dataset.index);
+    };
+  }
 
   if (showForm && (tipoDeuda === 'simple' || tipoDeuda === 'variable')) {
     renderCamposDeudaOnboarding();
   }
-  if (showForm && tipoDeuda === 'flexible') {
-    // sin campos de fecha — formulario completo desde el HTML estático
-  }
 
   renderLucideIcons();
+}
+
+function actualizarTasaAnual() {
+  const input = document.getElementById('d-tasa-mensual');
+  const tasaEl = document.getElementById('d-tasa');
+  if (!tasaEl) return;
+  const raw = input?.value ?? '';
+  const mensual = parseFloat(raw);
+  const anual = (Number.isFinite(mensual) && mensual >= 0) ? mensual * 12 : 0;
+  tasaEl.value = anual.toFixed(4);
+  const hint = document.getElementById('d-tasa-hint');
+  if (!hint) return;
+  if (raw === '') {
+    hint.textContent = '';
+  } else if (Number.isFinite(mensual) && mensual === 0) {
+    hint.textContent = 'Sin intereses';
+  } else if (Number.isFinite(mensual) && mensual > 0) {
+    hint.textContent = `= ${anual.toFixed(1)}% anual`;
+  } else {
+    hint.textContent = '';
+  }
 }
 
 function renderCamposDeudaOnboarding() {
@@ -1073,23 +1207,35 @@ function renderCamposDeudaOnboarding() {
 }
 
 function addDeuda() {
-  const tipo_deuda = window._onboardingTipoDeuda || 'simple';
-  if (!window._onboardingTipoDeuda) {
-    showSnackbar('Selecciona un tipo de deuda', 'error');
-    return;
-  }
+  const tipo_deuda = window._onboardingTipoDeuda;
+  if (!tipo_deuda) { showSnackbar('Selecciona el tipo de deuda', 'error'); return; }
+
   const acreedor = document.getElementById('d-acreedor')?.value.trim();
-  const monto = parseFloat(document.getElementById('d-monto')?.value);
+  const montoActualOnb = parseFloat(String(document.getElementById('d-monto')?.value || '').replace(/,/g, ''));
+  const montoInicialRaw = document.getElementById('d-monto-inicial')?.value;
+  const montoInicialOnb = montoInicialRaw
+    ? parseFloat(String(montoInicialRaw).replace(/,/g, ''))
+    : montoActualOnb;
+
+  if (!acreedor || acreedor.length > 80) { showSnackbar('Ingresa el nombre del acreedor', 'error'); return; }
+  if (!montoActualOnb || montoActualOnb <= 0 || !isFinite(montoActualOnb) || montoActualOnb > 999_999_999) { showSnackbar('Ingresa un monto válido', 'error'); return; }
+  if (montoInicialOnb < montoActualOnb) { showSnackbar('El monto original no puede ser menor al saldo actual', 'error'); return; }
+  const monto = montoActualOnb;
+
   let tipo_pago = null;
   let monto_pago = null;
-  if (!acreedor || !monto || monto <= 0 || !isFinite(monto)) { showSnackbar('Completa acreedor y monto', 'error'); return; }
-
   let dia_pago = null;
   let dia_semana = null;
+  let num_pagos_restantes = null;
 
   if (tipo_deuda === 'simple' || tipo_deuda === 'variable') {
     tipo_pago = document.getElementById('d-freq')?.value || 'libre';
-    monto_pago = parseFloat(document.getElementById('d-cuota')?.value) || null;
+    const cuotaRaw = String(document.getElementById('d-cuota')?.value || '').replace(/,/g, '');
+    monto_pago = parseFloat(cuotaRaw) || null;
+
+    if (tipo_deuda === 'simple' && (!monto_pago || monto_pago <= 0 || !isFinite(monto_pago))) {
+      showSnackbar('Ingresa la cuota que pagas cada vez', 'error'); return;
+    }
 
     if (tipo_pago === 'unico') {
       const fechaStr = document.getElementById('d-fecha-pago')?.value;
@@ -1097,33 +1243,51 @@ function addDeuda() {
     } else if (tipo_pago === 'semanal') {
       dia_semana = parseInt(document.getElementById('d-dia-semana')?.value, 10);
       if (Number.isNaN(dia_semana) || dia_semana < 0 || dia_semana > 6) {
-        showSnackbar('Selecciona un día de la semana válido', 'error');
-        return;
+        showSnackbar('Selecciona un día de la semana válido', 'error'); return;
       }
     } else if (tipo_pago === 'mensual') {
       dia_pago = parseInt(document.getElementById('d-dia-pago')?.value, 10);
       if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
-        showSnackbar('Ingresa un día del mes entre 1 y 31', 'error');
-        return;
+        showSnackbar('Ingresa un día del mes entre 1 y 31', 'error'); return;
       }
     } else if (tipo_pago === 'quincenal') {
       dia_pago = 15;
     }
+
+    if (tipo_deuda === 'simple') {
+      const prRaw = document.getElementById('d-pagos-restantes')?.value;
+      if (prRaw !== '' && prRaw != null) {
+        const pr = parseInt(prRaw, 10);
+        if (!Number.isFinite(pr) || pr < 1 || pr > 9999) {
+          showSnackbar('Pagos restantes: ingresa un número entre 1 y 9999', 'error'); return;
+        }
+        num_pagos_restantes = pr;
+      }
+    }
   }
 
+  if (tipo_deuda === 'flexible') {
+    tipo_pago = 'libre';
+    const cuotaRaw = String(document.getElementById('d-cuota')?.value || '').replace(/,/g, '');
+    monto_pago = parseFloat(cuotaRaw) || null;
+  }
+
+  const MAX_TASA_ANUAL = 1200;
   const tasa_raw = parseFloat(document.getElementById('d-tasa')?.value);
-  const tasa_interes_anual = (Number.isFinite(tasa_raw) && tasa_raw >= 0) ? tasa_raw : 0;
+  const tasa_interes_anual = (Number.isFinite(tasa_raw) && tasa_raw >= 0 && tasa_raw <= MAX_TASA_ANUAL)
+    ? tasa_raw : 0;
 
   onboardingData.deudas.push({
     acreedor,
-    monto_inicial: monto,
-    monto_actual: monto,
+    monto_inicial: montoInicialOnb,
+    monto_actual:  montoActualOnb,
     tipo_pago,
     monto_pago,
     dia_pago,
     dia_semana,
     tipo_deuda,
-    tasa_interes_anual
+    tasa_interes_anual,
+    num_pagos_restantes
   });
 
   window._onboardingTipoDeuda = null;
@@ -1131,7 +1295,9 @@ function addDeuda() {
 }
 
 function removeDeuda(i) {
-  onboardingData.deudas.splice(i, 1);
+  const idx = parseInt(i, 10);
+  if (!Number.isFinite(idx) || idx < 0 || idx >= onboardingData.deudas.length) return;
+  onboardingData.deudas.splice(idx, 1);
   renderStep5Body(false);
 }
 
@@ -1431,74 +1597,100 @@ window.nextStepGastosDiarios = nextStepGastosDiarios;
 
 // ---- STEP 7: Resumen ----
 function renderStep6resumen() {
-  setHeader('Todo listo, revisa tu configuración', 'Si algo no está bien, regresa a corregirlo.');
+  setHeader('Tu panorama financiero', 'Así se ve tu dinero desde ahora.');
 
-  const totalGastosFijos = onboardingData.gastosFijos.length;
-  const sectionStyle = 'background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:12px;position:relative';
+  // ── Vista previa de distribución del primer ingreso ──
+  const ingresoBase = Number(onboardingData.tiposIngreso[0]?.monto || 0);
+  const frecBase    = onboardingData.tiposIngreso[0]?.frecuencia || 'quincenal';
+  const diasBase    = { semanal: 7, quincenal: 15, mensual: 30 }[frecBase] || 15;
+  const DIAS        = { semanal: 7, quincenal: 15, mensual: 30, bimestral: 60, trimestral: 90, semestral: 180, anual: 365 };
 
-  const renderList = (items, emptyText = 'Ninguna', formatter = item => item) => {
-    if (!items || items.length === 0) return `<p class="form-hint">${emptyText}</p>`;
-    return `<div style="display:flex;flex-wrap:wrap;gap:8px">${items.map(item => `<span class="category-chip" style="cursor:default">${formatter(item)}</span>`).join('')}</div>`;
-  };
+  const compromisos = [];
+  for (const d of onboardingData.deudas) {
+    if (!d.monto_pago || d.monto_pago <= 0) continue;
+    const diasDeuda = DIAS[d.tipo_pago] || 30;
+    compromisos.push({ nombre: escapeHtml(d.acreedor), monto: parseFloat(((d.monto_pago * diasBase) / diasDeuda).toFixed(2)), tipo: 'deuda' });
+  }
+  for (const g of onboardingData.gastosFijos) {
+    const montoG = Number(g.monto || g.monto_estimado || 0);
+    if (!montoG || g.fecha_flexible) continue;
+    const diasG = DIAS[g.frecuencia] || 30;
+    compromisos.push({ nombre: escapeHtml(g.nombre), monto: parseFloat(((montoG * diasBase) / diasG).toFixed(2)), tipo: 'fijo' });
+  }
+
+  const totalCompromisos = compromisos.reduce((s, c) => s + c.monto, 0);
+  const libre = ingresoBase - totalCompromisos;
+  const ratio = ingresoBase > 0 ? totalCompromisos / ingresoBase : 0;
+  const colorSemaforo = ratio < 0.5 ? 'var(--green)' : ratio < 0.7 ? 'var(--yellow)' : 'var(--red)';
+  const labelFrecBase = { semanal: 'semana', quincenal: 'quincena', mensual: 'mes' }[frecBase] || frecBase;
+
+  const distPreview = ingresoBase > 0 ? `
+    <div style="background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:16px">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;display:flex;align-items:center;gap:5px">
+        <i data-lucide="zap" style="width:12px;height:12px;stroke-width:2;color:var(--accent)"></i>
+        Cada vez que cobres tu ${labelFrecBase} (${formatMXN(ingresoBase)}), aparta:
+      </div>
+      ${compromisos.map(c => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-light)">
+          <div style="display:flex;align-items:center;gap:7px">
+            <i data-lucide="${c.tipo === 'deuda' ? 'trending-down' : 'pin'}" style="width:13px;height:13px;stroke-width:1.75;color:var(--text-muted)"></i>
+            <span style="font-size:13px">${c.nombre}</span>
+          </div>
+          <span style="font-size:13px;font-weight:600">${formatMXN(c.monto)}</span>
+        </div>
+      `).join('')}
+      ${compromisos.length === 0 ? `<p style="font-size:12px;color:var(--text-muted);margin:0">Sin compromisos registrados — todo queda libre.</p>` : ''}
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;margin-top:4px">
+        <span style="font-size:13px;font-weight:600">Libre para gastar</span>
+        <span style="font-size:20px;font-weight:800;color:${libre >= 0 ? 'var(--green)' : 'var(--red)'}">${formatMXN(Math.abs(libre))}${libre < 0 ? ' ⚠' : ''}</span>
+      </div>
+      ${ingresoBase > 0 ? `
+      <div style="margin-top:10px;padding:8px 10px;border-radius:var(--radius-xs);background:${ratio < 0.5 ? 'var(--green-soft)' : ratio < 0.7 ? 'rgba(245,158,11,0.1)' : 'var(--red-soft)'};border:1px solid ${colorSemaforo};opacity:0.9">
+        <span style="font-size:12px;font-weight:600;color:${colorSemaforo}">
+          ${ratio < 0.5 ? 'Buena base para empezar' : ratio < 0.7 ? 'Margen ajustado — hay que cuidarlo' : 'Compromisos altos — trabajaremos en esto'}
+        </span>
+        <span style="font-size:11px;color:var(--text-muted);margin-left:6px">${Math.round(ratio * 100)}% comprometido</span>
+      </div>` : ''}
+    </div>
+  ` : `
+    <div style="background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:16px">
+      <p style="font-size:13px;color:var(--text-muted);margin:0">Agrega un ingreso para ver la distribución de tu dinero.</p>
+    </div>
+  `;
+
+  const sectionStyle = 'background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:8px;position:relative';
 
   document.getElementById('onboarding-body').innerHTML = `
-    <div style="${sectionStyle}">
-      <button class="btn btn-ghost" style="position:absolute;top:10px;right:12px;padding:4px 10px;font-size:12px" onclick="renderStep(1)">Editar</button>
-      <strong style="display:block;margin-bottom:10px">Ingresos</strong>
-      ${renderList(onboardingData.tiposIngreso, 'Ninguno', item => item.nombre)}
-    </div>
-
-    <div style="${sectionStyle}">
-      <button class="btn btn-ghost" style="position:absolute;top:10px;right:12px;padding:4px 10px;font-size:12px" onclick="renderStep(2)">Editar</button>
-      <strong style="display:block;margin-bottom:10px">Gastos fijos</strong>
-      <p class="form-hint" style="margin-bottom:8px">${totalGastosFijos} ${totalGastosFijos === 1 ? 'gasto fijo' : 'gastos fijos'}</p>
-      ${renderList(onboardingData.gastosFijos, 'Ninguno', item => `${item.nombre}${item.fecha_flexible ? ' · variable' : (item.monto ? ` · ${formatMXN(item.monto)}` : '')}`)}
-    </div>
-
-    <div style="${sectionStyle}">
-      <button class="btn btn-ghost" style="position:absolute;top:10px;right:12px;padding:4px 10px;font-size:12px" onclick="renderStep(3)">Editar</button>
-      <strong style="display:block;margin-bottom:10px">Cuentas</strong>
-      ${onboardingData.cuentas.length === 0 ? '<p class="form-hint">Ninguna</p>' : onboardingData.cuentas.map(c => `
-        <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light)">
-          <span>${escapeHtml(c.nombre)}</span>
-          <span style="color:var(--text-secondary)">${formatMXN(c.saldo_inicial || 0)}</span>
+    ${distPreview}
+    <details style="margin-bottom:8px">
+      <summary style="font-size:13px;font-weight:600;color:var(--text-secondary);cursor:pointer;list-style:none;display:flex;align-items:center;gap:5px;padding:4px 0">
+        <i data-lucide="settings" style="width:13px;height:13px;stroke-width:2"></i> Ver resumen de configuración
+      </summary>
+      <div style="margin-top:10px">
+        <div style="${sectionStyle}">
+          <button class="btn btn-ghost" style="position:absolute;top:8px;right:8px;padding:3px 8px;font-size:11px" onclick="renderStep(1)">Editar</button>
+          <strong style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px">Ingresos</strong>
+          ${onboardingData.tiposIngreso.map(i => `<div style="font-size:13px">${escapeHtml(i.nombre)} · ${formatMXN(i.monto)}</div>`).join('') || '<p class="form-hint" style="margin:0">Ninguno</p>'}
         </div>
-      `).join('')}
-    </div>
-
-    <div style="${sectionStyle}">
-      <button class="btn btn-ghost" style="position:absolute;top:10px;right:12px;padding:4px 10px;font-size:12px" onclick="renderStep(4)">Editar</button>
-      <strong style="display:block;margin-bottom:10px">Deudas</strong>
-      ${onboardingData.deudas.length === 0 ? '<p class="form-hint">Ninguna</p>' : onboardingData.deudas.map(d => `
-        <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light)">
-          <span>${escapeHtml(d.acreedor)}</span>
-          <span style="color:var(--text-secondary)">${formatMXN(d.monto_actual || 0)}</span>
+        <div style="${sectionStyle}">
+          <button class="btn btn-ghost" style="position:absolute;top:8px;right:8px;padding:3px 8px;font-size:11px" onclick="renderStep(2)">Editar</button>
+          <strong style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px">Gastos fijos · ${onboardingData.gastosFijos.length}</strong>
+          ${onboardingData.gastosFijos.slice(0,3).map(g => `<div style="font-size:13px">${escapeHtml(g.nombre)}${g.monto ? ` · ${formatMXN(g.monto)}` : ' · variable'}</div>`).join('') || '<p class="form-hint" style="margin:0">Ninguno</p>'}
+          ${onboardingData.gastosFijos.length > 3 ? `<p class="form-hint" style="margin:4px 0 0">+${onboardingData.gastosFijos.length - 3} más</p>` : ''}
         </div>
-      `).join('')}
-    </div>
-
-    <div style="${sectionStyle}">
-      <button class="btn btn-ghost" style="position:absolute;top:10px;right:12px;padding:4px 10px;font-size:12px" onclick="renderStep(5)">Editar</button>
-      <strong style="display:block;margin-bottom:10px">Metas</strong>
-      ${onboardingData.metas.length === 0 ? '<p class="form-hint">Ninguna</p>' : onboardingData.metas.map(m => `
-        <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light)">
-          <span>${escapeHtml(m.nombre)}</span>
-          <span style="color:var(--text-secondary)">${formatMXN(m.monto_objetivo || 0)}</span>
+        <div style="${sectionStyle}">
+          <button class="btn btn-ghost" style="position:absolute;top:8px;right:8px;padding:3px 8px;font-size:11px" onclick="renderStep(4)">Editar</button>
+          <strong style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px">Deudas · ${onboardingData.deudas.length}</strong>
+          ${onboardingData.deudas.map(d => `<div style="font-size:13px">${escapeHtml(d.acreedor)} · ${formatMXN(d.monto_actual)}</div>`).join('') || '<p class="form-hint" style="margin:0">Ninguna</p>'}
         </div>
-      `).join('')}
-    </div>
-
-    <div style="${sectionStyle}">
-      <button class="btn btn-ghost" style="position:absolute;top:10px;right:12px;padding:4px 10px;font-size:12px" onclick="renderStep(6)">Editar</button>
-      <strong style="display:block;margin-bottom:10px">Gastos diarios</strong>
-      ${renderList(onboardingData.gastosDiarios, 'Ninguno', item => item.subcategoria || item.categoria)}
-    </div>
+      </div>
+    </details>
   `;
 
   setFooter(`
     <div class="footer-nav-row">
       <button class="btn btn-ghost" onclick="onboardingBack()"><i data-lucide="arrow-left" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i> Atrás</button>
-      <button class="btn btn-primary" id="btn-finish" onclick="finishOnboarding()">Comenzar a usar JM Finance</button>
+      <button class="btn btn-primary" id="btn-finish" onclick="finishOnboarding()">Comenzar a usar JM Finance <i data-lucide="arrow-right" style="width:16px;height:16px;stroke-width:2;pointer-events:none"></i></button>
     </div>
   `);
 
@@ -1632,6 +1824,7 @@ async function finishOnboarding() {
         tipo_deuda: d.tipo_deuda || 'simple',
         activa: true,
         tasa_interes_anual: d.tasa_interes_anual || 0,
+        num_pagos_restantes: d.num_pagos_restantes ?? null,
         usuario_id: userId
       }));
       const { error: errDeudas } = await db.from('deudas').insert(deudas);
@@ -2076,6 +2269,7 @@ window.selectTipoDeudaOnboarding = function(tipo) {
 };
 
 window.renderCamposDeudaOnboarding = renderCamposDeudaOnboarding;
+window.actualizarTasaAnual         = actualizarTasaAnual;
 window.addDeuda        = addDeuda;
 window.removeDeuda     = removeDeuda;
 window.nextStep5       = nextStep5;

@@ -5,7 +5,11 @@
       "Bash(node -c js/app.js)",
       "Bash(node --check js/router.js)",
       "Bash(node --check js/supabase.js)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "WebSearch",
+      "WebFetch(domain:expansion.mx)",
+      "WebFetch(domain:redditfavorites.com)",
+      "WebFetch(domain:www.contramuro.com)"
     ]
   }
 }

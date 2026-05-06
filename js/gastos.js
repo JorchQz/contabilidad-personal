@@ -206,6 +206,7 @@ export const GASTOS_VARIABLES_INDEX = (() => {
 })();
 
 let currentEditGastoId = null;
+let _cuentasParaGasto   = []; // referencia para detectar TDC en el modal de gasto
 
 // ---- HELPERS EXCLUSIVOS DE GASTOS ----
 function getCategoriaGastoIcon(nombre) {
@@ -1099,7 +1100,11 @@ async function openRegistrarGasto(gastoId = null) {
     }
   }
 
+  _cuentasParaGasto = cuentas || [];
   const lastCuenta = localStorage.getItem('jmf_last_cuenta_gasto') || cuentaDefault;
+  const cuentaInicial = _cuentasParaGasto.find(c => c.id === lastCuenta) || _cuentasParaGasto[0];
+  const cuentaInicialEsTDC = cuentaInicial?.tipo === 'credito';
+
   openModal(titulo, `
     <div class="form-group">
       <label class="form-label">Monto</label>
@@ -1114,10 +1119,25 @@ async function openRegistrarGasto(gastoId = null) {
     ${(cuentas || []).length > 1 ? `
     <div class="form-group">
       <label class="form-label">Cuenta</label>
-      <select class="form-select" id="rg-cuenta">
-        ${(cuentas || []).map(c => `<option value="${c.id}" ${c.id === lastCuenta ? 'selected' : ''}>${escapeHtml(c.nombre)}</option>`).join('')}
+      <select class="form-select" id="rg-cuenta" onchange="onCambiarCuentaGasto(this.value)">
+        ${(cuentas || []).map(c => `<option value="${c.id}" data-tipo="${c.tipo}" ${c.id === lastCuenta ? 'selected' : ''}>${escapeHtml(c.nombre)}</option>`).join('')}
       </select>
     </div>` : `<input type="hidden" id="rg-cuenta" value="${(cuentas || [])[0]?.id || ''}" />`}
+    <div id="rg-msi-seccion" style="display:${cuentaInicialEsTDC && !gastoId ? 'block' : 'none'}">
+      <div class="form-group">
+        <label class="form-label">¿A cuántos meses?</label>
+        <select class="form-select" id="rg-msi">
+          <option value="1">Contado (1 sola vez)</option>
+          <option value="3">3 meses</option>
+          <option value="6">6 meses</option>
+          <option value="9">9 meses</option>
+          <option value="12">12 meses</option>
+          <option value="18">18 meses</option>
+          <option value="24">24 meses</option>
+        </select>
+        <p class="form-hint">Si es "meses sin intereses" (MSI), la app aparta la cuota mensual en tu distribución de ingresos.</p>
+      </div>
+    </div>
     <div class="form-group">
       <label class="form-label">Nota <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
       <input class="form-input" id="rg-desc" type="text" placeholder="Lugar, detalle..." value="${escapeHtml(descValue)}" maxlength="200" />
@@ -1186,7 +1206,11 @@ async function guardarGasto() {
     return;
   }
 
-  if (cuenta_id) {
+  const cuentaInfo = _cuentasParaGasto.find(c => c.id === cuenta_id);
+  const esCuentaTDC = cuentaInfo?.tipo === 'credito';
+
+  // Validar saldo solo para cuentas no-TDC (TDC tiene línea de crédito, no saldo)
+  if (cuenta_id && !esCuentaTDC) {
     const [
       { data: cuenta, error: errorCuenta },
       { data: ingresosCuenta, error: errorIngresos },
@@ -1211,6 +1235,31 @@ async function guardarGasto() {
 
     if (monto > saldoDisponible) {
       showSnackbar('Saldo insuficiente — disponible: ' + formatMXN(saldoDisponible), 'error');
+      return;
+    }
+  }
+
+  // Compra a MSI con tarjeta de crédito
+  if (esCuentaTDC && !currentEditGastoId) {
+    const numMeses = parseInt(document.getElementById('rg-msi')?.value || '1', 10);
+    if (numMeses > 1) {
+      const cuotaMensual = parseFloat((monto / numMeses).toFixed(2));
+      const { error: errMSI } = await db.from('gastos_diferidos').insert({
+        usuario_id:         usuarioId,
+        descripcion:        descripcion || 'Compra a meses',
+        monto_total:        monto,
+        num_meses:          numMeses,
+        monto_cuota:        cuotaMensual,
+        tasa_mensual:       0,
+        fecha_primer_cargo: fecha,
+        cuenta_id,
+        activo:             true
+      });
+      if (errMSI) { showSnackbar('No se pudo registrar la compra a meses. Revisa tu conexión.', 'error'); return; }
+      closeModal();
+      showSnackbar(`Compra a ${numMeses} MSI registrada — ${formatMXN(cuotaMensual)}/mes`, 'success');
+      await loadDashboard();
+      await loadGastos();
       return;
     }
   }
@@ -1325,6 +1374,12 @@ async function guardarGasto() {
     if (_btn?.isConnected) _btn.disabled = false;
   }
 }
+
+window.onCambiarCuentaGasto = function(cuentaId) {
+  const cuenta = _cuentasParaGasto.find(c => c.id === cuentaId);
+  const msiSec = document.getElementById('rg-msi-seccion');
+  if (msiSec) msiSec.style.display = cuenta?.tipo === 'credito' ? 'block' : 'none';
+};
 
 // Funciones invocadas desde atributos onclick en HTML generado dinámicamente
 window.openMenuGasto = openMenuGasto;

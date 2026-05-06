@@ -10,7 +10,7 @@ export async function getSaldoDisponibleTotal(usuarioId) {
     { data: traspasosSalida, error: errorTraspasosSalida },
     { data: traspasosEntrada, error: errorTraspasosEntrada }
   ] = await Promise.all([
-    db.from('cuentas').select('saldo_inicial').eq('usuario_id', usuarioId).eq('activa', true),
+    db.from('cuentas').select('saldo_inicial').eq('usuario_id', usuarioId).eq('activa', true).eq('es_pasivo', false),
     db.from('ingresos').select('monto').eq('usuario_id', usuarioId),
     db.from('gastos').select('monto').eq('usuario_id', usuarioId),
     db.from('pagos_deuda').select('monto').eq('usuario_id', usuarioId),
@@ -403,4 +403,68 @@ export async function getPagosPendientes() {
     return acc + (isFinite(m) ? m : 0);
   }, 0);
   return pendientes;
+}
+
+// ---- AMORTIZACIÓN FRANCESA ----
+
+/**
+ * Genera la tabla de amortización completa para un préstamo de cuota fija.
+ * @param {number} capital        Saldo actual (no el original si ya se han hecho pagos)
+ * @param {number} tasaMensual    Tasa mensual en % (ej: 2 para 2%)
+ * @param {number} numPagos       Número de pagos restantes
+ * @returns {Array} Filas con { num, cuota, interes, capital, iva, total, saldo }
+ */
+export function generarTablaAmortizacion(capital, tasaMensual, numPagos) {
+  if (!capital || capital <= 0 || !numPagos || numPagos <= 0) return [];
+  const r = (tasaMensual || 0) / 100;
+  let cuota;
+  if (r <= 0) {
+    cuota = capital / numPagos;
+  } else {
+    cuota = capital * (r * Math.pow(1 + r, numPagos)) / (Math.pow(1 + r, numPagos) - 1);
+  }
+  if (!isFinite(cuota) || cuota <= 0) return [];
+
+  let saldo = capital;
+  const tabla = [];
+  for (let i = 1; i <= numPagos; i++) {
+    const interes     = saldo * r;
+    const abonoCapital = Math.min(cuota - interes, saldo);
+    const iva         = interes * 0.16;
+    saldo = Math.max(0, saldo - abonoCapital);
+    tabla.push({
+      num:     i,
+      cuota:   parseFloat(cuota.toFixed(2)),
+      interes: parseFloat(interes.toFixed(2)),
+      capital: parseFloat(abonoCapital.toFixed(2)),
+      iva:     parseFloat(iva.toFixed(2)),
+      total:   parseFloat((abonoCapital + interes + iva).toFixed(2)),
+      saldo:   parseFloat(saldo.toFixed(2))
+    });
+    if (saldo === 0) break;
+  }
+  return tabla;
+}
+
+/**
+ * Calcula el desglose de UN pago (el próximo) dado el saldo actual.
+ * Devuelve null si no hay datos suficientes para amortización.
+ * @param {number} saldoActual
+ * @param {number} tasaMensual   En % (ej: 2)
+ * @param {number} numPagosRestantes
+ * @returns {{ capital, interes, iva, total, cuota } | null}
+ */
+export function calcularDesgloseAmortizacion(saldoActual, tasaMensual, numPagosRestantes) {
+  if (!saldoActual || saldoActual <= 0) return null;
+  if (!tasaMensual || tasaMensual <= 0 || !numPagosRestantes || numPagosRestantes <= 0) return null;
+  const tabla = generarTablaAmortizacion(saldoActual, tasaMensual, numPagosRestantes);
+  if (!tabla.length) return null;
+  const fila = tabla[0];
+  return {
+    capital:  fila.capital,
+    interes:  fila.interes,
+    iva:      fila.iva,
+    total:    fila.total,
+    cuota:    fila.cuota
+  };
 }
