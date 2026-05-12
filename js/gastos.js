@@ -754,18 +754,70 @@ export async function loadGastos() {
   const hoy = new Date();
   const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
   const finMes    = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).toISOString().split('T')[0];
-  const { data: gastos } = await db
-    .from('gastos')
-    .select('*, categorias(nombre, emoji)')
-    .eq('usuario_id', uid)
-    .neq('es_ahorro', true)
-    .gte('fecha', inicioMes)
-    .lte('fecha', finMes)
-    .order('fecha', { ascending: false })
-    .limit(200);
+
+  const [{ data: gastos }, { data: msiActivos }] = await Promise.all([
+    db.from('gastos')
+      .select('*, categorias(nombre, emoji)')
+      .eq('usuario_id', uid)
+      .neq('es_ahorro', true)
+      .gte('fecha', inicioMes)
+      .lte('fecha', finMes)
+      .order('fecha', { ascending: false })
+      .limit(200),
+    db.from('gastos_diferidos')
+      .select('id, descripcion, monto_total, monto_cuota, num_meses, cuotas_pagadas, fecha_primer_cargo, cuenta_id')
+      .eq('usuario_id', uid)
+      .eq('activo', true)
+      .order('fecha_primer_cargo')
+  ]);
 
   const totalMes = (gastos || []).reduce((s, g) => s + Number(g.monto || 0), 0);
   const mesLabel = hoy.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+
+  // Sección MSI activos
+  const msiHTML = (msiActivos || []).length > 0 ? `
+    <div style="padding:0 16px;margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;display:flex;align-items:center;gap:5px">
+        <i data-lucide="calendar-range" style="width:13px;height:13px;stroke-width:2;pointer-events:none"></i> MSI en curso
+      </div>
+      ${(msiActivos || []).map(m => {
+        const pend    = m.num_meses - (m.cuotas_pagadas || 0);
+        const pct     = Math.round(((m.cuotas_pagadas || 0) / m.num_meses) * 100);
+        const fechaProx = new Date(m.fecha_primer_cargo + 'T00:00:00');
+        fechaProx.setMonth(fechaProx.getMonth() + (m.cuotas_pagadas || 0));
+        const proxLabel = fechaProx.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
+        return `
+        <div class="card" style="margin-bottom:8px;padding:12px 14px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+            <div>
+              <div style="font-size:13px;font-weight:600">${escapeHtml(m.descripcion)}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px">
+                ${m.cuotas_pagadas || 0}/${m.num_meses} cuotas · Próxima: ${proxLabel}
+              </div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:14px;font-weight:700">${formatMXN(m.monto_cuota)}<span style="font-size:10px;color:var(--text-muted)">/mes</span></div>
+              <div style="font-size:10px;color:var(--text-muted)">${pend} restante${pend > 1 ? 's' : ''}</div>
+            </div>
+          </div>
+          <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:8px">
+            <div style="height:100%;background:var(--accent);width:${pct}%;border-radius:2px"></div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button data-action="pagar-cuota-msi" data-id="${escapeHtml(m.id)}"
+                    data-pagadas="${m.cuotas_pagadas || 0}" data-total="${m.num_meses}"
+                    style="flex:1;background:var(--accent-soft);border:1px solid rgba(59,130,246,0.2);border-radius:var(--radius-xs);padding:7px;color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">
+              Pagué esta cuota
+            </button>
+            <button data-action="cancelar-msi" data-id="${escapeHtml(m.id)}"
+                    style="background:transparent;border:1px solid var(--border);border-radius:var(--radius-xs);padding:7px 10px;color:var(--text-muted);font-size:12px;cursor:pointer;font-family:var(--font)">
+              <i data-lucide="x" style="width:13px;height:13px;stroke-width:2;pointer-events:none"></i>
+            </button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  ` : '';
 
   document.getElementById('page-gastos').innerHTML = `
     <div class="page-header">
@@ -778,7 +830,8 @@ export async function loadGastos() {
         <div style="font-size:16px;font-weight:700;color:var(--red)">${formatMXN(totalMes)}</div>
       </div>
     </div>` : ''}
-    <div class="page-body">
+    ${msiHTML}
+    <div class="page-body" id="gastos-lista">
       ${!gastos || gastos.length === 0 ? `
         <div class="empty-state">
           <div class="empty-icon"><i data-lucide="inbox" style="width:40px;height:40px;stroke-width:1.5"></i></div>
@@ -797,6 +850,24 @@ export async function loadGastos() {
       `).join('')}
     </div>
   `;
+
+  // Delegación para botones MSI
+  const pageGastos = document.getElementById('page-gastos');
+  if (pageGastos) {
+    pageGastos.addEventListener('click', async (e) => {
+      const btnPagar   = e.target.closest('[data-action="pagar-cuota-msi"]');
+      const btnCancelar = e.target.closest('[data-action="cancelar-msi"]');
+      if (btnPagar) {
+        const id = btnPagar.dataset.id;
+        const pagadas = parseInt(btnPagar.dataset.pagadas, 10);
+        const total   = parseInt(btnPagar.dataset.total, 10);
+        await _pagarCuotaMSI(id, pagadas, total);
+      }
+      if (btnCancelar) {
+        await _cancelarMSI(btnCancelar.dataset.id);
+      }
+    }, { once: true });
+  }
 
   renderLucideIcons();
 }
@@ -1418,6 +1489,32 @@ async function guardarGasto() {
   } finally {
     if (_btn?.isConnected) _btn.disabled = false;
   }
+}
+
+// ── GESTIÓN DE MSI ACTIVOS ───────────────────────────────────────────────────
+
+async function _pagarCuotaMSI(id, cuotasPagadas, numMeses) {
+  const nuevasCuotas = cuotasPagadas + 1;
+  const saldado      = nuevasCuotas >= numMeses;
+  const { error } = await db.from('gastos_diferidos')
+    .update({ cuotas_pagadas: nuevasCuotas, activo: !saldado })
+    .eq('id', id)
+    .eq('usuario_id', await getUsuarioId());
+  if (error) { showSnackbar('No se pudo actualizar el MSI', 'error'); return; }
+  showSnackbar(saldado ? '¡MSI completado! 🎉' : `Cuota ${nuevasCuotas}/${numMeses} registrada`, 'success');
+  await loadGastos();
+  await loadDashboard();
+}
+
+async function _cancelarMSI(id) {
+  const { error } = await db.from('gastos_diferidos')
+    .update({ activo: false })
+    .eq('id', id)
+    .eq('usuario_id', await getUsuarioId());
+  if (error) { showSnackbar('No se pudo cancelar el MSI', 'error'); return; }
+  showSnackbar('MSI cancelado', 'success');
+  await loadGastos();
+  await loadDashboard();
 }
 
 window.onCambiarCuentaGasto = function(cuentaId) {
