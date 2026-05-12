@@ -1076,8 +1076,42 @@ async function openRegistrarPagosHistoricos(deudaId) {
       </p>
     </div>
 
-    <div id="hist-lista" style="max-height:250px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
+    <div id="hist-lista" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
 
+    ${tieneTasa ? `
+    <!-- ATAJO: generar desde tabla de amortización -->
+    <details style="margin-bottom:10px">
+      <summary style="font-size:13px;font-weight:600;color:var(--accent);cursor:pointer;list-style:none;display:flex;align-items:center;gap:5px;padding:4px 0">
+        <i data-lucide="wand-2" style="width:14px;height:14px;stroke-width:1.75;pointer-events:none"></i>
+        Generar automáticamente desde mi tabla de pagos
+      </summary>
+      <div style="margin-top:8px;background:var(--bg-elevated);border-radius:var(--radius-sm);padding:10px 12px">
+        <p style="font-size:12px;color:var(--text-secondary);margin:0 0 8px;line-height:1.4">
+          Si tienes tu tabla de amortización (PDF de Caja Popular, etc.), dinos cuántos pagos ya hiciste y la fecha del primero. La app calcula los montos automáticamente.
+        </p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div>
+            <label class="form-label" style="font-size:11px">¿Cuántos pagos ya hiciste?</label>
+            <input class="form-input" id="hist-gen-n" type="number" min="1" max="360"
+                   placeholder="Ej: 5" inputmode="numeric" style="height:40px" />
+          </div>
+          <div>
+            <label class="form-label" style="font-size:11px">Fecha del 1er pago</label>
+            <input class="form-input" id="hist-gen-fecha" type="date"
+                   max="${new Date().toISOString().split('T')[0]}"
+                   style="height:40px" />
+          </div>
+        </div>
+        <button class="btn btn-secondary" style="width:100%;font-size:13px"
+                onclick="generarPagosDesdeTabla(${deuda.monto_inicial || deuda.monto_actual}, ${tasaMensual})">
+          <i data-lucide="calculator" style="width:14px;height:14px;stroke-width:1.75;pointer-events:none"></i>
+          Generar pagos
+        </button>
+      </div>
+    </details>
+    ` : ''}
+
+    <!-- Entrada manual -->
     <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;margin-bottom:4px">
       <div>
         <label class="form-label" style="font-size:11px">Fecha del pago</label>
@@ -1095,10 +1129,10 @@ async function openRegistrarPagosHistoricos(deudaId) {
       <button class="btn btn-secondary" style="height:40px;padding:0 12px;white-space:nowrap"
               onclick="agregarFilaHistorico()">+ Agregar</button>
     </div>
-    ${tieneTasa ? `<p class="form-hint">La app calculará automáticamente cuánto fue capital e interés en cada pago.</p>` : ''}
+    ${tieneTasa ? `<p class="form-hint">La app calcula el desglose capital/interés de cada pago al guardar.</p>` : ''}
 
     <button class="btn btn-primary" style="margin-top:12px;width:100%"
-            onclick="guardarPagosHistoricos('${deudaId}', ${deuda.monto_actual}, ${tasaMensual})">
+            onclick="guardarPagosHistoricos('${deudaId}', ${deuda.monto_inicial || deuda.monto_actual}, ${tasaMensual})">
       Guardar pagos históricos
     </button>
   `);
@@ -1138,6 +1172,41 @@ function _renderListaHistoricos() {
   renderLucideIcons();
 }
 
+window.generarPagosDesdeTabla = function(montoInicial, tasaMensual) {
+  const n = parseInt(document.getElementById('hist-gen-n')?.value || '0', 10);
+  const fechaStr = document.getElementById('hist-gen-fecha')?.value;
+  if (!n || n < 1 || n > 360) { showSnackbar('Ingresa cuántos pagos ya hiciste (1-360)', 'error'); return; }
+  if (!fechaStr) { showSnackbar('Ingresa la fecha del primer pago', 'error'); return; }
+
+  // Generar tabla de amortización
+  const tabla = generarTablaAmortizacion(montoInicial, tasaMensual, n + 200);
+  if (!tabla.length) { showSnackbar('No se pudo generar la tabla con esos datos', 'error'); return; }
+
+  const primerPago = new Date(fechaStr + 'T00:00:00');
+  const pagosGenerados = [];
+
+  for (let i = 0; i < n && i < tabla.length; i++) {
+    const fila = tabla[i];
+    const fecha = new Date(primerPago);
+    fecha.setMonth(fecha.getMonth() + i);
+    const fechaISO = fecha.toISOString().split('T')[0];
+    // Evitar duplicar fechas ya agregadas
+    if (!_pagosHistoricosLista.some(p => p.fecha === fechaISO)) {
+      pagosGenerados.push({ fecha: fechaISO, monto: fila.total });
+    }
+  }
+
+  if (pagosGenerados.length === 0) {
+    showSnackbar('Todos esos pagos ya están en la lista', 'error');
+    return;
+  }
+
+  _pagosHistoricosLista.push(...pagosGenerados);
+  _pagosHistoricosLista.sort((a, b) => a.fecha.localeCompare(b.fecha));
+  _renderListaHistoricos();
+  showSnackbar(`${pagosGenerados.length} pagos generados y listos para guardar`, 'success');
+};
+
 window.agregarFilaHistorico = function() {
   const fecha = document.getElementById('hist-fecha')?.value;
   const monto = parseFloat(String(document.getElementById('hist-monto')?.value || '').replace(/,/g, ''));
@@ -1152,11 +1221,12 @@ window.agregarFilaHistorico = function() {
   _renderListaHistoricos();
 };
 
-window.guardarPagosHistoricos = async function(deudaId, saldoActualActual, tasaMensual) {
+window.guardarPagosHistoricos = async function(deudaId, montoInicial, tasaMensual) {
   if (_pagosHistoricosLista.length === 0) { showSnackbar('Agrega al menos un pago', 'error'); return; }
 
   const usuarioId = await getUsuarioId();
-  let saldoSimulado = saldoActualActual;
+  // Simular HACIA ADELANTE desde el saldo original (no desde el actual)
+  let saldoSimulado = montoInicial;
 
   // Construir pagos a insertar, calculando desglose si hay tasa
   const rows = _pagosHistoricosLista.map(p => {

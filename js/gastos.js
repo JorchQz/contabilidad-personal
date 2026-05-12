@@ -1126,7 +1126,7 @@ async function openRegistrarGasto(gastoId = null) {
     <div id="rg-msi-seccion" style="display:${cuentaInicialEsTDC && !gastoId ? 'block' : 'none'}">
       <div class="form-group">
         <label class="form-label">¿A cuántos meses?</label>
-        <select class="form-select" id="rg-msi">
+        <select class="form-select" id="rg-msi" onchange="toggleMsiEnCurso()">
           <option value="1">Contado (1 sola vez)</option>
           <option value="3">3 meses</option>
           <option value="6">6 meses</option>
@@ -1136,6 +1136,30 @@ async function openRegistrarGasto(gastoId = null) {
           <option value="24">24 meses</option>
         </select>
         <p class="form-hint">Si es "meses sin intereses" (MSI), la app aparta la cuota mensual en tu distribución de ingresos.</p>
+      </div>
+      <!-- MSI en curso: para compras que ya tienen pagos hechos -->
+      <div id="rg-msi-en-curso" style="display:none;background:var(--bg-elevated);border:1px solid var(--border-light);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:8px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
+          <input type="checkbox" id="rg-msi-parcial" onchange="toggleMsiParcialCampos()"
+                 style="width:16px;height:16px;cursor:pointer;flex-shrink:0" />
+          <span style="font-size:13px;font-weight:600">Ya pagué algunas cuotas de este MSI</span>
+        </label>
+        <div id="rg-msi-parcial-campos" style="display:none;flex-direction:column;gap:8px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div>
+              <label class="form-label" style="font-size:11px">Cuotas ya pagadas</label>
+              <input class="form-input" id="rg-msi-pagadas" type="number" min="0" max="23"
+                     placeholder="Ej: 3" inputmode="numeric" style="height:40px" />
+            </div>
+            <div>
+              <label class="form-label" style="font-size:11px">Fecha del próximo pago</label>
+              <input class="form-input" id="rg-msi-prox-fecha" type="date"
+                     min="${new Date().toISOString().split('T')[0]}"
+                     style="height:40px" />
+            </div>
+          </div>
+          <p class="form-hint">Ej: compraste a 7 meses, llevas 3 pagados. La app registra las 4 cuotas restantes.</p>
+        </div>
       </div>
     </div>
     <div class="form-group">
@@ -1239,10 +1263,24 @@ async function guardarGasto() {
     }
   }
 
-  // Compra a MSI con tarjeta de crédito
+  // Compra a MSI con tarjeta de crédito (nueva o en curso)
   if (esCuentaTDC && !currentEditGastoId) {
     const numMeses = parseInt(document.getElementById('rg-msi')?.value || '1', 10);
     if (numMeses > 1) {
+      const esParcial    = document.getElementById('rg-msi-parcial')?.checked || false;
+      const cuotasPagadas = esParcial
+        ? Math.max(0, Math.min(parseInt(document.getElementById('rg-msi-pagadas')?.value || '0', 10), numMeses - 1))
+        : 0;
+      const proxFechaStr  = esParcial ? document.getElementById('rg-msi-prox-fecha')?.value : null;
+
+      // Para MSI en curso: calcular fecha_primer_cargo retrocediendo N meses desde el próximo pago
+      let fechaPrimerCargo = fecha;
+      if (esParcial && cuotasPagadas > 0 && proxFechaStr) {
+        const proxFecha = new Date(proxFechaStr + 'T00:00:00');
+        proxFecha.setMonth(proxFecha.getMonth() - cuotasPagadas);
+        fechaPrimerCargo = proxFecha.toISOString().split('T')[0];
+      }
+
       const cuotaMensual = parseFloat((monto / numMeses).toFixed(2));
       const { error: errMSI } = await db.from('gastos_diferidos').insert({
         usuario_id:         usuarioId,
@@ -1251,13 +1289,20 @@ async function guardarGasto() {
         num_meses:          numMeses,
         monto_cuota:        cuotaMensual,
         tasa_mensual:       0,
-        fecha_primer_cargo: fecha,
+        fecha_primer_cargo: fechaPrimerCargo,
+        cuotas_pagadas:     cuotasPagadas,
         cuenta_id,
         activo:             true
       });
       if (errMSI) { showSnackbar('No se pudo registrar la compra a meses. Revisa tu conexión.', 'error'); return; }
       closeModal();
-      showSnackbar(`Compra a ${numMeses} MSI registrada — ${formatMXN(cuotaMensual)}/mes`, 'success');
+      const restantes = numMeses - cuotasPagadas;
+      showSnackbar(
+        esParcial
+          ? `MSI en curso registrado — ${restantes} cuota${restantes > 1 ? 's' : ''} restante${restantes > 1 ? 's' : ''} de ${formatMXN(cuotaMensual)}`
+          : `Compra a ${numMeses} MSI registrada — ${formatMXN(cuotaMensual)}/mes`,
+        'success'
+      );
       await loadDashboard();
       await loadGastos();
       return;
@@ -1379,6 +1424,24 @@ window.onCambiarCuentaGasto = function(cuentaId) {
   const cuenta = _cuentasParaGasto.find(c => c.id === cuentaId);
   const msiSec = document.getElementById('rg-msi-seccion');
   if (msiSec) msiSec.style.display = cuenta?.tipo === 'credito' ? 'block' : 'none';
+};
+
+window.toggleMsiEnCurso = function() {
+  const meses = parseInt(document.getElementById('rg-msi')?.value || '1', 10);
+  const enCursoDiv = document.getElementById('rg-msi-en-curso');
+  if (enCursoDiv) enCursoDiv.style.display = meses > 1 ? 'block' : 'none';
+  // Actualizar max de cuotas pagadas
+  const pagadasInput = document.getElementById('rg-msi-pagadas');
+  if (pagadasInput) pagadasInput.max = String(meses - 1);
+};
+
+window.toggleMsiParcialCampos = function() {
+  const checked = document.getElementById('rg-msi-parcial')?.checked;
+  const campos  = document.getElementById('rg-msi-parcial-campos');
+  if (!campos) return;
+  campos.style.display = checked ? 'flex' : 'none';
+  campos.style.flexDirection = 'column';
+  campos.style.gap = '8px';
 };
 
 // Funciones invocadas desde atributos onclick en HTML generado dinámicamente

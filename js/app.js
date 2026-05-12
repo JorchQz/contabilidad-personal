@@ -151,6 +151,7 @@ const fabConfig = {
   dashboard: [
     { icon: 'minus-circle', label: 'Gasto', action: 'openRegistrarGasto()' },
     { icon: 'trending-up', label: 'Ingreso', action: 'openRegistrarIngreso()' },
+    { icon: 'calculator', label: '¿Puedo comprarlo?', action: 'openSimuladorCompra()' },
     { icon: 'arrow-left-right', label: 'Traspaso', action: 'openRegistrarTraspaso()' }
   ],
   gastos: [
@@ -1026,6 +1027,257 @@ window.actualizarDestinoTraspaso = function() {
     .map(c => `<option value="${c.id}" ${c.id === selActual ? 'selected' : ''}>${escapeHtml(c.nombre)}</option>`)
     .join('');
 };
+// ── SIMULADOR DE COMPRAS ─────────────────────────────────────────────────────
+async function openSimuladorCompra() {
+  const uid = await getUsuarioId();
+  const [
+    { data: ingProg },
+    { data: deudasConPago },
+    { data: gastosFijosData },
+    { data: gastosDiferidos }
+  ] = await Promise.all([
+    db.from('ingresos_programados').select('monto_estimado, frecuencia').eq('usuario_id', uid).eq('activo', true),
+    db.from('deudas').select('monto_pago, tipo_pago').eq('usuario_id', uid).eq('activa', true).not('monto_pago', 'is', null),
+    db.from('gastos_fijos').select('monto, frecuencia, monto_estimado').eq('usuario_id', uid),
+    db.from('gastos_diferidos').select('monto_cuota, num_meses, cuotas_pagadas').eq('usuario_id', uid).eq('activo', true)
+  ]);
+
+  const _norm = (m, f) => {
+    const t = { semanal:4.33, quincenal:2, mensual:1, bimestral:0.5, trimestral:0.333, semestral:0.167, anual:0.0833 };
+    return (Number(m)||0) * (t[f]||1);
+  };
+  const ingresoMensual = (ingProg||[]).reduce((s,i) => s + _norm(i.monto_estimado, i.frecuencia), 0);
+  const ingresoQuincenal = ingresoMensual / 2;
+
+  // Compromiso mensual actual
+  const compromisoMens = (deudasConPago||[]).reduce((s,d) => s + _norm(d.monto_pago, d.tipo_pago||'mensual'), 0)
+    + (gastosFijosData||[]).reduce((s,g) => s + _norm(g.monto||g.monto_estimado||0, g.frecuencia), 0)
+    + (gastosDiferidos||[]).reduce((s,gd) => {
+        const pend = gd.num_meses - (gd.cuotas_pagadas||0);
+        return pend > 0 ? s + Number(gd.monto_cuota||0) : s;
+      }, 0);
+
+  const ratioActual = ingresoMensual > 0 ? compromisoMens / ingresoMensual : 0;
+
+  // Guardamos datos para la función de cálculo
+  window._simCompraCtx = { ingresoMensual, ingresoQuincenal, compromisoMens, ratioActual };
+
+  openModal('¿Puedo comprarlo?', `
+    <div class="form-group">
+      <label class="form-label">¿Cuánto cuesta?</label>
+      <div class="input-money-wrap"><span class="currency-prefix">$</span>
+      <input class="form-input" id="sc-monto" type="number" placeholder="0.00" min="0"
+             inputmode="decimal" autofocus oninput="calcularSimCompra()" /></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">¿Cómo lo pagas?</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">
+        ${[
+          { v:'efectivo', icon:'banknote',     label:'Efectivo',      sub:'Lo pagas hoy' },
+          { v:'contado',  icon:'credit-card',  label:'TDC contado',   sub:'Pagas al corte' },
+          { v:'msi',      icon:'calendar',     label:'MSI',           sub:'Sin intereses' },
+          { v:'credito',  icon:'landmark',     label:'A crédito',     sub:'Con préstamo' }
+        ].map(op => `
+          <button onclick="selectModoPago('${op.v}')" id="sc-modo-${op.v}"
+            style="background:var(--bg-elevated);border:2px solid var(--border);border-radius:var(--radius-sm);padding:10px 8px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 150ms ease">
+            <i data-lucide="${op.icon}" style="width:16px;height:16px;color:var(--accent);display:block;margin-bottom:4px;stroke-width:1.75;pointer-events:none"></i>
+            <div style="font-size:12px;font-weight:700">${op.label}</div>
+            <div style="font-size:10px;color:var(--text-muted)">${op.sub}</div>
+          </button>`).join('')}
+      </div>
+    </div>
+
+    <!-- Campos extra según modo -->
+    <div id="sc-extra-campos"></div>
+
+    <!-- Resultado -->
+    <div id="sc-resultado" style="min-height:60px"></div>
+
+    <button class="btn btn-ghost" style="margin-top:12px;width:100%" onclick="closeModal()">
+      Cerrar — solo estaba viendo
+    </button>
+  `);
+
+  window._simCompraModo = 'efectivo';
+  renderLucideIcons();
+  setTimeout(() => selectModoPago('efectivo'), 50);
+}
+
+window.selectModoPago = function(modo) {
+  window._simCompraModo = modo;
+  // Resaltar botón activo
+  ['efectivo','contado','msi','credito'].forEach(m => {
+    const btn = document.getElementById(`sc-modo-${m}`);
+    if (!btn) return;
+    btn.style.borderColor = m === modo ? 'var(--accent)' : 'var(--border)';
+    btn.style.background  = m === modo ? 'var(--accent-soft)' : 'var(--bg-elevated)';
+  });
+  // Campos extra
+  const extra = document.getElementById('sc-extra-campos');
+  if (!extra) return;
+  if (modo === 'msi') {
+    extra.innerHTML = `
+      <div class="form-group">
+        <label class="form-label">¿A cuántos meses?</label>
+        <select class="form-select" id="sc-meses" onchange="calcularSimCompra()">
+          ${[3,6,9,12,18,24].map(m => `<option value="${m}">${m} meses</option>`).join('')}
+        </select>
+      </div>`;
+  } else if (modo === 'credito') {
+    extra.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="form-group">
+          <label class="form-label">Meses del préstamo</label>
+          <input class="form-input" id="sc-cr-meses" type="number" min="1" max="360"
+                 placeholder="Ej: 24" value="24" inputmode="numeric" oninput="calcularSimCompra()" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tasa mensual %</label>
+          <input class="form-input" id="sc-cr-tasa" type="number" min="0" max="99"
+                 placeholder="Ej: 2" value="2" step="0.1" inputmode="decimal" oninput="calcularSimCompra()" />
+        </div>
+      </div>`;
+  } else {
+    extra.innerHTML = '';
+  }
+  calcularSimCompra();
+};
+
+window.calcularSimCompra = function() {
+  const ctx = window._simCompraCtx;
+  if (!ctx) return;
+  const res = document.getElementById('sc-resultado');
+  if (!res) return;
+
+  const monto = parseFloat(String(document.getElementById('sc-monto')?.value || '').replace(/,/g, ''));
+  const modo  = window._simCompraModo || 'efectivo';
+  if (!monto || monto <= 0 || !isFinite(monto)) {
+    res.innerHTML = '';
+    return;
+  }
+
+  const { ingresoMensual, ingresoQuincenal, compromisoMens, ratioActual } = ctx;
+  let html = '';
+
+  if (modo === 'efectivo') {
+    // Comparar contra saldo libre estimado
+    const libreEstimado = ingresoMensual - compromisoMens;
+    const pct = ingresoMensual > 0 ? Math.round((monto / ingresoMensual) * 100) : 0;
+    const quincenas = ingresoQuincenal > 0 ? (monto / ingresoQuincenal).toFixed(1) : '?';
+    const veredicto = monto <= libreEstimado * 0.9 ? 'comodo' : monto <= libreEstimado ? 'justo' : 'apretado';
+    const color  = veredicto === 'comodo' ? 'var(--green)' : veredicto === 'justo' ? 'var(--yellow)' : 'var(--red)';
+    const icono  = veredicto === 'comodo' ? 'check-circle' : veredicto === 'justo' ? 'alert-circle' : 'x-circle';
+    const texto  = veredicto === 'comodo' ? 'Puedes comprarlo con margen' : veredicto === 'justo' ? 'Puedes, pero quedas ajustado' : 'No alcanza este mes';
+    html = `
+      <div style="background:${veredicto === 'comodo' ? 'var(--green-soft)' : veredicto === 'justo' ? 'rgba(245,158,11,0.1)' : 'var(--red-soft)'};border:1px solid ${color};border-radius:var(--radius-sm);padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <i data-lucide="${icono}" style="width:18px;height:18px;color:${color};stroke-width:2;pointer-events:none"></i>
+          <span style="font-size:14px;font-weight:700;color:${color}">${texto}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.6">
+          Representa el <strong>${pct}%</strong> de tu ingreso mensual.<br>
+          Equivale a <strong>${quincenas} quincenas</strong> de trabajo.
+          ${veredicto === 'apretado' ? `<br>Te faltan aprox. ${formatMXN(monto - libreEstimado)} para cubrirlo con margen.` : ''}
+        </div>
+      </div>`;
+  } else if (modo === 'contado') {
+    const pct = ingresoMensual > 0 ? Math.round((monto / ingresoMensual) * 100) : 0;
+    const quincenas = ingresoQuincenal > 0 ? (monto / ingresoQuincenal).toFixed(1) : '?';
+    const cabe = monto <= (ingresoMensual - compromisoMens);
+    const color = cabe ? 'var(--green)' : 'var(--yellow)';
+    html = `
+      <div style="background:${cabe ? 'var(--green-soft)' : 'rgba(245,158,11,0.1)'};border:1px solid ${color};border-radius:var(--radius-sm);padding:12px 14px">
+        <div style="font-size:13px;font-weight:700;color:${color};margin-bottom:4px">
+          ${cabe ? 'Cabe en tu presupuesto' : 'Compromete parte de lo que reservas para deudas'}
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.6">
+          Pagas ${formatMXN(monto)} en un solo estado de cuenta.<br>
+          Equivale a ${pct}% de tu ingreso mensual — ${quincenas} quincenas de trabajo.
+        </div>
+      </div>`;
+  } else if (modo === 'msi') {
+    const meses = parseInt(document.getElementById('sc-meses')?.value || '12', 10);
+    const cuota = monto / meses;
+    const nuevaRatio = ingresoMensual > 0 ? (compromisoMens + cuota) / ingresoMensual : 0;
+    const pctInc  = ingresoMensual > 0 ? Math.round((cuota / ingresoMensual) * 100) : 0;
+    const quincenas = ingresoQuincenal > 0 ? (monto / ingresoQuincenal).toFixed(1) : '?';
+    const color = nuevaRatio < 0.5 ? 'var(--green)' : nuevaRatio < 0.7 ? 'var(--yellow)' : 'var(--red)';
+    const semNuevo = Math.round(nuevaRatio * 100);
+    html = `
+      <div style="background:var(--bg-elevated);border:1px solid var(--border-light);border-radius:var(--radius-sm);padding:12px 14px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div style="text-align:center">
+            <div style="font-size:20px;font-weight:800;color:var(--accent)">${formatMXN(cuota)}</div>
+            <div style="font-size:11px;color:var(--text-muted)">por mes, ${meses} meses</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:20px;font-weight:800">${quincenas}</div>
+            <div style="font-size:11px;color:var(--text-muted)">quincenas de trabajo</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">
+          ${pctInc}% de tu ingreso mensual comprometido por ${meses} meses.
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px">
+          <span style="color:var(--text-muted)">Semáforo actual</span>
+          <span style="color:${ratioActual < 0.5 ? 'var(--green)' : ratioActual < 0.7 ? 'var(--yellow)' : 'var(--red)'}">
+            ${Math.round(ratioActual*100)}%
+          </span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px">
+          <span style="color:var(--text-muted)">Con este MSI sería</span>
+          <span style="font-weight:700;color:${color}">${semNuevo}%</span>
+        </div>
+      </div>`;
+  } else if (modo === 'credito') {
+    const meses = parseInt(document.getElementById('sc-cr-meses')?.value || '24', 10);
+    const tasaMensual = parseFloat(document.getElementById('sc-cr-tasa')?.value || '2') / 100;
+    if (!meses || meses < 1) return;
+    let cuota, totalPagado, interesTotal;
+    if (tasaMensual <= 0) {
+      cuota = monto / meses;
+      totalPagado = monto;
+      interesTotal = 0;
+    } else {
+      cuota = monto * (tasaMensual * Math.pow(1+tasaMensual, meses)) / (Math.pow(1+tasaMensual, meses) - 1);
+      totalPagado = cuota * meses;
+      interesTotal = totalPagado - monto;
+    }
+    if (!isFinite(cuota)) return;
+    const quincenas = ingresoQuincenal > 0 ? (monto / ingresoQuincenal).toFixed(1) : '?';
+    const pctCuota = ingresoMensual > 0 ? Math.round((cuota / ingresoMensual) * 100) : 0;
+    html = `
+      <div style="background:var(--bg-elevated);border:1px solid var(--border-light);border-radius:var(--radius-sm);padding:12px 14px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div style="text-align:center">
+            <div style="font-size:18px;font-weight:800;color:var(--accent)">${formatMXN(cuota)}</div>
+            <div style="font-size:11px;color:var(--text-muted)">cuota mensual</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:18px;font-weight:800;color:var(--red)">${formatMXN(interesTotal)}</div>
+            <div style="font-size:11px;color:var(--text-muted)">en intereses</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.6">
+          Pagarás <strong>${formatMXN(totalPagado)}</strong> en total — ${formatMXN(interesTotal)} más de lo que cuesta hoy.<br>
+          La cuota equivale al ${pctCuota}% de tu ingreso mensual.<br>
+          Equivale a <strong>${quincenas} quincenas</strong> de trabajo total.
+        </div>
+        ${interesTotal > 0 && ingresoMensual > 0 ? `
+        <div style="margin-top:8px;padding:8px;background:var(--red-soft);border-radius:var(--radius-xs);font-size:12px;color:var(--text-secondary)">
+          Si ahorras ${formatMXN(cuota)}/mes en cambio, lo compras en ${meses} meses <strong>sin pagar ${formatMXN(interesTotal)} en intereses</strong>.
+        </div>` : ''}
+      </div>`;
+  }
+
+  res.innerHTML = html;
+  renderLucideIcons();
+};
+
+window.openSimuladorCompra = openSimuladorCompra;
+// ─────────────────────────────────────────────────────────────────────────────
+
 window.openConfirmModal = openConfirmModal;
 window.exportarDatosCSV = exportarDatosCSV;
 window.exportarReportePDF = exportarReportePDF;

@@ -146,16 +146,35 @@ Dark mode is the default. Light mode: `<html data-theme="light">`. All color var
 - `parseInt` calls must use base 10: `parseInt(str, 10)`.
 - Supabase writes must destructure `{ error }` and check it before updating UI.
 
-## Pending migrations (apply in Supabase SQL editor)
+## Applied migrations (all applied as of 2026-05-06)
 
 ```sql
--- Deudas (done 2026-04-28)
+-- All of the following have been applied via Supabase MCP:
 ALTER TABLE deudas ADD COLUMN IF NOT EXISTS activa BOOLEAN DEFAULT true;
 ALTER TABLE deudas ADD COLUMN IF NOT EXISTS tasa_interes_anual NUMERIC DEFAULT 0;
-
--- Metas (required — not yet applied as of 2026-04-29)
 ALTER TABLE metas_ahorro ADD COLUMN IF NOT EXISTS fecha_limite DATE;
 ALTER TABLE metas_ahorro ADD COLUMN IF NOT EXISTS frecuencia_ahorro VARCHAR;
-
--- Older migrations documented inline in app.js lines 39-51
+ALTER TABLE deudas ADD COLUMN IF NOT EXISTS num_pagos_restantes INTEGER DEFAULT NULL;
+ALTER TABLE pagos_deuda ADD COLUMN IF NOT EXISTS monto_capital NUMERIC DEFAULT NULL;
+ALTER TABLE pagos_deuda ADD COLUMN IF NOT EXISTS monto_interes NUMERIC DEFAULT NULL;
+ALTER TABLE pagos_deuda ADD COLUMN IF NOT EXISTS monto_iva NUMERIC DEFAULT NULL;
+ALTER TABLE cuentas ADD COLUMN IF NOT EXISTS fecha_corte INTEGER DEFAULT NULL;
+ALTER TABLE cuentas ADD COLUMN IF NOT EXISTS fecha_limite_pago INTEGER DEFAULT NULL;
+ALTER TABLE cuentas ADD COLUMN IF NOT EXISTS limite_credito NUMERIC DEFAULT NULL;
+CREATE TABLE IF NOT EXISTS gastos_diferidos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  descripcion TEXT NOT NULL,
+  monto_total NUMERIC NOT NULL,
+  num_meses INTEGER NOT NULL,
+  monto_cuota NUMERIC NOT NULL,
+  tasa_mensual NUMERIC DEFAULT 0,
+  fecha_primer_cargo DATE NOT NULL,
+  cuotas_pagadas INTEGER DEFAULT 0,
+  cuenta_id UUID REFERENCES cuentas(id),
+  usuario_id UUID NOT NULL,
+  activo BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE gastos ADD COLUMN IF NOT EXISTS es_ahorro BOOLEAN DEFAULT false;
+ALTER TABLE gastos ADD COLUMN IF NOT EXISTS meta_id UUID REFERENCES metas_ahorro(id);
 ```
