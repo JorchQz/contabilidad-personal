@@ -1,6 +1,11 @@
 // js/balance.js — Motor de cálculo financiero (sin DOM)
 import { db, getUsuarioId } from './supabase.js';
 
+const FREQ_FACTOR_MENSUAL = {
+  semanal: 4.33, quincenal: 2, mensual: 1,
+  bimestral: 0.5, trimestral: 0.33, semestral: 0.167, anual: 0.083, unico: 0,
+};
+
 export async function getSaldoDisponibleTotal(usuarioId) {
   const [
     { data: cuentas, error: errorCuentas },
@@ -262,6 +267,68 @@ function getProximaFechaCobro(ingresoProgramado, fechaBase) {
   }
 
   return null;
+}
+
+export async function calcularSaludFinanciera(usuarioId) {
+  const hoy = new Date();
+  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
+  const finMes   = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).toISOString().split('T')[0];
+
+  const [
+    { data: cuentas },
+    { data: todosIngresos },
+    { data: todosGastos },
+    { data: todosPagosDeuda },
+    { data: ingresosDelMes },
+    { data: gastosDelMes },
+    { data: gastosFijos },
+    { data: deudas }
+  ] = await Promise.all([
+    db.from('cuentas').select('saldo_inicial').eq('usuario_id', usuarioId).eq('activa', true),
+    db.from('ingresos').select('monto').eq('usuario_id', usuarioId),
+    db.from('gastos').select('monto').eq('usuario_id', usuarioId),
+    db.from('pagos_deuda').select('monto').eq('usuario_id', usuarioId),
+    db.from('ingresos').select('monto').eq('usuario_id', usuarioId).gte('fecha', inicioMes).lte('fecha', finMes),
+    db.from('gastos').select('monto').eq('usuario_id', usuarioId).gte('fecha', inicioMes).lte('fecha', finMes),
+    db.from('gastos_fijos').select('monto, frecuencia, monto_variable').eq('usuario_id', usuarioId).eq('activo', true),
+    db.from('deudas').select('monto_actual, monto_pago').eq('usuario_id', usuarioId).eq('activa', true),
+  ]);
+
+  const saldoInicial   = (cuentas         || []).reduce((s, c) => s + Number(c.saldo_inicial || 0), 0);
+  const sumIngresos    = (todosIngresos    || []).reduce((s, i) => s + Number(i.monto || 0), 0);
+  const sumGastos      = (todosGastos      || []).reduce((s, g) => s + Number(g.monto || 0), 0);
+  const sumPagosDeuda  = (todosPagosDeuda  || []).reduce((s, p) => s + Number(p.monto || 0), 0);
+  const saldoTotal     = saldoInicial + sumIngresos - sumGastos - sumPagosDeuda;
+
+  const ingresosTotal  = (ingresosDelMes || []).reduce((s, i) => s + Number(i.monto || 0), 0);
+  const gastosTotal    = (gastosDelMes   || []).reduce((s, g) => s + Number(g.monto || 0), 0);
+
+  const gastosFijosMensuales = (gastosFijos || []).reduce((s, gf) => {
+    if (gf.monto_variable || !gf.monto) return s;
+    return s + Number(gf.monto) * (FREQ_FACTOR_MENSUAL[gf.frecuencia] ?? 1);
+  }, 0);
+
+  const pagosMensualesDeuda = (deudas || []).reduce((s, d) => {
+    return d.monto_pago ? s + Number(d.monto_pago) : s;
+  }, 0);
+
+  return {
+    saldoTotal,
+    ingresosTotal,
+    gastosTotal,
+    gastosFijosMensuales,
+    pagosMensualesDeuda,
+    fondoEmergenciaMeses: gastosFijosMensuales > 0
+      ? Math.max(0, Math.round((saldoTotal / gastosFijosMensuales) * 10) / 10)
+      : null,
+    ratioDeuda: ingresosTotal > 0
+      ? Math.round((pagosMensualesDeuda / ingresosTotal) * 100)
+      : null,
+    tasaAhorro: ingresosTotal > 0
+      ? Math.round(((ingresosTotal - gastosTotal) / ingresosTotal) * 100)
+      : null,
+    tieneDatos: (cuentas?.length || 0) + (todosIngresos?.length || 0) + (gastosFijos?.length || 0) > 0,
+  };
 }
 
 export async function getPagosPendientes() {

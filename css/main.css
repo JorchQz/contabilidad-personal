@@ -1699,6 +1699,227 @@ button span,
   padding: 10px 0;
 }
 
+/* ---- Gastos: agrupación por día ---- */
+.gastos-dia-group {
+  margin-bottom: 8px;
+}
+.gastos-dia-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 2px 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.gastos-dia-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.gastos-dia-subtotal {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* ---- Banner semanal ---- */
+.semana-banner {
+  display: flex;
+  align-items: center;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  gap: 0;
+}
+.semana-banner-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.semana-banner-divider {
+  width: 1px;
+  height: 32px;
+  background: var(--border);
+  margin: 0 8px;
+}
+.semana-banner-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.semana-banner-valor {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ---- Metas: fondo de emergencia destacado ---- */
+.meta-fondo-destacada {
+  border-color: var(--accent);
+}
+.meta-fondo-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+/* ---- Ingresos: resumen mensual ---- */
+.ingresos-resumen-card {
+  background: var(--green-soft);
+  border: 1.5px solid var(--green-border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.ingresos-resumen-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--green);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+.ingresos-resumen-monto {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--green);
+  margin-bottom: 2px;
+}
+.ingresos-resumen-diff {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ---- Gastos Fijos: resumen mensual ---- */
+.fijos-resumen-card {
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.fijos-resumen-titulo {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+.fijos-resumen-monto {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--red);
+  margin-bottom: 2px;
+}
+.fijos-resumen-pct {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ---- Gastos Fijos: alerta de vencidos ---- */
+.fijos-alerta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--yellow-soft);
+  border: 1.5px solid var(--yellow-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text);
+}
+.fijos-alerta i {
+  color: var(--yellow);
+  flex-shrink: 0;
+}
+
+/* ---- Gastos Fijos: badge de estado (pagado / vencido) ---- */
+.fijo-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  vertical-align: middle;
+  margin-left: 4px;
+  letter-spacing: 0.02em;
+}
+.fijo-status-ok {
+  background: var(--green-soft);
+  color: var(--green);
+}
+.fijo-status-warn {
+  background: var(--yellow-soft);
+  color: var(--yellow);
+}
+
+/* ---- Chips de categoría con total del mes ---- */
+.chip-mes-total {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  border-radius: 10px;
+  padding: 1px 6px;
+  margin-left: 2px;
+}
+
+/* ---- Hint de categoría insight en el formulario ---- */
+.gasto-insight-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 2px 0;
+  display: none;
+}
+
+/* ---- Cuentas: badge de saldo bajo / sin fondos ---- */
+.cuenta-saldo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+.cuenta-saldo-amarillo {
+  background: var(--yellow-soft);
+  color: var(--yellow);
+}
+.cuenta-saldo-rojo {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+/* ---- Hint de saldo disponible en cuenta ---- */
+.cuenta-saldo-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 2px 0;
+}
+
 .icon-picker-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);

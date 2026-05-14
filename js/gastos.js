@@ -185,6 +185,11 @@ export const GASTOS_VARIABLES_INDEX = (() => {
 
 let currentEditGastoId = null;
 
+const FREQ_FACTOR_MENSUAL = {
+  semanal: 4.33, quincenal: 2, mensual: 1,
+  bimestral: 0.5, trimestral: 0.33, semestral: 0.167, anual: 0.083, unico: 0,
+};
+
 // ---- HELPERS EXCLUSIVOS DE GASTOS ----
 function getCategoriaGastoIcon(nombre) {
   const map = {
@@ -238,22 +243,21 @@ function formatearFrecuenciaGastoFijo(frecuencia, diaPago, diaSemana, proximoPag
 }
 
 export async function loadFijos() {
-  const uid = (await getUsuarioId());
-  const { data: fijos, error } = await db
-    .from('gastos_fijos')
-    .select('*, categorias(emoji)')
-    .eq('usuario_id', uid)
-    .eq('activo', true)
-    .order('descripcion', { ascending: true });
+  const uid = await getUsuarioId();
+  const hoy = new Date();
+  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
+
+  const [{ data: fijos, error }, { data: ingresosRes }] = await Promise.all([
+    db.from('gastos_fijos').select('*, categorias(emoji)').eq('usuario_id', uid).eq('activo', true).order('descripcion', { ascending: true }),
+    db.from('ingresos').select('monto').eq('usuario_id', uid).gte('fecha', inicioMes),
+  ]);
 
   if (error) {
     document.getElementById('page-fijos').innerHTML = `
-      <div class="page-header">
-        <h1 class="page-title">Gastos fijos</h1>
-      </div>
+      <div class="page-header"><h1 class="page-title">Gastos fijos</h1></div>
       <div class="page-body">
         <div class="empty-state">
-          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
+          <div class="empty-icon"><i data-lucide="inbox" style="width:32px;height:32px;stroke-width:1.5"></i></div>
           <p>No se pudieron cargar los gastos fijos.</p>
         </div>
       </div>
@@ -262,32 +266,90 @@ export async function loadFijos() {
     return;
   }
 
+  // ---- Helpers de estado de pago ----
+  function esPagadoEsteMes(g) {
+    if (!g.ultima_fecha_pago) return false;
+    const p = new Date(g.ultima_fecha_pago + 'T12:00:00');
+    return p.getFullYear() === hoy.getFullYear() && p.getMonth() === hoy.getMonth();
+  }
+
+  function estaVencido(g) {
+    if (esPagadoEsteMes(g)) return false;
+    if (g.frecuencia === 'mensual' && g.dia_pago) return hoy.getDate() > g.dia_pago;
+    if (g.proximo_pago) return new Date(g.proximo_pago + 'T12:00:00') < hoy;
+    return false;
+  }
+
+  // ---- Totales ----
+  const ingresosMes = (ingresosRes || []).reduce((s, m) => s + Number(m.monto || 0), 0);
+  let compromisoMensual = 0;
+  let vencidos = 0;
+
+  for (const g of (fijos || [])) {
+    if (!g.monto_variable && g.monto != null) {
+      compromisoMensual += Number(g.monto) * (FREQ_FACTOR_MENSUAL[g.frecuencia] || 0);
+    }
+    if (estaVencido(g)) vencidos++;
+  }
+
+  const pctIngresos = ingresosMes > 0 ? Math.round((compromisoMensual / ingresosMes) * 100) : null;
+
+  // ---- Resumen card ----
+  const resumenHtml = (fijos && fijos.length > 0) ? `
+    <div class="fijos-resumen-card">
+      <div class="fijos-resumen-titulo">Compromiso mensual</div>
+      <div class="fijos-resumen-monto">${formatMXN(Math.round(compromisoMensual))}</div>
+      ${pctIngresos != null ? `<div class="fijos-resumen-pct">${pctIngresos}% de tus ingresos este mes${pctIngresos > 50 ? ' — revisa si puedes reducir' : ''}</div>` : ''}
+    </div>
+  ` : '';
+
+  // ---- Alerta de vencidos ----
+  const alertaHtml = vencidos > 0 ? `
+    <div class="fijos-alerta">
+      <i data-lucide="alert-circle" style="width:16px;height:16px;flex-shrink:0"></i>
+      <span>Tienes ${vencidos} gasto${vencidos > 1 ? 's' : ''} fijo${vencidos > 1 ? 's' : ''} pendiente${vencidos > 1 ? 's' : ''} de pago este mes</span>
+    </div>
+  ` : '';
+
+  const listaHtml = (fijos && fijos.length > 0) ? fijos.map(g => {
+    const iconoHtml = renderEmojiOrIcon(g.categorias?.emoji, 'pin', 18);
+    const isVariable = g.monto_variable === true || g.monto == null;
+    const montoTxt = isVariable ? 'Variable' : formatMXN(g.monto);
+    const pagado = esPagadoEsteMes(g);
+    const vencido = estaVencido(g);
+
+    const badgeHtml = pagado
+      ? `<span class="fijo-status-badge fijo-status-ok"><i data-lucide="check-circle-2" style="width:11px;height:11px"></i> Pagado</span>`
+      : vencido
+        ? `<span class="fijo-status-badge fijo-status-warn"><i data-lucide="clock" style="width:11px;height:11px"></i> Vencido</span>`
+        : '';
+
+    return `
+      <div class="item-row" style="margin-bottom:6px">
+        <div class="item-row-emoji">${iconoHtml}</div>
+        <div class="item-row-info">
+          <div class="item-row-name">${g.descripcion}${badgeHtml ? ' ' + badgeHtml : ''}</div>
+          <div class="item-row-detail">${formatearFrecuenciaGastoFijo(g.frecuencia, g.dia_pago, g.dia_semana, g.proximo_pago)}</div>
+        </div>
+        <div class="item-row-amount" style="color:var(--red)">${montoTxt}</div>
+        <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuGastoFijo('${g.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
+      </div>
+    `;
+  }).join('') : `
+    <div class="empty-state">
+      <div class="empty-icon"><i data-lucide="calendar-clock" style="width:40px;height:40px;stroke-width:1.5"></i></div>
+      <p>Sin gastos fijos registrados.<br><span style="font-size:13px;color:var(--text-muted)">Agrega tu renta, servicios, suscripciones y pagos recurrentes.</span></p>
+    </div>
+  `;
+
   document.getElementById('page-fijos').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Gastos fijos</h1>
     </div>
     <div class="page-body">
-      ${!fijos || fijos.length === 0 ? `
-        <div class="empty-state">
-          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
-          <p>No tienes gastos fijos registrados.<br>Agrega uno para empezar.</p>
-        </div>
-      ` : fijos.map(g => {
-        const iconoHtml = renderEmojiOrIcon(g.categorias?.emoji, 'pin', 18);
-        const isVariable = g.monto_variable === true || g.monto == null;
-        const montoTxt = isVariable ? 'Variable' : formatMXN(g.monto);
-        return `
-        <div class="item-row" style="margin-bottom:8px">
-          <div class="item-row-emoji">${iconoHtml}</div>
-          <div class="item-row-info">
-            <div class="item-row-name">${g.descripcion}</div>
-            <div class="item-row-detail">${formatearFrecuenciaGastoFijo(g.frecuencia, g.dia_pago, g.dia_semana, g.proximo_pago)}</div>
-          </div>
-          <div class="item-row-amount" style="color:var(--red)">${montoTxt}</div>
-          <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuGastoFijo('${g.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
-        </div>
-      `;
-      }).join('')}
+      ${resumenHtml}
+      ${alertaHtml}
+      ${listaHtml}
     </div>
   `;
 
@@ -533,39 +595,42 @@ async function guardarEdicionGastoFijo(gastoFijoId) {
 }
 
 async function openAgregarGastoFijo() {
-  const uid = (await getUsuarioId());
+  const uid = await getUsuarioId();
   const { data: categorias } = await db.from('categorias').select('id, nombre, emoji').eq('usuario_id', uid).eq('tipo', 'gasto').order('nombre', { ascending: true });
   const catOptions = (categorias || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
 
   openModal('Nuevo gasto fijo', `
     <div class="form-group">
-      <label class="form-label">Descripción</label>
-      <input class="form-input" id="fgf-desc" type="text" placeholder="Ej: Internet, renta, gimnasio" />
+      <label class="form-label">¿Cómo se llama este gasto?</label>
+      <input class="form-input" id="fgf-desc" type="text" placeholder="Ej: Renta, CFE, Telmex, Netflix, Coppel…" />
+      <p class="form-hint" style="margin:4px 0 0">El nombre que tú le pones — como lo tienes guardado en tu cabeza.</p>
     </div>
     <div class="form-group">
-      <label class="form-label">Tipo de monto</label>
+      <label class="form-label">¿El monto siempre es el mismo?</label>
       ${tipoMontoToggleHtml('fgf', 'definido')}
+      <p class="form-hint" style="margin:4px 0 0">Usa <b>Variable</b> para CFE o agua (cambia cada bimestre). Usa <b>Aprox.</b> si sabes el promedio.</p>
     </div>
     <div class="form-group" id="fgf-monto-wrap">
-      <label class="form-label" id="fgf-monto-label">Monto</label>
+      <label class="form-label" id="fgf-monto-label">¿Cuánto pagas?</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
       <input class="form-input" id="fgf-monto" type="number" placeholder="0.00" min="0" /></div>
     </div>
-    <p class="form-hint" id="fgf-hint" style="display:none;margin:-8px 0 12px">Cambia cada pago — solo te avisaremos la fecha.</p>
+    <p class="form-hint" id="fgf-hint" style="display:none;margin:-8px 0 12px">Solo te recordaremos la fecha — no necesitas el monto fijo.</p>
     <div class="form-group">
-      <label class="form-label">Categoría (define el icono)</label>
+      <label class="form-label">Categoría</label>
       <select class="form-select" id="fgf-cat">
         <option value="">Sin categoría</option>
         ${catOptions}
       </select>
+      <p class="form-hint" style="margin:4px 0 0">Define el icono que aparece en la lista.</p>
     </div>
     <div class="form-group">
-      <label class="form-label">Frecuencia</label>
+      <label class="form-label">¿Cada cuándo lo pagas?</label>
       ${frecuenciaSelectHtml('fgf-freq', "renderCamposFechaFijo('fgf')", 'mensual')}
       <p class="form-hint" id="fgf-freq-desc" style="margin:4px 0 0;font-size:12px">${FREQ_DESC_MODAL['mensual']}</p>
     </div>
     <div class="form-group" id="fgf-fecha-campos"></div>
-    <button class="btn btn-primary" onclick="guardarNuevoGastoFijo()">Guardar</button>
+    <button class="btn btn-primary" onclick="guardarNuevoGastoFijo()">Guardar gasto fijo</button>
   `);
 
   renderCamposFechaFijo('fgf');
@@ -647,13 +712,89 @@ async function eliminarGastoFijo(gastoFijoId) {
 
 // ---- GASTOS (historial) ----
 export async function loadGastos() {
-  const uid = (await getUsuarioId());
+  const uid = await getUsuarioId();
+  const hoy = new Date();
+  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
+
   const { data: gastos } = await db
     .from('gastos')
     .select('*, categorias(nombre, emoji)')
     .eq('usuario_id', uid)
+    .gte('fecha', inicioMes)
     .order('fecha', { ascending: false })
-    .limit(50);
+    .limit(200);
+
+  // Weekly banner: Mon–Sun of current week
+  const diaSemana = hoy.getDay() === 0 ? 6 : hoy.getDay() - 1; // 0=Lun
+  const lunes = new Date(hoy);
+  lunes.setDate(hoy.getDate() - diaSemana);
+  lunes.setHours(0, 0, 0, 0);
+  const lunesStr = lunes.toISOString().split('T')[0];
+
+  let totalSemana = 0;
+  const diasConGastos = new Set();
+  for (const g of (gastos || [])) {
+    if (g.fecha >= lunesStr) {
+      totalSemana += Number(g.monto || 0);
+      diasConGastos.add(g.fecha);
+    }
+  }
+  const promedioDiario = diasConGastos.size > 0 ? totalSemana / diasConGastos.size : 0;
+
+  // Group gastos by date
+  const grupos = {};
+  for (const g of (gastos || [])) {
+    if (!grupos[g.fecha]) grupos[g.fecha] = [];
+    grupos[g.fecha].push(g);
+  }
+
+  const fechaHoy = hoy.toISOString().split('T')[0];
+  const ayer = new Date(hoy); ayer.setDate(hoy.getDate() - 1);
+  const fechaAyer = ayer.toISOString().split('T')[0];
+
+  function labelFecha(fecha) {
+    if (fecha === fechaHoy) return 'Hoy';
+    if (fecha === fechaAyer) return 'Ayer';
+    const d = new Date(fecha + 'T12:00:00');
+    return d.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+
+  const listHtml = Object.entries(grupos).map(([fecha, items]) => {
+    const subtotal = items.reduce((s, g) => s + Number(g.monto || 0), 0);
+    return `
+      <div class="gastos-dia-group">
+        <div class="gastos-dia-header">
+          <span class="gastos-dia-label">${labelFecha(fecha)}</span>
+          <span class="gastos-dia-subtotal">${formatMXN(subtotal)}</span>
+        </div>
+        ${items.map(g => `
+          <div class="item-row" style="margin-bottom:4px">
+            <div class="item-row-emoji">${g.categorias?.emoji ? renderEmojiOrIcon(g.categorias.emoji, 'package', 18) : getCategoriaGastoIcon(g.categorias?.nombre)}</div>
+            <div class="item-row-info">
+              <div class="item-row-name">${g.descripcion || g.categorias?.nombre || 'Sin descripción'}</div>
+              <div class="item-row-detail">${g.categorias?.nombre || 'Sin categoría'}</div>
+            </div>
+            <div class="item-row-amount">${formatMXN(g.monto)}</div>
+            <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuGasto('${g.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }).join('');
+
+  const bannerSemanal = totalSemana > 0 ? `
+    <div class="semana-banner">
+      <div class="semana-banner-item">
+        <span class="semana-banner-label">Esta semana</span>
+        <span class="semana-banner-valor">${formatMXN(Math.round(totalSemana))}</span>
+      </div>
+      <div class="semana-banner-divider"></div>
+      <div class="semana-banner-item">
+        <span class="semana-banner-label">Promedio diario</span>
+        <span class="semana-banner-valor">${formatMXN(Math.round(promedioDiario))}</span>
+      </div>
+    </div>
+  ` : '';
 
   document.getElementById('page-gastos').innerHTML = `
     <div class="page-header">
@@ -662,20 +803,13 @@ export async function loadGastos() {
     <div class="page-body">
       ${!gastos || gastos.length === 0 ? `
         <div class="empty-state">
-          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
-          <p>No hay gastos registrados todavía.<br>Usa el botón + para agregar uno.</p>
+          <div class="empty-icon"><i data-lucide="receipt" style="width:40px;height:40px;stroke-width:1.5"></i></div>
+          <p>Sin gastos registrados este mes<br><span style="font-size:13px;color:var(--text-muted)">Registra tus gastos para entender a dónde va tu dinero.</span></p>
         </div>
-      ` : gastos.map(g => `
-        <div class="item-row" style="margin-bottom:8px">
-          <div class="item-row-emoji">${g.categorias?.emoji ? renderEmojiOrIcon(g.categorias.emoji, 'package', 18) : getCategoriaGastoIcon(g.categorias?.nombre)}</div>
-          <div class="item-row-info">
-            <div class="item-row-name">${g.descripcion}</div>
-            <div class="item-row-detail">${g.categorias?.nombre || 'Sin categoría'} · ${g.fecha}</div>
-          </div>
-          <div class="item-row-amount">${formatMXN(g.monto)}</div>
-          <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuGasto('${g.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
-        </div>
-      `).join('')}
+      ` : `
+        ${bannerSemanal}
+        ${listHtml}
+      `}
     </div>
   `;
 
@@ -712,16 +846,27 @@ async function eliminarGasto(gastoId) {
 // ---- PICKER AGRUPADO DE GASTO (con recientes + subgrupos) ----
 export async function abrirSelectorGasto() {
   const usuarioId = await getUsuarioId();
+  const hoy = new Date();
+  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
 
   const [catsRes, gastosRes] = await Promise.all([
     db.from('categorias').select('id, nombre, emoji, es_default').eq('usuario_id', usuarioId).eq('tipo', 'gasto').order('nombre', { ascending: true }),
-    db.from('gastos').select('categoria_id, fecha').eq('usuario_id', usuarioId).order('fecha', { ascending: false }).limit(40)
+    db.from('gastos').select('categoria_id, fecha, monto').eq('usuario_id', usuarioId).gte('fecha', inicioMes).order('fecha', { ascending: false })
   ]);
 
   const categorias = catsRes.data || [];
   const catByNombre = Object.fromEntries(categorias.map(c => [c.nombre, c]));
   const catById = Object.fromEntries(categorias.map(c => [c.id, c]));
 
+  // Per-category totals this month
+  const categoriasMes = {};
+  for (const g of (gastosRes.data || [])) {
+    if (g.categoria_id) {
+      categoriasMes[g.categoria_id] = (categoriasMes[g.categoria_id] || 0) + Number(g.monto || 0);
+    }
+  }
+
+  // Recientes: up to 5 most recently used distinct categories this month
   const recientes = [];
   const seen = new Set();
   for (const g of (gastosRes.data || [])) {
@@ -733,7 +878,7 @@ export async function abrirSelectorGasto() {
 
   const personalizadas = categorias.filter(c => c.es_default === false && !GASTOS_VARIABLES_INDEX[c.nombre]);
 
-  window._gastoPickerCache = { categorias, catByNombre, recientes, personalizadas };
+  window._gastoPickerCache = { categorias, catByNombre, recientes, personalizadas, categoriasMes };
   renderGastoPickerSheet();
 }
 
@@ -756,9 +901,14 @@ function renderGastoPickerSheet() {
   const chipHtml = (cat, special = null, iconoFallback = null) => {
     const idx = pushItem(cat, special);
     const icono = cat.emoji || iconoFallback || 'package';
+    const mesTotal = cache.categoriasMes?.[cat.id];
+    const totalBadge = mesTotal > 0
+      ? `<span class="chip-mes-total">${formatMXN(Math.round(mesTotal))}</span>`
+      : '';
     return `<button class="fijo-sugerido-chip" onclick="seleccionarCategoriaDesdeSheet(${idx})">
       <i data-lucide="${icono}"></i>
       <span>${cat.nombre}</span>
+      ${totalBadge}
     </button>`;
   };
 
@@ -917,7 +1067,24 @@ export async function toggleCamposGastoEspecial() {
 // ---- REGISTRAR / EDITAR GASTO ----
 async function openRegistrarGasto(gastoId = null) {
   const uid = await getUsuarioId();
-  const { data: cuentas } = await db.from('cuentas').select('*').eq('usuario_id', uid).eq('activa', true);
+
+  // Fetch cuentas + movimientos for saldo hints in parallel
+  const [cuentasRes, ingresosRes, gastosRes, pagosRes] = await Promise.all([
+    db.from('cuentas').select('id, nombre, saldo_inicial').eq('usuario_id', uid).eq('activa', true),
+    db.from('ingresos').select('monto, cuenta_id').eq('usuario_id', uid),
+    db.from('gastos').select('monto, cuenta_id').eq('usuario_id', uid),
+    db.from('pagos_deuda').select('monto, cuenta_id').eq('usuario_id', uid),
+  ]);
+
+  const cuentas = cuentasRes.data || [];
+
+  // Pre-compute saldo disponible per cuenta
+  const saldoMap = {};
+  for (const c of cuentas) saldoMap[c.id] = Number(c.saldo_inicial || 0);
+  for (const m of ingresosRes.data || []) if (m.cuenta_id && saldoMap[m.cuenta_id] !== undefined) saldoMap[m.cuenta_id] += Number(m.monto || 0);
+  for (const g of gastosRes.data || []) if (g.cuenta_id && saldoMap[g.cuenta_id] !== undefined) saldoMap[g.cuenta_id] -= Number(g.monto || 0);
+  for (const p of pagosRes.data || []) if (p.cuenta_id && saldoMap[p.cuenta_id] !== undefined) saldoMap[p.cuenta_id] -= Number(p.monto || 0);
+  window._cuentasSaldoDisponible = saldoMap;
 
   currentEditGastoId = gastoId || null;
   setCatState(null, null, 'gasto');
@@ -927,7 +1094,7 @@ async function openRegistrarGasto(gastoId = null) {
   let descValue = '';
   let montoValue = '';
   let fechaValue = new Date().toISOString().split('T')[0];
-  let cuentaDefault = '';
+  let cuentaDefault = cuentas[0]?.id || '';
 
   if (gastoId) {
     const { data: gasto } = await db.from('gastos')
@@ -942,7 +1109,7 @@ async function openRegistrarGasto(gastoId = null) {
     descValue = gasto.descripcion || '';
     montoValue = gasto.monto != null ? Number(gasto.monto) : '';
     fechaValue = gasto.fecha || fechaValue;
-    cuentaDefault = gasto.cuenta_id || '';
+    cuentaDefault = gasto.cuenta_id || cuentaDefault;
 
     if (gasto.categoria_id && gasto.categorias) {
       setCatState(
@@ -953,10 +1120,15 @@ async function openRegistrarGasto(gastoId = null) {
     }
   }
 
+  const saldoInicial = saldoMap[cuentaDefault];
+  const saldoHintInicial = saldoInicial != null
+    ? `<span class="cuenta-saldo-hint">Disponible: ${formatMXN(Math.round(saldoInicial))}</span>`
+    : '';
+
   openModal(titulo, `
     <div class="form-group">
       <label class="form-label">Descripción</label>
-      <input class="form-input" id="rg-desc" type="text" placeholder="¿En qué gastaste?" value="${descValue}" />
+      <input class="form-input" id="rg-desc" type="text" placeholder="Ej: Cena en el OXXO, gasolina, medicamento..." value="${descValue}" />
     </div>
     <div class="form-group">
       <label class="form-label">Monto</label>
@@ -966,13 +1138,15 @@ async function openRegistrarGasto(gastoId = null) {
     <div class="form-group">
       <label class="form-label">Categoría</label>
       <button id="btn-cat-selector" class="categoria-btn" type="button" onclick="abrirSelectorCategoria('gasto')"></button>
+      <div class="gasto-insight-hint" id="rg-categoria-insight"></div>
     </div>
     <div id="rg-extra-campos" style="display:none"></div>
     <div class="form-group">
       <label class="form-label">Cuenta</label>
-      <select class="form-select" id="rg-cuenta">
-        ${(cuentas || []).map(c => `<option value="${c.id}" ${c.id === cuentaDefault ? 'selected' : ''}>${c.nombre}</option>`).join('')}
+      <select class="form-select" id="rg-cuenta" onchange="actualizarSaldoHint(this.value)">
+        ${cuentas.map(c => `<option value="${c.id}" ${c.id === cuentaDefault ? 'selected' : ''}>${c.nombre}</option>`).join('')}
       </select>
+      <div id="rg-saldo-hint">${saldoHintInicial}</div>
     </div>
     <div class="form-group">
       <label class="form-label">Fecha</label>
@@ -982,6 +1156,15 @@ async function openRegistrarGasto(gastoId = null) {
   `);
 
   actualizarBotonCategoriaSelector();
+}
+
+function actualizarSaldoHint(cuentaId) {
+  const hint = document.getElementById('rg-saldo-hint');
+  if (!hint) return;
+  const saldo = window._cuentasSaldoDisponible?.[cuentaId];
+  hint.innerHTML = saldo != null
+    ? `<span class="cuenta-saldo-hint">Disponible: ${formatMXN(Math.round(saldo))}</span>`
+    : '';
 }
 
 async function guardarGasto() {
@@ -1153,6 +1336,6 @@ window.openAgregarGastoFijo = openAgregarGastoFijo;
 window.guardarNuevoGastoFijo = guardarNuevoGastoFijo;
 window.openRegistrarGasto = openRegistrarGasto;
 window.guardarGasto = guardarGasto;
-window.setFijoMontoVariableModal = setFijoMontoVariableModal;
+window.actualizarSaldoHint = actualizarSaldoHint;
 window.renderCamposFechaFijo = renderCamposFechaFijo;
 window.toggleGastoPickerGrupo = toggleGastoPickerGrupo;

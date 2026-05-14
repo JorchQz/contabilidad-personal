@@ -25,49 +25,85 @@ const TODOS_ICONOS = [
   'minus-circle','arrow-right','arrow-left','percent','tag','box'
 ];
 
+function _mensajeProgresoMeta(m, pct) {
+  if (pct >= 100) return { txt: 'Meta alcanzada', color: 'var(--green)', icono: 'check-circle-2' };
+  if (m.monto_actual <= 0) return { txt: 'Comienza con tu primer ahorro', color: 'var(--text-muted)', icono: 'piggy-bank' };
+
+  // Estimación de ritmo usando created_at
+  const creado = m.created_at ? new Date(m.created_at) : null;
+  if (creado) {
+    const diasTranscurridos = Math.max(1, Math.round((Date.now() - creado.getTime()) / 86400000));
+    const ritmoMensual = (Number(m.monto_actual) / diasTranscurridos) * 30;
+    const faltante = Number(m.monto_objetivo) - Number(m.monto_actual);
+    if (ritmoMensual > 0) {
+      const mesesRestantes = Math.round(faltante / ritmoMensual);
+      if (mesesRestantes <= 0) return { txt: `Ya llevas el ${pct}%, casi lista`, color: 'var(--accent)', icono: 'trending-up' };
+      if (mesesRestantes <= 3) return { txt: `A este ritmo: ${mesesRestantes} mes${mesesRestantes > 1 ? 'es' : ''} para alcanzarla`, color: 'var(--accent)', icono: 'trending-up' };
+      if (mesesRestantes <= 12) return { txt: `A este ritmo: ${mesesRestantes} meses para alcanzarla`, color: 'var(--text-muted)', icono: 'clock' };
+      return { txt: `Ahorra más seguido para alcanzarla más rápido`, color: 'var(--yellow)', icono: 'alert-triangle' };
+    }
+  }
+
+  if (pct >= 75) return { txt: `Ya llevas el ${pct}%, sigue así`, color: 'var(--accent)', icono: 'trending-up' };
+  if (pct >= 50) return { txt: `Ya llevas el ${pct}% de tu meta`, color: 'var(--accent)', icono: 'trending-up' };
+  return { txt: `${pct}% completado`, color: 'var(--text-muted)', icono: 'target' };
+}
+
 export async function loadMetas() {
-  const uid = (await getUsuarioId());
-  const [
-    { data: metas },
-    { data: cuentas }
-  ] = await Promise.all([
+  const uid = await getUsuarioId();
+  const [{ data: metas }, { data: cuentas }] = await Promise.all([
     db.from('metas_ahorro').select('*').eq('usuario_id', uid).eq('activa', true),
-    db.from('cuentas').select('id, nombre').eq('usuario_id', uid).eq('activa', true)
+    db.from('cuentas').select('id, nombre').eq('usuario_id', uid).eq('activa', true),
   ]);
 
-  const cuentasPorId = Object.fromEntries((cuentas || []).map(cuenta => [cuenta.id, cuenta.nombre]));
+  const cuentasPorId = Object.fromEntries((cuentas || []).map(c => [c.id, c.nombre]));
+
+  // Fondo de emergencia primero
+  const metasOrdenadas = [...(metas || [])].sort((a, b) => {
+    const esEmergA = /emergencia|fondo/i.test(a.nombre) ? 0 : 1;
+    const esEmergB = /emergencia|fondo/i.test(b.nombre) ? 0 : 1;
+    return esEmergA - esEmergB;
+  });
 
   document.getElementById('page-metas').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Metas de ahorro</h1>
     </div>
     <div class="page-body">
-      ${!metas || metas.length === 0 ? `
+      ${!metasOrdenadas.length ? `
         <div class="empty-state">
-          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
-          <p>Aún no tienes metas de ahorro.<br>¡Crea una para empezar!</p>
+          <div class="empty-icon"><i data-lucide="piggy-bank" style="width:40px;height:40px;stroke-width:1.5"></i></div>
+          <p>Sin metas de ahorro</p>
+          <p style="font-size:13px;color:var(--text-muted);margin-top:4px">Los expertos recomiendan empezar con un fondo de emergencia de 3 meses de gastos.</p>
         </div>
-      ` : metas.map(m => {
-        const pct = Math.min(Math.round((m.monto_actual / m.monto_objetivo) * 100), 100);
+      ` : metasOrdenadas.map(m => {
+        const pct = m.monto_objetivo > 0 ? Math.min(Math.round((m.monto_actual / m.monto_objetivo) * 100), 100) : 0;
+        const esFondo = /emergencia|fondo/i.test(m.nombre);
+        const progreso = _mensajeProgresoMeta(m, pct);
+        const barColor = pct >= 100 ? 'var(--green)' : esFondo ? 'var(--accent)' : 'var(--accent)';
         return `
-          <div class="card">
+          <div class="card${esFondo ? ' meta-fondo-destacada' : ''}">
+            ${esFondo ? `<div class="meta-fondo-label"><i data-lucide="shield" style="width:11px;height:11px"></i> Prioritaria</div>` : ''}
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
               <div style="display:flex;align-items:center;gap:12px">
-                <span style="font-size:28px;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px">${renderEmojiOrIcon(m.emoji, 'target', 22)}</span>
+                <span style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;background:var(--bg-hover);border-radius:var(--radius-sm)">${renderEmojiOrIcon(m.emoji, 'target', 22)}</span>
                 <div>
                   <div style="font-weight:600;font-size:14px">${m.nombre}</div>
                   <div style="font-size:12px;color:var(--text-muted)">${m.cuenta_id ? (cuentasPorId[m.cuenta_id] || 'Cuenta eliminada') : 'Sin cuenta vinculada'}</div>
-                  <div style="font-size:12px;color:var(--text-secondary)">Meta: ${formatMXN(m.monto_objetivo)}</div>
                 </div>
               </div>
               <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuMeta('${m.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
             </div>
             <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:8px">
-              <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:4px;transition:width 0.6s ease"></div>
+              <div style="height:100%;width:${pct}%;background:${barColor};border-radius:4px;transition:width 0.6s ease"></div>
             </div>
-            <div style="display:flex;justify-content:space-between;font-size:13px">
-              <span style="color:var(--text-secondary)">${pct}% completado</span>
-              <span style="color:var(--green);font-weight:600">${formatMXN(m.monto_actual)} / ${formatMXN(m.monto_objetivo)}</span>
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:6px">
+              <span style="color:var(--green);font-weight:600">${formatMXN(m.monto_actual)}</span>
+              <span style="color:var(--text-muted)">de ${formatMXN(m.monto_objetivo)}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:${progreso.color}">
+              <i data-lucide="${progreso.icono}" style="width:12px;height:12px;flex-shrink:0"></i>
+              <span>${progreso.txt}</span>
             </div>
           </div>
         `;
@@ -268,9 +304,7 @@ function renderMetaModal() {
   const draft       = window._metaDraft || { nombre: '', monto: '', cuenta_id: '', fecha_limite: '', frecuencia_ahorro: 'mensual' };
   const titulo      = currentEditMetaId ? 'Editar meta' : 'Nueva meta de ahorro';
   const btnLabel    = currentEditMetaId ? 'Guardar cambios' : 'Guardar meta';
-  const iconoBtn    = (icono === 'target' || !icono)
-    ? `<i class="bx bx-smile" style="font-size:20px"></i>`
-    : `<i data-lucide="${icono}" style="width:20px;height:20px;stroke-width:1.75"></i>`;
+  const iconoBtn = `<i data-lucide="${icono || 'target'}" style="width:20px;height:20px;stroke-width:1.75"></i>`;
 
   openModal(titulo, `
     <div class="form-group">
@@ -290,11 +324,12 @@ function renderMetaModal() {
       ` : ''}
     </div>
     <div class="form-group">
-      <label class="form-label">Nombre de la meta</label>
-      <input class="form-input" id="nm-nombre" type="text" placeholder="Ej: Fondo de emergencia" value="${draft.nombre}" />
+      <label class="form-label">¿Para qué estás ahorrando?</label>
+      <input class="form-input" id="nm-nombre" type="text" placeholder="Ej: Fondo de emergencia, enganche, vacaciones…" value="${draft.nombre}" />
+      <p class="form-hint" style="margin:4px 0 0">Sugerencias: Fondo de emergencia · Quincena extra · Enganche de coche · Vacaciones</p>
     </div>
     <div class="form-group">
-      <label class="form-label">Monto a ahorrar</label>
+      <label class="form-label">¿Cuánto necesitas juntar?</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
       <input class="form-input" id="nm-monto" type="number" placeholder="0.00" min="0" value="${draft.monto}" oninput="calcularAhorroMetaDash()" /></div>
     </div>

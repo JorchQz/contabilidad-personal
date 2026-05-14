@@ -12,21 +12,24 @@ import {
 
 export function getCuentaIcon(tipo) {
   const cuentaIcon = {
-    efectivo: '<i data-lucide="banknote" style="width:18px;height:18px;stroke-width:1.75"></i>',
-    debito: '<i data-lucide="building-2" style="width:18px;height:18px;stroke-width:1.75"></i>',
-    negocio: '<i data-lucide="store" style="width:18px;height:18px;stroke-width:1.75"></i>',
-    otro: '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>'
+    efectivo:     '<i data-lucide="banknote" style="width:18px;height:18px;stroke-width:1.75"></i>',
+    debito:       '<i data-lucide="building-2" style="width:18px;height:18px;stroke-width:1.75"></i>',
+    mercado_pago: '<i data-lucide="smartphone" style="width:18px;height:18px;stroke-width:1.75"></i>',
+    caja_popular: '<i data-lucide="landmark" style="width:18px;height:18px;stroke-width:1.75"></i>',
+    negocio:      '<i data-lucide="store" style="width:18px;height:18px;stroke-width:1.75"></i>',
+    otro:         '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>',
   };
-
   return cuentaIcon[tipo] || '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>';
 }
 
 export function getCuentaTipos() {
   return [
-    { value: 'efectivo', label: 'Efectivo' },
-    { value: 'debito', label: 'Debito / Banco' },
-    { value: 'negocio', label: 'Mercado Pago' },
-    { value: 'otro', label: 'Otro' }
+    { value: 'efectivo',     label: 'Efectivo / OXXO' },
+    { value: 'debito',       label: 'Banco / Débito' },
+    { value: 'mercado_pago', label: 'Mercado Pago / Digital' },
+    { value: 'caja_popular', label: 'Caja Popular / Cooperativa' },
+    { value: 'negocio',      label: 'Negocio propio' },
+    { value: 'otro',         label: 'Otro' },
   ];
 }
 
@@ -122,25 +125,34 @@ export async function loadCuentas() {
     <div class="page-body" style="padding-top:0">
       ${!cuentasConSaldo.length ? `
         <div class="empty-state" style="margin-top:0">
-          <div class="empty-icon"><i data-lucide="inbox" style="width:18px;height:18px;stroke-width:1.75"></i></div>
-          <p>No tienes cuentas activas.</p>
+          <div class="empty-icon"><i data-lucide="wallet" style="width:40px;height:40px;stroke-width:1.5"></i></div>
+          <p>Sin cuentas registradas</p>
+          <p style="font-size:13px;color:var(--text-muted);margin-top:4px">Agrega tu efectivo, cuenta bancaria o Mercado Pago para llevar el control de tu dinero.</p>
         </div>
       ` : `
-        ${cuentasConSaldo.map(cuenta => `
-          <div class="item-row" style="margin-bottom:8px">
-            <div class="item-row-emoji">${cuenta.emoji}</div>
-            <div class="item-row-info">
-              <div class="item-row-name">${cuenta.nombre}</div>
-              <div class="item-row-detail">${cuenta.tipoLabel}</div>
+        ${cuentasConSaldo.map(cuenta => {
+          const saldo = cuenta.saldoCalculado;
+          const badgeHtml = saldo < 0
+            ? `<span class="cuenta-saldo-badge cuenta-saldo-rojo"><i data-lucide="alert-circle" style="width:10px;height:10px"></i> Sin fondos</span>`
+            : saldo < 500
+              ? `<span class="cuenta-saldo-badge cuenta-saldo-amarillo"><i data-lucide="alert-triangle" style="width:10px;height:10px"></i> Saldo bajo</span>`
+              : '';
+          return `
+            <div class="item-row" style="margin-bottom:8px">
+              <div class="item-row-emoji">${cuenta.emoji}</div>
+              <div class="item-row-info">
+                <div class="item-row-name">${cuenta.nombre}${badgeHtml ? ' ' + badgeHtml : ''}</div>
+                <div class="item-row-detail">${cuenta.tipoLabel}</div>
+              </div>
+              <div class="item-row-amount" style="color:${saldo < 0 ? 'var(--red)' : 'inherit'}">${formatMXN(saldo)}</div>
+              <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuCuenta('${cuenta.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
             </div>
-            <div class="item-row-amount">${formatMXN(cuenta.saldoCalculado)}</div>
-            <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuCuenta('${cuenta.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
-          </div>
-        `).join('')}
+          `;
+        }).join('')}
         <div class="card" style="margin-top:8px;background:var(--bg-elevated)">
           <div style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-size:12px;color:var(--text-secondary)">Total general</span>
-            <span style="font-size:15px;font-weight:700;font-family:var(--font-display)">${formatMXN(totalGeneralCuentas)}</span>
+            <span style="font-size:12px;color:var(--text-secondary)">Total disponible</span>
+            <span style="font-size:15px;font-weight:700;font-family:var(--font-display);color:${totalGeneralCuentas < 0 ? 'var(--red)' : 'inherit'}">${formatMXN(totalGeneralCuentas)}</span>
           </div>
         </div>
       `}
@@ -244,24 +256,23 @@ export async function eliminarCuenta(cuentaId) {
 }
 
 export async function openAgregarCuenta() {
+  const tipos = getCuentaTipos();
   openModal('Nueva cuenta', `
     <div class="form-group">
-      <label class="form-label">Nombre de la cuenta</label>
-      <input class="form-input" id="nc-nombre" type="text" placeholder="Ej: Efectivo, banco, negocio" />
+      <label class="form-label">¿Cómo se llama esta cuenta?</label>
+      <input class="form-input" id="nc-nombre" type="text" placeholder="Ej: Efectivo del monedero, BBVA, Mercado Pago…" />
     </div>
     <div class="form-group">
-      <label class="form-label">Tipo</label>
+      <label class="form-label">Tipo de cuenta</label>
       <select class="form-select" id="nc-tipo">
-        <option value="efectivo">Efectivo</option>
-        <option value="debito">Debito</option>
-        <option value="negocio">Negocio</option>
-        <option value="otro">Otro</option>
+        ${tipos.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
-      <label class="form-label">Saldo inicial</label>
+      <label class="form-label">¿Cuánto tienes ahorita en esta cuenta?</label>
       <div class="input-money-wrap"><span class="currency-prefix">$</span>
       <input class="form-input" id="nc-saldo" type="number" min="0" placeholder="0.00" /></div>
+      <p class="form-hint" style="margin:4px 0 0">El saldo actual en este momento — puedes cambiarlo después.</p>
     </div>
     <button class="btn btn-primary" onclick="guardarNuevaCuenta()">Guardar cuenta</button>
   `);

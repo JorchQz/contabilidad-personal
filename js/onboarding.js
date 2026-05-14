@@ -504,9 +504,12 @@ function renderStep4Body() {
 
     <div id="form-cuenta-banco" style="display:none">
       <div class="mini-form">
-        <div id="cuenta-search-row" style="display:none;position:relative;margin-bottom:8px">
-          <i data-lucide="search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-muted);pointer-events:none;z-index:1"></i>
-          <input class="form-input" id="banco-search" style="padding-left:36px" placeholder="Buscar o crear cuenta..." onfocus="mostrarInstituciones()" oninput="filtrarBancos(this.value)" autocomplete="off" />
+        <div id="cuenta-search-row" style="display:none;margin-bottom:8px">
+          <div style="position:relative;margin-bottom:6px">
+            <i data-lucide="search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-muted);pointer-events:none;z-index:1"></i>
+            <input class="form-input" id="banco-search" style="padding-left:36px" placeholder="Buscar o crear cuenta..." onfocus="mostrarInstituciones()" oninput="filtrarBancos(this.value)" autocomplete="off" />
+          </div>
+          <button class="btn btn-ghost" style="width:100%;font-size:13px" onclick="cancelarFormCuenta()">Cancelar</button>
         </div>
         <div id="banco-resultados" class="banco-resultados-list" style="display:none;margin-bottom:4px"></div>
         <input class="form-input" id="c-nombre" placeholder="Nombre de la cuenta" style="display:none;margin-bottom:8px" />
@@ -593,68 +596,91 @@ function renderStep5() {
 function renderStep5Body(showForm = false) {
   const tipoDeuda = window._onboardingTipoDeuda || null;
 
+  const _tipoBtn = (tipo, icono, color, titulo, ejemplos) => `
+    <button onclick="selectTipoDeudaOnboarding('${tipo}')"
+      style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg-elevated);border:2px solid ${tipoDeuda === tipo ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-body);text-align:left;transition:all 180ms ease;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <i data-lucide="${icono}" style="width:18px;height:18px;color:${color};stroke-width:1.75;flex-shrink:0"></i>
+        <div>
+          <div style="font-weight:600;font-size:14px">${titulo}</div>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${ejemplos}</div>
+        </div>
+      </div>
+      ${tipoDeuda === tipo ? `<i data-lucide="check-circle" style="width:16px;height:16px;color:var(--accent);flex-shrink:0;stroke-width:2"></i>` : ''}
+    </button>`;
+
   const selectorTipoHtml = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      <button onclick="selectTipoDeudaOnboarding('simple')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'simple' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
-        <i data-lucide="credit-card" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block"></i>
-        <div style="font-weight:600;font-size:14px">Simple</div>
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Fijo<br>Fecha: Fija</div>
-      </button>
-      <button onclick="selectTipoDeudaOnboarding('variable')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'variable' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
-        <i data-lucide="trending-down" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block"></i>
-        <div style="font-weight:600;font-size:14px">Variable</div>
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Cambia<br>Fecha: Fija</div>
-      </button>
-      <button onclick="selectTipoDeudaOnboarding('tabla')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'tabla' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
-        <i data-lucide="calendar" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block"></i>
-        <div style="font-weight:600;font-size:14px">Con tabla</div>
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Cambia<br>Fecha: Cambia</div>
-      </button>
-      <button onclick="selectTipoDeudaOnboarding('flexible')" style="background:var(--bg-elevated);border:2px solid ${tipoDeuda === 'flexible' ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease">
-        <i data-lucide="wallet" style="width:20px;height:20px;color:var(--accent);margin-bottom:6px;display:block"></i>
-        <div style="font-weight:600;font-size:14px">Flexible</div>
-        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;line-height:1.5">Monto: Libre<br>Fecha: Libre</div>
-      </button>
+    <div style="margin-bottom:8px">
+      ${_tipoBtn('variable', 'credit-card', '#f59e0b', 'Tarjeta de crédito', 'BBVA, Santander, Banamex, Liverpool…')}
+      ${_tipoBtn('simple',   'landmark',    'var(--accent)', 'Préstamo personal', 'Caja Popular, FONACOT, banco, nómina…')}
+      ${_tipoBtn('tabla',    'home',        '#10b981', 'Hipoteca / Crédito auto', 'INFONAVIT, FOVISSSTE, crédito automotriz…')}
+      ${_tipoBtn('flexible', 'users',       'var(--text-secondary)', 'Deuda informal', 'Familia, amigos, sin fecha fija…')}
     </div>
   `;
 
-  const esSimple = tipoDeuda === 'simple';
-  const cuotaLabel = esSimple ? 'Cuota fija' : 'Pago promedio (Opcional) - Para presupuestar';
-  const cuotaRequired = esSimple ? 'required' : '';
+  // Placeholders y etiquetas según el tipo seleccionado
+  const _acreedorPlaceholder = {
+    simple:   'Caja Popular, FONACOT, banco, nómina…',
+    variable: 'BBVA Azul, Santander Zero, Liverpool…',
+    tabla:    'INFONAVIT, FOVISSSTE, crédito auto…',
+    flexible: 'Mamá, amigo Juan, vecino…',
+  }[tipoDeuda] || 'Nombre del acreedor';
+
+  const _montoLabel = tipoDeuda === 'variable' ? '¿Cuánto debes actualmente (saldo)?' : '¿Cuánto debes todavía?';
+  const _montoHint  = tipoDeuda === 'variable'
+    ? '<p class="form-hint">El saldo de tu último estado de cuenta.</p>'
+    : '<p class="form-hint">El saldo pendiente, no el monto original del préstamo.</p>';
+  const _cuotaLabel = tipoDeuda === 'variable'
+    ? 'Pago mínimo mensual (opcional)'
+    : tipoDeuda === 'simple' ? 'Cuota fija por período' : 'Pago estimado (opcional)';
+  const _cuotaHint  = tipoDeuda === 'variable'
+    ? '<p class="form-hint">Lo que pagas de mínimo para no caer en mora.</p>'
+    : tipoDeuda === 'simple' ? '<p class="form-hint">Lo que pagas cada quincena o mes — está en tu contrato.</p>' : '';
 
   const formularioSimpleVariable = `
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
       <div class="form-group">
         <label class="form-label">¿A quién le debes?</label>
-        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Caja Popular, mamá…" />
+        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: ${_acreedorPlaceholder}" />
       </div>
       <div class="form-group">
-        <label class="form-label">Monto total</label>
+        <label class="form-label">${_montoLabel}</label>
         <div class="input-money-wrap">
           <span class="currency-prefix">$</span>
           <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" />
         </div>
+        ${_montoHint}
       </div>
+      ${tipoDeuda === 'variable' ? '' : `
       <div class="form-group">
         <label class="form-label">Frecuencia de pago</label>
         <div style="display:flex;gap:8px">
           <select class="form-select" id="d-freq" onchange="renderCamposDeudaOnboarding()" style="flex:1">
-            <option value="unico">Único</option>
-            <option value="semanal">Semanal</option>
-            <option value="quincenal">Quincenal</option>
             <option value="mensual" selected>Mensual</option>
-            ${(tipoDeuda === 'simple' || tipoDeuda === 'variable') ? '' : '<option value="libre">Libre</option>'}
+            <option value="quincenal">Quincenal</option>
+            <option value="semanal">Semanal</option>
+            <option value="unico">Pago único</option>
           </select>
           <div id="d-fecha-campos" style="flex:1"></div>
         </div>
         <div id="d-freq-hint"></div>
-      </div>
+      </div>`}
+      ${tipoDeuda === 'variable' ? `
       <div class="form-group">
-        <label class="form-label">${cuotaLabel}</label>
+        <label class="form-label">¿Qué día del mes es tu fecha límite de pago?</label>
+        <select class="form-select" id="d-dia-pago">
+          ${Array.from({length:31},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('')}
+        </select>
+        <p class="form-hint">La fecha límite viene en tu estado de cuenta mensual.</p>
+      </div>
+      <input type="hidden" id="d-freq" value="mensual" />` : ''}
+      <div class="form-group">
+        <label class="form-label">${_cuotaLabel}</label>
         <div class="input-money-wrap">
           <span class="currency-prefix">$</span>
-          <input class="form-input" id="d-cuota" type="number" placeholder="0.00" min="0" ${cuotaRequired} />
+          <input class="form-input" id="d-cuota" type="number" placeholder="0.00" min="0" />
         </div>
+        ${_cuotaHint}
       </div>
     </div>
   `;
@@ -663,21 +689,22 @@ function renderStep5Body(showForm = false) {
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
       <div class="form-group">
         <label class="form-label">¿A quién le debes?</label>
-        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Amigo, familiar…" />
+        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Mamá, amigo Juan, vecino…" />
       </div>
       <div class="form-group">
-        <label class="form-label">Monto total</label>
+        <label class="form-label">¿Cuánto debes?</label>
         <div class="input-money-wrap">
           <span class="currency-prefix">$</span>
           <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" />
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Pago estimado (Opcional)</label>
+        <label class="form-label">¿Cuánto puedes pagar cada que puedas? <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
         <div class="input-money-wrap">
           <span class="currency-prefix">$</span>
           <input class="form-input" id="d-cuota" type="number" placeholder="0.00" min="0" />
         </div>
+        <p class="form-hint">Solo para llevar un estimado — no hay fecha fija.</p>
       </div>
     </div>
   `;
@@ -686,16 +713,19 @@ function renderStep5Body(showForm = false) {
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
       <div class="form-group">
         <label class="form-label">¿A quién le debes?</label>
-        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: Caja Popular, mamá…" />
+        <input class="form-input" id="d-acreedor" type="text" placeholder="Ej: INFONAVIT, FOVISSSTE, BBVA Auto…" />
       </div>
       <div class="form-group">
-        <label class="form-label">Monto total</label>
+        <label class="form-label">Saldo actual del crédito</label>
         <div class="input-money-wrap">
           <span class="currency-prefix">$</span>
           <input class="form-input" id="d-monto" type="number" placeholder="0.00" min="0" />
         </div>
+        <p class="form-hint">Lo que todavía debes, no el valor total de la propiedad o auto.</p>
       </div>
-      <p class="form-hint">Podrás agregar los pagos programados después.</p>
+      <div style="padding:10px 12px;background:var(--bg-elevated);border-radius:var(--radius-sm);border:1px solid var(--border)">
+        <p style="font-size:12px;color:var(--text-secondary);margin:0">Después podrás cargar tu tabla de amortización completa con cada mensualidad, fecha y monto.</p>
+      </div>
     </div>
   `;
 
@@ -728,11 +758,8 @@ function renderStep5Body(showForm = false) {
     <p class="form-hint mt-8" style="padding: 0 4px">Si no tienes deudas activas puedes continuar sin agregar ninguna.</p>
   `;
 
-  if (showForm && (tipoDeuda === 'simple' || tipoDeuda === 'variable')) {
+  if (showForm && tipoDeuda === 'simple') {
     renderCamposDeudaOnboarding();
-  }
-  if (showForm && tipoDeuda === 'flexible') {
-    // sin campos de fecha — formulario completo desde el HTML estático
   }
 
   renderLucideIcons();
@@ -770,6 +797,7 @@ function renderCamposDeudaOnboarding() {
   if (tipo === 'mensual') {
     const opciones = Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('');
     campos.innerHTML = `<select class="form-select" id="d-dia-pago" style="width:100%">${opciones}</select>`;
+    if (hint) hint.innerHTML = `<p class="form-hint">El día del mes que te descuentan.</p>`;
     return;
   }
   campos.innerHTML = '';
@@ -791,7 +819,7 @@ function addDeuda() {
   let dia_semana = null;
 
   if (tipo_deuda === 'simple' || tipo_deuda === 'variable') {
-    tipo_pago = document.getElementById('d-freq')?.value || 'libre';
+    tipo_pago = document.getElementById('d-freq')?.value || 'mensual';
     monto_pago = parseFloat(document.getElementById('d-cuota')?.value) || null;
 
     if (tipo_pago === 'unico') {
@@ -807,12 +835,6 @@ function addDeuda() {
       dia_pago = parseInt(document.getElementById('d-dia-pago')?.value, 10);
       if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 31) {
         showSnackbar('Ingresa un día del mes entre 1 y 31', 'error');
-        return;
-      }
-    } else if (tipo_pago === 'quincenal') {
-      dia_pago = parseInt(document.getElementById('d-quincena')?.value, 10);
-      if (Number.isNaN(dia_pago) || dia_pago < 1 || dia_pago > 2) {
-        showSnackbar('Ingresa 1 o 2 para la quincena', 'error');
         return;
       }
     }
@@ -844,13 +866,13 @@ function nextStep5() {
 
 // ---- CATÁLOGO GASTOS DIARIOS ----
 const GASTOS_DIARIOS_CATALOGO = [
-  { categoria: 'Alimentación',    icono: 'bx bx-restaurant',  items: ['Súper / Despensa', 'Restaurantes', 'Antojitos / Café', 'Delivery'] },
-  { categoria: 'Transporte',      icono: 'bx bx-car',         items: ['Transporte público', 'Gasolina', 'Uber / Didi', 'Estacionamiento', 'Mecánico / Mantenimiento'] },
-  { categoria: 'Hogar',           icono: 'bx bx-home-alt',    items: ['Limpieza', 'Mascotas / Veterinario', 'Reparaciones'] },
-  { categoria: 'Entretenimiento', icono: 'bx bx-party',       items: ['Salidas', 'Cine / Eventos', 'Hobbies'] },
-  { categoria: 'Salud y Cuidado', icono: 'bx bx-heart',       items: ['Farmacia / Consultas', 'Peluquería', 'Ropa'] },
-  { categoria: 'Educación',       icono: 'bx bx-book',        items: ['Material escolar', 'Cursos'] },
-  { categoria: 'Otros',           icono: 'bx bx-grid-alt',    items: ['Regalos', 'Gastos hormiga'] },
+  { categoria: 'Alimentación',    icono: 'utensils',      items: ['Súper / Despensa', 'Restaurantes', 'Antojitos / Café', 'Delivery'] },
+  { categoria: 'Transporte',      icono: 'car',           items: ['Transporte público', 'Gasolina', 'Uber / Didi', 'Estacionamiento', 'Mecánico / Mantenimiento'] },
+  { categoria: 'Hogar',           icono: 'home',          items: ['Limpieza', 'Mascotas / Veterinario', 'Reparaciones'] },
+  { categoria: 'Entretenimiento', icono: 'music',         items: ['Salidas', 'Cine / Eventos', 'Hobbies'] },
+  { categoria: 'Salud y Cuidado', icono: 'heart-pulse',   items: ['Farmacia / Consultas', 'Peluquería', 'Ropa'] },
+  { categoria: 'Educación',       icono: 'book-open',     items: ['Material escolar', 'Cursos'] },
+  { categoria: 'Otros',           icono: 'package',       items: ['Regalos', 'Gastos hormiga'] },
 ];
 
 // ---- STEP 5: Metas ----
@@ -951,6 +973,16 @@ function renderStep6Body(showForm = false) {
     <p class="form-hint mt-8" style="padding: 0 4px">También puedes empezar sin metas y definirlas después.</p>
   `;
 
+  if (showForm && window._metaFormState) {
+    const s = window._metaFormState;
+    const el = id => document.getElementById(id);
+    if (el('m-nombre'))       el('m-nombre').value       = s.nombre;
+    if (el('m-monto'))        el('m-monto').value        = s.monto;
+    if (el('m-fecha-limite')) el('m-fecha-limite').value = s.fechaLimite;
+    if (el('m-frecuencia'))   el('m-frecuencia').value   = s.frecuencia;
+    if (el('m-cuenta-nombre')) el('m-cuenta-nombre').value = s.cuentaNombre;
+  }
+
   renderLucideIcons();
 }
 
@@ -1048,10 +1080,10 @@ function renderGastosDiariosBody(customFormOpen = false) {
       <div style="background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:8px">
         <button type="button" onclick="toggleGdCategoria('${catKey}')"
           style="width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;background:none;border:none;cursor:pointer;font-family:var(--font-body);text-align:left">
-          <i class="${grupo.icono}" style="font-size:20px;color:${isOpen || count > 0 ? 'var(--accent)' : 'var(--text-muted)'};flex-shrink:0"></i>
+          <i data-lucide="${grupo.icono}" style="width:20px;height:20px;stroke-width:1.75;color:${isOpen || count > 0 ? 'var(--accent)' : 'var(--text-muted)'};flex-shrink:0"></i>
           <span style="font-weight:600;font-size:14px;flex:1">${grupo.categoria}</span>
           ${count > 0 ? `<span style="background:var(--accent);color:#fff;border-radius:9999px;min-width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;padding:0 5px">${count}</span>` : ''}
-          <i class="bx ${isOpen ? 'bx-chevron-up' : 'bx-chevron-down'}" style="font-size:20px;color:var(--text-muted)"></i>
+          <i data-lucide="${isOpen ? 'chevron-up' : 'chevron-down'}" style="width:20px;height:20px;stroke-width:2;color:var(--text-muted)"></i>
         </button>
         ${isOpen ? `<div style="padding-bottom:8px">${subcatsHTML}</div>` : ''}
       </div>`;
@@ -1076,7 +1108,7 @@ function renderGastosDiariosBody(customFormOpen = false) {
       </div>
     </div>` : `
     <button class="btn-add-item" onclick="renderGastosDiariosBody(true)" style="margin-top:4px">
-      <i class="bx bx-plus"></i> Agregar gasto personalizado
+      <i data-lucide="plus" style="width:16px;height:16px;vertical-align:middle"></i> Agregar gasto personalizado
     </button>`;
 
   document.getElementById('onboarding-body').innerHTML = `
@@ -1084,6 +1116,7 @@ function renderGastosDiariosBody(customFormOpen = false) {
     ${customFormHTML}
     <p class="form-hint" style="margin-top:12px;padding:0 4px">Puedes seleccionar varios o continuar sin ninguno.</p>
   `;
+  renderLucideIcons();
 }
 
 window.renderGastosDiariosBody = renderGastosDiariosBody;
@@ -1115,7 +1148,7 @@ window.guardarGdCustom = function() {
   const categoria = document.getElementById('gd-custom-cat')?.value;
   if (!nombre) { showSnackbar('Escribe el nombre del gasto', 'error'); return; }
   const grupo = GASTOS_DIARIOS_CATALOGO.find(g => g.categoria === categoria);
-  const icono = grupo ? grupo.icono : 'bx bx-grid-alt';
+  const icono = grupo ? grupo.icono : 'package';
   const yaExiste = onboardingData.gastosDiarios.some(
     g => g.categoria === categoria && g.subcategoria === nombre
   );
@@ -1217,11 +1250,11 @@ async function finishOnboarding() {
     const userId = user.id;
     const nombre = window._regNombre || (user.email ? user.email.split('@')[0] : 'Usuario');
 
-    const { error: errUsuario } = await db.from('usuarios').insert({
+    const { error: errUsuario } = await db.from('usuarios').upsert({
       id: userId,
       nombre: nombre,
       onboarding_completo: true
-    });
+    }, { onConflict: 'id' });
 
     if (errUsuario) throw errUsuario;
 
@@ -1323,7 +1356,8 @@ async function finishOnboarding() {
 
   } catch (err) {
     console.error(err);
-    showSnackbar('Error al guardar. Intenta de nuevo.', 'error');
+    const msg = err?.message ? `No se pudo guardar (${err.message}). Revisa tu conexión` : 'Error al guardar. Intenta de nuevo.';
+    showSnackbar(msg, 'error');
     const btn = document.getElementById('btn-finish');
     if (btn) { btn.innerHTML = '<i class="bx bx-send" style="font-size:16px;vertical-align:middle;margin-right:6px"></i>¡Listo, empecemos!'; btn.disabled = false; }
   }
@@ -1613,12 +1647,24 @@ window.removeDeuda     = removeDeuda;
 window.nextStep5       = nextStep5;
 
 
+function _saveMetaFormState() {
+  window._metaFormState = {
+    nombre:       document.getElementById('m-nombre')?.value       || '',
+    monto:        document.getElementById('m-monto')?.value        || '',
+    fechaLimite:  document.getElementById('m-fecha-limite')?.value || '',
+    frecuencia:   document.getElementById('m-frecuencia')?.value   || 'mensual',
+    cuentaNombre: document.getElementById('m-cuenta-nombre')?.value || '',
+  };
+}
+
 window.toggleMetaIconPanel = function() {
+  _saveMetaFormState();
   window._showMetaIconPanel = !window._showMetaIconPanel;
   renderStep6Body(true);
 };
 
 window.selectIconoMeta = function(icono) {
+  _saveMetaFormState();
   window._metaIcono = icono;
   window._showMetaIconPanel = false;
   renderStep6Body(true);

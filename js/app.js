@@ -16,7 +16,7 @@ import {
 } from './cuentas.js';
 import { renderAuth, initAuthEvents, cerrarSesion } from './auth.js';
 import { renderOnboarding } from './onboarding.js';
-import { getSaldoCuentaEspecifica, getPagosPendientes } from './balance.js';
+import { getSaldoCuentaEspecifica, getPagosPendientes, calcularSaludFinanciera } from './balance.js';
 import { loadDeudas } from './deudas.js';
 import { loadMetas } from './metas.js';
 import {
@@ -386,7 +386,10 @@ export async function loadDashboard() {
     db.from('transferencias').select('cuenta_destino_id, monto').eq('usuario_id', uid).not('cuenta_destino_id', 'is', null)
   ]);
 
-  const pagosPendientes = await getPagosPendientes();
+  const [pagosPendientes, saludFinanciera] = await Promise.all([
+    getPagosPendientes(),
+    calcularSaludFinanciera(uid),
+  ]);
   const proximaFechaCobro = pagosPendientes.proxima_fecha_cobro;
   const totalPendientePeriodo = pagosPendientes.total_periodo || 0;
 
@@ -405,15 +408,125 @@ export async function loadDashboard() {
   const disponible = totalGeneralCuentas;
 
   const horaActual = new Date().getHours();
-  const saludo = (horaActual >= 5 && horaActual < 12) ? 'Buenos días'
-    : (horaActual >= 12 && horaActual < 19) ? 'Buenas tardes'
+  const saludo = horaActual >= 5 && horaActual < 12 ? 'Buenos días'
+    : horaActual >= 12 && horaActual < 19 ? 'Buenas tardes'
     : 'Buenas noches';
+
+  const nombreCorto = usuario?.nombre?.split(' ')[0] || 'JM Finance';
+  const fechaHoy = new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  // ---- Contexto del saldo ----
+  const sf = saludFinanciera;
+  let contextSaldo = '';
+  if (disponible < 0) {
+    contextSaldo = `<div style="margin-top:6px;font-size:13px;color:var(--red);display:flex;align-items:center;gap:5px"><i data-lucide="alert-triangle" style="width:14px;height:14px;stroke-width:2"></i> Saldo negativo — revisa tus cuentas</div>`;
+  } else if (sf?.fondoEmergenciaMeses !== null && sf.fondoEmergenciaMeses >= 0) {
+    const meses = sf.fondoEmergenciaMeses;
+    const color = meses >= 3 ? 'var(--green)' : meses >= 1 ? 'var(--yellow)' : 'var(--red)';
+    contextSaldo = `<div style="margin-top:6px;font-size:12px;color:${color};display:flex;align-items:center;gap:5px"><i data-lucide="${meses >= 3 ? 'shield-check' : 'shield-alert'}" style="width:13px;height:13px;stroke-width:2"></i> Cubre ${meses.toLocaleString('es-MX')} ${meses === 1 ? 'mes' : 'meses'} de gastos fijos</div>`;
+  }
+
+  // ---- Score de Salud Financiera ----
+  function metricaRow(titulo, icono, valorTexto, descripcion, pct, color) {
+    const pctFill = Math.max(0, Math.min(100, pct));
+    return `
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0"></div>
+            <span style="font-size:13px;font-weight:600">${titulo}</span>
+          </div>
+          <span style="font-size:13px;font-weight:700;color:${color}">${valorTexto}</span>
+        </div>
+        <div style="height:5px;background:var(--border);border-radius:3px;margin-bottom:4px;overflow:hidden">
+          <div style="width:${pctFill}%;height:100%;background:${color};border-radius:3px"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary)">${descripcion}</div>
+      </div>`;
+  }
+
+  let saludHTML = '';
+  if (!sf || !sf.tieneDatos) {
+    saludHTML = `
+      <div style="padding:16px;text-align:center">
+        <i data-lucide="bar-chart-2" style="width:28px;height:28px;color:var(--text-muted);stroke-width:1.5;margin-bottom:8px;display:block;margin-left:auto;margin-right:auto"></i>
+        <div style="font-size:13px;color:var(--text-secondary)">Agrega tus cuentas, ingresos y gastos fijos para ver tu diagnóstico financiero.</div>
+      </div>`;
+  } else {
+    // Fondo de emergencia
+    const fondo = sf.fondoEmergenciaMeses;
+    let fondoColor, fondoTexto, fondoDesc, fondoPct;
+    if (fondo === null) {
+      fondoColor = 'var(--text-muted)'; fondoTexto = '—';
+      fondoDesc = 'Agrega gastos fijos para calcular'; fondoPct = 0;
+    } else if (fondo < 1) {
+      fondoColor = 'var(--red)'; fondoTexto = `${fondo} meses`;
+      fondoDesc = 'Muy vulnerable — objetivo mínimo: 1 mes'; fondoPct = fondo * 100;
+    } else if (fondo < 3) {
+      fondoColor = 'var(--yellow)'; fondoTexto = `${fondo} meses`;
+      fondoDesc = `Moderado — objetivo recomendado: 3 meses`; fondoPct = fondo / 3 * 100;
+    } else {
+      fondoColor = 'var(--green)'; fondoTexto = `${fondo} meses ✓`;
+      fondoDesc = '¡Excelente! Tienes un colchón financiero sólido'; fondoPct = 100;
+    }
+
+    // Ratio deuda / ingreso (pagos mensuales)
+    const ratio = sf.ratioDeuda;
+    let ratioColor, ratioTexto, ratioDesc, ratioPct;
+    if (ratio === null) {
+      ratioColor = 'var(--text-muted)'; ratioTexto = '—';
+      ratioDesc = 'Registra ingresos este mes para calcular'; ratioPct = 0;
+    } else if (ratio === 0) {
+      ratioColor = 'var(--green)'; ratioTexto = '0%';
+      ratioDesc = 'Sin pagos de deuda — finanzas muy sanas'; ratioPct = 0;
+    } else if (ratio <= 30) {
+      ratioColor = 'var(--green)'; ratioTexto = `${ratio}%`;
+      ratioDesc = `Tus pagos de deuda son ${ratio}% de tus ingresos — saludable`; ratioPct = ratio / 30 * 100;
+    } else if (ratio <= 40) {
+      ratioColor = 'var(--yellow)'; ratioTexto = `${ratio}%`;
+      ratioDesc = `Moderado — trata de mantenerlo por debajo del 30%`; ratioPct = 100;
+    } else {
+      ratioColor = 'var(--red)'; ratioTexto = `${ratio}%`;
+      ratioDesc = `Alto — tus deudas consumen demasiado de tus ingresos`; ratioPct = 100;
+    }
+
+    // Tasa de ahorro
+    const ahorro = sf.tasaAhorro;
+    let ahorroColor, ahorroTexto, ahorroDesc, ahorroPct;
+    if (ahorro === null) {
+      ahorroColor = 'var(--text-muted)'; ahorroTexto = '—';
+      ahorroDesc = 'Registra ingresos y gastos este mes'; ahorroPct = 0;
+    } else if (ahorro <= 0) {
+      ahorroColor = 'var(--red)'; ahorroTexto = `${ahorro}%`;
+      ahorroDesc = 'Estás gastando más de lo que entra — revisa tus gastos'; ahorroPct = 0;
+    } else if (ahorro < 10) {
+      ahorroColor = 'var(--yellow)'; ahorroTexto = `${ahorro}%`;
+      ahorroDesc = `Ahorrando ${ahorro}% — objetivo recomendado: 10%`; ahorroPct = ahorro / 10 * 100;
+    } else {
+      ahorroColor = 'var(--green)'; ahorroTexto = `${ahorro}% ✓`;
+      ahorroDesc = `¡Muy bien! Estás ahorrando ${ahorro}% de tus ingresos`; ahorroPct = 100;
+    }
+
+    saludHTML = `<div style="padding:16px">
+      ${metricaRow('Fondo de emergencia', 'shield', fondoTexto, fondoDesc, fondoPct, fondoColor)}
+      <div style="border-top:1px solid var(--border);margin-bottom:14px"></div>
+      ${metricaRow('Pagos de deuda', 'credit-card', ratioTexto, ratioDesc, ratioPct, ratioColor)}
+      <div style="border-top:1px solid var(--border);margin-bottom:14px"></div>
+      ${metricaRow('Tasa de ahorro', 'piggy-bank', ahorroTexto, ahorroDesc, ahorroPct, ahorroColor)}
+    </div>`;
+  }
+
+  // ---- Alertas y pagos próximos ----
+  const alertasVencenHoy = (pagosPendientes || []).filter(p => {
+    const dias = Math.round((p.fecha_esperada - new Date().setHours(0,0,0,0)) / 86400000);
+    return dias <= 3;
+  });
 
   document.getElementById('page-dashboard').innerHTML = `
     <div class="page-header">
       <div>
-        <p class="text-secondary" style="font-size:12px">${saludo}</p>
-        <h1 class="page-title">${usuario?.nombre?.split(' ')[0] || 'JM Finance'}</h1>
+        <p class="text-secondary" style="font-size:12px;text-transform:capitalize">${fechaHoy}</p>
+        <h1 class="page-title">${saludo}, ${nombreCorto}</h1>
       </div>
     </div>
 
@@ -421,9 +534,9 @@ export async function loadDashboard() {
       <div class="balance-label">Disponible ahora</div>
       <div class="balance-amount">
         <span class="currency">$</span>${Math.abs(disponible).toLocaleString('es-MX')}
-        ${disponible < 0 ? '<span style="font-size:14px;color:var(--red);margin-left:8px"><i data-lucide="alert-triangle" style="width:18px;height:18px;stroke-width:1.75"></i> Negativo</span>' : ''}
       </div>
-      <div class="balance-row">
+      ${contextSaldo}
+      <div class="balance-row" style="margin-top:12px">
         <div class="balance-stat">
           <span class="balance-stat-label">Ingresos</span>
           <span class="balance-stat-value income">${formatMXN(totalIngresos)}</span>
@@ -433,13 +546,20 @@ export async function loadDashboard() {
           <span class="balance-stat-value expense">${formatMXN(totalGastos)}</span>
         </div>
         <div class="balance-stat">
-          <span class="balance-stat-label">Deuda total</span>
+          <span class="balance-stat-label">Deuda</span>
           <span class="balance-stat-value" style="color:var(--yellow)">${formatMXN(totalDeuda)}</span>
         </div>
       </div>
     </div>
 
-    <div style="padding: 0 16px; margin-bottom: 16px">
+    <div style="padding:0 16px;margin-bottom:16px">
+      <p class="section-title">Tu salud financiera</p>
+      <div class="card" style="padding:0;overflow:hidden">
+        ${saludHTML}
+      </div>
+    </div>
+
+    <div style="padding:0 16px;margin-bottom:16px">
       <p class="section-title">Gastos del mes por categoría</p>
       <div class="card" style="padding:16px;position:relative">
         <canvas id="gastosChart" style="max-height:280px"></canvas>
@@ -447,22 +567,26 @@ export async function loadDashboard() {
       </div>
     </div>
 
-    <div style="padding: 0 16px; margin-bottom: 8px">
-      <p class="section-title">Pagos próximos</p>
+    <div style="padding:0 16px;margin-bottom:24px">
+      <p class="section-title">${alertasVencenHoy.length > 0 ? `<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Pagos próximos` : 'Pagos próximos'}</p>
       ${proximaFechaCobro ? `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Para tu cobro del ${proximaFechaCobro.toLocaleDateString('es-MX', { day: 'numeric', month: 'long' })}</div>` : ''}
       ${!pagosPendientes || pagosPendientes.length === 0 ? `
-        <div class="card" style="margin-bottom:0;display:flex;align-items:flex-start;gap:10px">
-          <i data-lucide="check-circle" style="width:18px;height:18px;stroke-width:1.75"></i>
+        <div class="card" style="margin-bottom:0;display:flex;align-items:center;gap:10px">
+          <i data-lucide="check-circle" style="width:20px;height:20px;stroke-width:1.75;color:var(--green);flex-shrink:0"></i>
           <div>
-            <div class="item-row-name">Todo al día</div>
-            <div class="item-row-detail">Sin pagos pendientes hasta tu próximo cobro</div>
+            <div class="item-row-name" style="color:var(--green)"><i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Todo al día</div>
+            <div class="item-row-detail">Sin pagos pendientes en los próximos días</div>
           </div>
         </div>
       ` : pagosPendientes.map(p => {
+        const diasDiff = Math.round((p.fecha_esperada - new Date().setHours(0,0,0,0)) / 86400000);
         const expanded = dashboardExpandedPagoId === p.item_id;
         const fechaTxt = p.fecha_esperada.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' });
+        const urgente = diasDiff <= 3;
+        const urgColor = diasDiff <= 0 ? 'var(--red)' : diasDiff <= 3 ? '#d97706' : 'var(--text-secondary)';
+        const urgTexto = diasDiff < 0 ? 'Vencido' : diasDiff === 0 ? 'Vence hoy' : diasDiff === 1 ? 'Mañana' : `En ${diasDiff} días`;
         return `
-          <div class="pago-pendiente-card ${expanded ? 'expanded' : ''}" onclick="togglePagoPendienteExpand('${p.item_id}')">
+          <div class="pago-pendiente-card ${expanded ? 'expanded' : ''}" onclick="togglePagoPendienteExpand('${p.item_id}')" style="${urgente ? 'border-left:3px solid ' + urgColor + ';' : ''}">
             <div class="pago-pendiente-main">
               <div class="pago-pendiente-left">
                 ${p.tipo === 'fijo'
@@ -471,7 +595,9 @@ export async function loadDashboard() {
                 }
                 <div>
                   <div class="item-row-name">${p.nombre}</div>
-                  <div class="item-row-detail">${fechaTxt}</div>
+                  <div class="item-row-detail" style="color:${urgente ? urgColor : ''}">
+                    ${urgente ? urgTexto + ' · ' : ''}${fechaTxt}
+                  </div>
                 </div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
@@ -763,6 +889,24 @@ export function actualizarBotonCategoriaSelector() {
     <span class="cat-btn-label">${nombre}</span>
     <i data-lucide="chevron-down" class="cat-btn-chevron"></i>
   `;
+
+  // Show monthly spending insight when a gasto category is selected
+  const insight = document.getElementById('rg-categoria-insight');
+  if (insight && currentCatTipo === 'gasto' && currentCatId) {
+    const cache = window._gastoPickerCache;
+    const total = cache?.categoriasMes?.[currentCatId];
+    if (total > 0) {
+      insight.textContent = `Llevas ${formatMXN(Math.round(total))} en ${nombre} este mes`;
+      insight.style.display = '';
+    } else if (total === 0) {
+      insight.textContent = `Sin gastos en ${nombre} este mes`;
+      insight.style.display = '';
+    } else {
+      insight.style.display = 'none';
+    }
+  } else if (insight) {
+    insight.style.display = 'none';
+  }
 
   renderLucideIcons();
 }
