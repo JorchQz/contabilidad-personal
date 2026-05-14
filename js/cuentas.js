@@ -1,4 +1,10 @@
 // js/cuentas.js — Módulo de Cuentas
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
 import { db, getUsuarioId } from './supabase.js';
 import {
   formatMXN,
@@ -141,7 +147,7 @@ export async function loadCuentas() {
             <div class="item-row" style="margin-bottom:8px">
               <div class="item-row-emoji">${cuenta.emoji}</div>
               <div class="item-row-info">
-                <div class="item-row-name">${cuenta.nombre}${badgeHtml ? ' ' + badgeHtml : ''}</div>
+                <div class="item-row-name">${escapeHtml(cuenta.nombre)}${badgeHtml ? ' ' + badgeHtml : ''}</div>
                 <div class="item-row-detail">${cuenta.tipoLabel}</div>
               </div>
               <div class="item-row-amount" style="color:${saldo < 0 ? 'var(--red)' : 'inherit'}">${formatMXN(saldo)}</div>
@@ -191,7 +197,7 @@ export async function openEditarCuenta(cuentaId) {
   openModal('Editar cuenta', `
     <div class="form-group">
       <label class="form-label">Nombre</label>
-      <input class="form-input" id="ec-nombre" type="text" value="${cuenta.nombre || ''}" />
+      <input class="form-input" id="ec-nombre" type="text" value="${escapeHtml(cuenta.nombre || '')}" />
     </div>
     <div class="form-group">
       <label class="form-label">Tipo</label>

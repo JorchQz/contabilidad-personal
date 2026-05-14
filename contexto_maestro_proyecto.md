@@ -232,44 +232,82 @@ Subcategorías especiales en grupo **Finanzas**:
 
 ## 4. Estado Actual del Desarrollo
 
-### Flujos completamente implementados ✅
+_Última revisión: 2026-05-14_
+
+### Arquitectura actual
+
+El código fue refactorizado a módulos ES. Estructura real de `js/`:
+
+| Archivo | Rol |
+|---------|-----|
+| `app.js` | Boot, auth gate, dashboard, helpers compartidos |
+| `auth.js` | Login/registro/logout |
+| `balance.js` | Motor de cálculo puro — sin DOM |
+| `cuentas.js` | CRUD de cuentas + calcularCuentasConSaldo |
+| `gastos.js` | Gastos variables y fijos |
+| `ingresos.js` | Registro de ingresos |
+| `deudas.js` | Deudas, pagos, tabla de pagos programados |
+| `metas.js` | Metas de ahorro + flujo abonar |
+| `presupuestos.js` | Límites de presupuesto por categoría |
+| `graficas.js` | Chart.js — pie de gastos mensuales |
+| `export.js` | Exportación CSV |
+| `distribucion.js` | Distribución de ingresos |
+| `onboarding.js` | Wizard 7 pasos |
+| `router.js` | Navegación, bottom nav, swipe |
+
+### Flujos implementados ✅
 
 | Módulo | Estado |
 |--------|--------|
 | Autenticación (login / registro / logout) | ✅ Funcional |
-| Onboarding 6 pasos (nombre → ingresos → fijos → cuentas → deudas → metas) | ✅ Funcional con seed transaccional |
-| Dashboard (balance hero, stats, pagos próximos con lógica de fecha inteligente) | ✅ Funcional |
-| Gestión de cuentas (CRUD completo + balance calculado) | ✅ Funcional |
-| Registro de gastos variables (con selector de categoría y cuenta) | ✅ Funcional |
-| Historial de gastos (últimos 50, delete con confirmación) | ✅ Funcional |
-| Ingresos programados (CRUD, frecuencias weekly/biweekly/monthly) | ✅ Funcional |
-| Historial de ingresos | ✅ Funcional |
-| Gastos fijos (lista, marcar como pagado, recalcular `proximo_pago`) | ✅ Funcional |
-| Gestión de deudas (3 tipos, registro de pagos a `pagos_deuda`) | ✅ Funcional |
-| Metas de ahorro (progreso, emoji, link a cuenta) | ✅ Funcional |
+| Onboarding 7 pasos | ✅ Funcional |
+| Dashboard (balance hero, stats, pagos próximos) | ✅ Funcional |
+| Gestión de cuentas (CRUD + balance calculado) | ✅ Funcional |
+| Gastos variables (CRUD + selector categoría/cuenta) | ✅ Funcional |
+| Ingresos (CRUD + historial) | ✅ Funcional |
+| Gastos fijos (CRUD + marcar pagado + proximo_pago) | ✅ Funcional |
+| Deudas (3 tipos + pagos + pagos_programados) | ✅ Funcional |
+| Metas de ahorro (CRUD + abonar + progreso) | ✅ Funcional |
 | Transferencias entre cuentas | ✅ Funcional |
-| Dark/Light mode con persistencia | ✅ Funcional |
-| Navegación por tabs (8 páginas) + swipe + FAB contextual | ✅ Funcional |
+| Presupuestos por categoría | ✅ Funcional |
+| Gráficas (pie de gastos) | ✅ Funcional |
+| Exportación CSV | ✅ Funcional |
+| Gastos diferidos (MSI) | ✅ Funcional |
+| Dark/Light mode | ✅ Funcional |
+| Navegación tabs + swipe + FAB | ✅ Funcional |
+
+### Bugs críticos confirmados por auditoría (pendientes de fix) 🔴
+
+| Severidad | Área | Problema |
+|-----------|------|---------|
+| CRITICO | Seguridad | XSS en gastos.js: `descripcion` sin escapeHtml en edición |
+| CRITICO | Seguridad | XSS: cat.nombre/emoji raw en chips del picker |
+| CRITICO | Seguridad | XSS: c.nombre/d.acreedor/m.nombre raw en `<option>` |
+| CRITICO | Seguridad | onboarding.js: nombre usuario raw en innerHTML del header |
+| CRITICO | Seguridad | onboarding.js: query buscador bancos raw en dropdown |
+| CRITICO | Seguridad | `Infinity` pasa validaciones de monto en 5 funciones |
+| ALTO | Finanzas | `getSaldoDisponibleTotal()` ignora traspasos — balance incorrecto |
+| ALTO | Finanzas | "Disponible ahora" suma cuentas de crédito como activos |
+| ALTO | Finanzas | Proyección de liquidación absurda para deudas tipo `unico` |
+| MEDIO | UI/UX | 13 variables CSS inexistentes (`--font-body`, `--text-primary`, etc.) |
+| MEDIO | UI/UX | Colores legacy hardcodeados en deudas.js (`rgba(124,108,252,...)`) |
+| MEDIO | Lógica | `parseInt` sin base 10 en deudas.js:249 |
 
 ### Pendiente / No implementado ❌
 
 | Módulo | Detalle |
 |--------|---------|
-| Gráficas y analítica | Sin charts; no hay comparativa mes a mes ni por categoría |
-| Exportación de datos | Sin CSV/PDF |
-| Notificaciones push | Manifest listo para PWA pero sin service worker ni push |
-| Presupuestos mensuales por categoría | Sin lógica de budget caps ni alertas de gasto |
-| Multi-moneda | Solo MXN (Intl.NumberFormat es-MX) |
-| Edición de gastos variables | Solo delete, no edit |
+| Edición de gastos variables | Solo delete, sin edit post-creación |
 | Edición de deudas | Sin modal de edición post-creación |
 | Edición de metas | Sin edición post-creación |
+| `pagos_programados` | Tabla en BD, sin UI activa |
+| Notificaciones push | Sin service worker activo |
 | Sincronización offline | Sin service worker activo |
-| Real-time Supabase | No suscripciones activas |
-| `pagos_programados` | Tabla referenciada en esquema, sin uso activo en UI |
+| Multi-moneda | Solo MXN |
+| Real-time Supabase | Sin suscripciones activas |
 
-### Observaciones arquitectónicas para desarrollo futuro
+### Observaciones arquitectónicas
 
-- Todo el código de negocio está en un único `app.js` (~6000 LOC). Refactorizar en módulos ES (`gastos.js`, `cuentas.js`, etc.) reduciría acoplamiento.
-- Los catálogos de categorías son arrays hardcodeados en el cliente; migrar a tabla `categorias_sistema` en Supabase permitiría gestión sin deploy.
-- La lógica de `proximo_pago` (scheduling de frecuencias) está duplicada entre gastos fijos y deudas — candidata a función utilitaria compartida.
-- No hay validación server-side (RLS en Supabase); se asume que `usuario_id` se filtra en cada query client-side.
+- Los catálogos de categorías son arrays hardcodeados en el cliente; migrar a `categorias_sistema` en Supabase permitiría gestión sin deploy.
+- La lógica de `proximo_pago` está duplicada entre gastos_fijos y deudas — candidata a función utilitaria compartida.
+- No hay validación server-side (RLS en Supabase); se filtra `usuario_id` en cada query client-side.

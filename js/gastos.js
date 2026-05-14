@@ -1,4 +1,10 @@
 // js/gastos.js — Módulo de Egresos (Gastos variables y Gastos Fijos)
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
 import { db, getUsuarioId } from './supabase.js';
 import {
   formatMXN,
@@ -328,7 +334,7 @@ export async function loadFijos() {
       <div class="item-row" style="margin-bottom:6px">
         <div class="item-row-emoji">${iconoHtml}</div>
         <div class="item-row-info">
-          <div class="item-row-name">${g.descripcion}${badgeHtml ? ' ' + badgeHtml : ''}</div>
+          <div class="item-row-name">${escapeHtml(g.descripcion)}${badgeHtml ? ' ' + badgeHtml : ''}</div>
           <div class="item-row-detail">${formatearFrecuenciaGastoFijo(g.frecuencia, g.dia_pago, g.dia_semana, g.proximo_pago)}</div>
         </div>
         <div class="item-row-amount" style="color:var(--red)">${montoTxt}</div>
@@ -508,13 +514,13 @@ async function openEditarGastoFijo(gastoFijoId) {
   const esAproxInicial = !!gasto.es_aproximado;
   const isVariable = gasto.monto_variable === true || (gasto.monto == null && !esAproxInicial);
   const tipoInicial = isVariable ? 'variable' : (esAproxInicial ? 'aproximado' : 'definido');
-  const catOptions = (categorias || []).map(c => `<option value="${c.id}" ${c.id === gasto.categoria_id ? 'selected' : ''}>${c.nombre}</option>`).join('');
+  const catOptions = (categorias || []).map(c => `<option value="${escapeHtml(c.id)}" ${c.id === gasto.categoria_id ? 'selected' : ''}>${escapeHtml(c.nombre)}</option>`).join('');
   const sinCatSel = !gasto.categoria_id ? 'selected' : '';
 
   openModal('Editar gasto fijo', `
     <div class="form-group">
       <label class="form-label">Descripción</label>
-      <input class="form-input" id="egf-desc" type="text" value="${gasto.descripcion || ''}" />
+      <input class="form-input" id="egf-desc" type="text" value="${escapeHtml(gasto.descripcion || '')}" />
     </div>
     <div class="form-group">
       <label class="form-label">Tipo de monto</label>
@@ -597,7 +603,7 @@ async function guardarEdicionGastoFijo(gastoFijoId) {
 async function openAgregarGastoFijo() {
   const uid = await getUsuarioId();
   const { data: categorias } = await db.from('categorias').select('id, nombre, emoji').eq('usuario_id', uid).eq('tipo', 'gasto').order('nombre', { ascending: true });
-  const catOptions = (categorias || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+  const catOptions = (categorias || []).map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nombre)}</option>`).join('');
 
   openModal('Nuevo gasto fijo', `
     <div class="form-group">
@@ -771,8 +777,8 @@ export async function loadGastos() {
           <div class="item-row" style="margin-bottom:4px">
             <div class="item-row-emoji">${g.categorias?.emoji ? renderEmojiOrIcon(g.categorias.emoji, 'package', 18) : getCategoriaGastoIcon(g.categorias?.nombre)}</div>
             <div class="item-row-info">
-              <div class="item-row-name">${g.descripcion || g.categorias?.nombre || 'Sin descripción'}</div>
-              <div class="item-row-detail">${g.categorias?.nombre || 'Sin categoría'}</div>
+              <div class="item-row-name">${escapeHtml(g.descripcion || g.categorias?.nombre || 'Sin descripción')}</div>
+              <div class="item-row-detail">${escapeHtml(g.categorias?.nombre || 'Sin categoría')}</div>
             </div>
             <div class="item-row-amount">${formatMXN(g.monto)}</div>
             <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuGasto('${g.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
@@ -907,7 +913,7 @@ function renderGastoPickerSheet() {
       : '';
     return `<button class="fijo-sugerido-chip" onclick="seleccionarCategoriaDesdeSheet(${idx})">
       <i data-lucide="${icono}"></i>
-      <span>${cat.nombre}</span>
+      <span>${escapeHtml(cat.nombre)}</span>
       ${totalBadge}
     </button>`;
   };
@@ -1024,7 +1030,7 @@ export async function toggleCamposGastoEspecial() {
         <div class="form-group">
           <label class="form-label">Meta</label>
           <select class="form-select" id="rg-meta-id">
-            ${lista.map(m => `<option value="${m.id}">${m.nombre} · ${formatMXN(m.monto_actual || 0)} / ${formatMXN(m.monto_objetivo || 0)}</option>`).join('')}
+            ${lista.map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.nombre)} · ${formatMXN(m.monto_actual || 0)} / ${formatMXN(m.monto_objetivo || 0)}</option>`).join('')}
           </select>
         </div>
       `;
@@ -1052,7 +1058,7 @@ export async function toggleCamposGastoEspecial() {
         <div class="form-group">
           <label class="form-label">Deuda</label>
           <select class="form-select" id="rg-deuda-id">
-            ${lista.map(d => `<option value="${d.id}" data-tipo="${d.tipo_deuda}" data-max="${d.monto_actual}">${d.acreedor} · ${formatMXN(d.monto_actual)}</option>`).join('')}
+            ${lista.map(d => `<option value="${escapeHtml(d.id)}" data-tipo="${escapeHtml(d.tipo_deuda)}" data-max="${Number(d.monto_actual)}">${escapeHtml(d.acreedor)} · ${formatMXN(d.monto_actual)}</option>`).join('')}
           </select>
         </div>
       `;
@@ -1128,7 +1134,7 @@ async function openRegistrarGasto(gastoId = null) {
   openModal(titulo, `
     <div class="form-group">
       <label class="form-label">Descripción</label>
-      <input class="form-input" id="rg-desc" type="text" placeholder="Ej: Cena en el OXXO, gasolina, medicamento..." value="${descValue}" />
+      <input class="form-input" id="rg-desc" type="text" placeholder="Ej: Cena en el OXXO, gasolina, medicamento..." value="${escapeHtml(descValue)}" />
     </div>
     <div class="form-group">
       <label class="form-label">Monto</label>
@@ -1144,7 +1150,7 @@ async function openRegistrarGasto(gastoId = null) {
     <div class="form-group">
       <label class="form-label">Cuenta</label>
       <select class="form-select" id="rg-cuenta" onchange="actualizarSaldoHint(this.value)">
-        ${cuentas.map(c => `<option value="${c.id}" ${c.id === cuentaDefault ? 'selected' : ''}>${c.nombre}</option>`).join('')}
+        ${cuentas.map(c => `<option value="${escapeHtml(c.id)}" ${c.id === cuentaDefault ? 'selected' : ''}>${escapeHtml(c.nombre)}</option>`).join('')}
       </select>
       <div id="rg-saldo-hint">${saldoHintInicial}</div>
     </div>

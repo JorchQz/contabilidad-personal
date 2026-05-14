@@ -1,4 +1,10 @@
 // js/deudas.js
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
 import { db, getUsuarioId } from './supabase.js';
 import {
   formatMXN, showSnackbar, renderLucideIcons,
@@ -82,7 +88,13 @@ export async function loadDeudas() {
                 <span style="font-size:12px;color:var(--text-secondary)">${new Date(proximoPago.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-MX', {day:'numeric',month:'short',year:'numeric'})}</span>
                 <span style="font-weight:700;color:var(--accent)">${formatMXN(proximoPago.monto_esperado)}</span>
               </div>
-              <button onclick="openPagarDeuda('${d.id}', '${d.acreedor}', ${d.monto_actual}, '${d.tipo_deuda}', ${d.monto_ultimo_pago || null})"
+              <button
+                data-id="${escapeHtml(d.id)}"
+                data-acreedor="${escapeHtml(d.acreedor)}"
+                data-monto="${Number(d.monto_actual)}"
+                data-tipo="${escapeHtml(d.tipo_deuda)}"
+                data-ultimo="${d.monto_ultimo_pago ? Number(d.monto_ultimo_pago) : ''}"
+                onclick="openPagarDeuda(this.dataset.id, this.dataset.acreedor, Number(this.dataset.monto), this.dataset.tipo, this.dataset.ultimo ? Number(this.dataset.ultimo) : null)"
                 style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
                 Registrar pago
               </button>
@@ -93,7 +105,13 @@ export async function loadDeudas() {
         }
       } else {
         botonPagoHTML = `
-          <button onclick="openPagarDeuda('${d.id}', '${d.acreedor}', ${d.monto_actual}, '${d.tipo_deuda}', ${d.monto_ultimo_pago || null})"
+          <button
+            data-id="${escapeHtml(d.id)}"
+            data-acreedor="${escapeHtml(d.acreedor)}"
+            data-monto="${Number(d.monto_actual)}"
+            data-tipo="${escapeHtml(d.tipo_deuda)}"
+            data-ultimo="${d.monto_ultimo_pago ? Number(d.monto_ultimo_pago) : ''}"
+            onclick="openPagarDeuda(this.dataset.id, this.dataset.acreedor, Number(this.dataset.monto), this.dataset.tipo, this.dataset.ultimo ? Number(this.dataset.ultimo) : null)"
             style="margin-top:12px;background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
             Registrar pago
           </button>
@@ -109,7 +127,7 @@ export async function loadDeudas() {
           <div class="deuda-header">
             <div style="display:flex;align-items:center;gap:8px;min-width:0">
               <i data-lucide="${config.icono}" style="width:18px;height:18px;stroke-width:1.75;color:${config.color};flex-shrink:0"></i>
-              <span class="deuda-acreedor" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.acreedor}</span>
+              <span class="deuda-acreedor" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(d.acreedor)}</span>
             </div>
             <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
               ${sinTablaConfigurada ? `<span title="Sin tabla de pagos cargada" style="display:inline-flex;align-items:center;gap:3px;background:rgba(245,158,11,0.15);color:#d97706;border:1px solid rgba(245,158,11,0.35);border-radius:9999px;padding:2px 7px;font-size:11px;font-weight:600"><i data-lucide="alert-triangle" style="width:11px;height:11px;stroke-width:2.5"></i> Sin tabla</span>` : ''}
@@ -250,7 +268,7 @@ async function openEditarDeuda(deudaId) {
   openModal(`Editar — ${config.label}`, `
     <div class="form-group">
       <label class="form-label">Acreedor</label>
-      <input class="form-input" id="ed-acreedor" type="text" value="${deuda.acreedor || ''}" />
+      <input class="form-input" id="ed-acreedor" type="text" value="${escapeHtml(deuda.acreedor || '')}" />
     </div>
     <div class="form-group">
       <label class="form-label">${labelMonto}</label>
@@ -260,7 +278,7 @@ async function openEditarDeuda(deudaId) {
     ${formFrecuencia}
     ${esTabla ? `
     <p class="form-hint" style="margin-bottom:8px">Esta deuda usa una tabla de amortización.</p>
-    <button class="btn btn-secondary" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px" onclick="abrirCargarPagosDesdeEdicion('${deuda.id}', '${deuda.acreedor.replace(/'/g, "\\'")}')">
+    <button class="btn btn-secondary" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px" data-id="${escapeHtml(deuda.id)}" data-acreedor="${escapeHtml(deuda.acreedor)}" onclick="abrirCargarPagosDesdeEdicion(this.dataset.id, this.dataset.acreedor)">
       <i data-lucide="table-2" style="width:16px;height:16px;stroke-width:1.75;pointer-events:none"></i> Ver / cargar tabla de pagos
     </button>` : ''}
     <button class="btn btn-primary" onclick="guardarEdicionDeuda(${esTabla})">Guardar cambios</button>
@@ -394,7 +412,7 @@ async function openPagarDeuda(deudaId, acreedor, montoActual, tipoDeuda, montoUl
       <label class="form-label">¿De qué cuenta sale el dinero?</label>
       <select class="form-select" id="pd-cuenta">
         <option value="">— Selecciona una cuenta —</option>
-        ${(cuentas || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+        ${(cuentas || []).map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nombre)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
@@ -408,7 +426,7 @@ async function openPagarDeuda(deudaId, acreedor, montoActual, tipoDeuda, montoUl
         <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Solo suma al progreso — no descuenta saldo de ninguna cuenta</div>
       </div>
     </label>
-    <button class="btn btn-primary" onclick="guardarPagoDeuda('${deudaId}', ${montoActual}, '${tipoDeuda}')">Registrar pago</button>
+    <button class="btn btn-primary" data-deuda-id="${escapeHtml(deudaId)}" data-monto="${Number(montoActual)}" data-tipo="${escapeHtml(tipoDeuda)}" onclick="guardarPagoDeuda(this.dataset.deudaId, Number(this.dataset.monto), this.dataset.tipo)">Registrar pago</button>
   `);
 
   renderLucideIcons();
@@ -800,7 +818,7 @@ function openAgregarPagosProgramados(deudaId, acreedor) {
       <input class="form-input" id="pp-monto" type="number" placeholder="Monto" min="0" />
     </div>
     <button class="btn btn-secondary" style="margin-bottom:8px" onclick="agregarFilaPago()">+ Agregar cuota</button>
-    <button class="btn btn-primary" onclick="guardarTablaPagesProgramados('${deudaId}')">Guardar tabla</button>
+    <button class="btn btn-primary" data-id="${escapeHtml(deudaId)}" onclick="guardarTablaPagesProgramados(this.dataset.id)">Guardar tabla</button>
   `);
   renderFilasPagos();
 }

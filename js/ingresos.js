@@ -1,4 +1,10 @@
 // js/ingresos.js — Módulo de Ingresos (puntuales y programados)
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
 import { db, getUsuarioId } from './supabase.js';
 import {
   formatMXN,
@@ -111,7 +117,7 @@ export async function loadIngresos() {
         <div class="item-row" style="margin-bottom:8px">
           <div class="item-row-emoji"><i data-lucide="calendar-days" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <div class="item-row-info">
-            <div class="item-row-name">${i.descripcion}</div>
+            <div class="item-row-name">${escapeHtml(i.descripcion)}</div>
             <div class="item-row-detail">${formatearFrecuenciaIngresoProgramado(i.frecuencia, i.dia_pago, i.dia_semana)}</div>
           </div>
           <div class="item-row-amount" style="color:var(--green)">${formatMXN(i.monto_estimado)}</div>
@@ -137,7 +143,7 @@ export async function loadIngresos() {
           <div class="item-row" style="margin-bottom:8px">
             <div class="item-row-emoji">${iconoHtml}</div>
             <div class="item-row-info">
-              <div class="item-row-name">${nombre}</div>
+              <div class="item-row-name">${escapeHtml(nombre)}</div>
               <div class="item-row-detail">${fechaDisplay} · ${formatIngresoTipo(i.tipo)}</div>
             </div>
             <div class="item-row-amount" style="color:var(--green)">${formatMXN(i.monto)}</div>
@@ -234,7 +240,7 @@ async function openEditarIngresoProgramado(ingresoProgramadoId) {
   openModal('Editar ingreso programado', `
     <div class="form-group">
       <label class="form-label">Descripción</label>
-      <input class="form-input" id="eip-desc" type="text" value="${ingresoProgramado.descripcion || ''}" />
+      <input class="form-input" id="eip-desc" type="text" value="${escapeHtml(ingresoProgramado.descripcion || '')}" />
     </div>
     <div class="form-group">
       <label class="form-label">Monto estimado</label>
@@ -512,7 +518,7 @@ async function openRegistrarIngreso() {
     <div class="form-group">
       <label class="form-label">¿A qué cuenta entra?</label>
       <select class="form-select" id="ri-cuenta">
-        ${(cuentas || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+        ${(cuentas || []).map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nombre)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">

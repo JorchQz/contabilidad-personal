@@ -1,4 +1,10 @@
 // js/metas.js
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
 import { db, getUsuarioId } from './supabase.js';
 import {
   formatMXN, showSnackbar, renderLucideIcons,
@@ -88,8 +94,8 @@ export async function loadMetas() {
               <div style="display:flex;align-items:center;gap:12px">
                 <span style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;background:var(--bg-hover);border-radius:var(--radius-sm)">${renderEmojiOrIcon(m.emoji, 'target', 22)}</span>
                 <div>
-                  <div style="font-weight:600;font-size:14px">${m.nombre}</div>
-                  <div style="font-size:12px;color:var(--text-muted)">${m.cuenta_id ? (cuentasPorId[m.cuenta_id] || 'Cuenta eliminada') : 'Sin cuenta vinculada'}</div>
+                  <div style="font-weight:600;font-size:14px">${escapeHtml(m.nombre)}</div>
+                  <div style="font-size:12px;color:var(--text-muted)">${m.cuenta_id ? escapeHtml(cuentasPorId[m.cuenta_id] || 'Cuenta eliminada') : 'Sin cuenta vinculada'}</div>
                 </div>
               </div>
               <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuMeta('${m.id}')"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
@@ -142,7 +148,7 @@ async function openAbonarMeta(metaId = null) {
     <div class="form-group">
       <label class="form-label">Meta</label>
       <select class="form-select" id="ma-meta-id" onchange="renderMetaAbonoHint()">
-        ${metas.map(meta => `<option value="${meta.id}" ${metaId && meta.id === metaId ? 'selected' : ''}>${meta.nombre}</option>`).join('')}
+        ${metas.map(meta => `<option value="${escapeHtml(meta.id)}" ${metaId && meta.id === metaId ? 'selected' : ''}>${escapeHtml(meta.nombre)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group" id="ma-meta-hint" style="font-size:12px;color:var(--text-muted)"></div>
@@ -288,7 +294,7 @@ async function openAgregarMeta(metaId = null) {
     iconoInicial = (meta.emoji && /^[a-z][a-z0-9-]*$/.test(meta.emoji)) ? meta.emoji : 'target';
   }
 
-  const cuentasOptions = (cuentas || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+  const cuentasOptions = (cuentas || []).map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nombre)}</option>`).join('');
 
   window._metaIcono = iconoInicial;
   window._metaIconPanelOpen = false;
@@ -325,7 +331,7 @@ function renderMetaModal() {
     </div>
     <div class="form-group">
       <label class="form-label">¿Para qué estás ahorrando?</label>
-      <input class="form-input" id="nm-nombre" type="text" placeholder="Ej: Fondo de emergencia, enganche, vacaciones…" value="${draft.nombre}" />
+      <input class="form-input" id="nm-nombre" type="text" placeholder="Ej: Fondo de emergencia, enganche, vacaciones…" value="${escapeHtml(draft.nombre)}" />
       <p class="form-hint" style="margin:4px 0 0">Sugerencias: Fondo de emergencia · Quincena extra · Enganche de coche · Vacaciones</p>
     </div>
     <div class="form-group">

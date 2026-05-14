@@ -1,4 +1,10 @@
 // js/app.js — Inicialización y onboarding
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
 import { db, getUsuarioId } from './supabase.js';
 import { showPage, renderNav, initSwipeNavigation } from './router.js';
 import {
@@ -526,7 +532,7 @@ export async function loadDashboard() {
     <div class="page-header">
       <div>
         <p class="text-secondary" style="font-size:12px;text-transform:capitalize">${fechaHoy}</p>
-        <h1 class="page-title">${saludo}, ${nombreCorto}</h1>
+        <h1 class="page-title">${escapeHtml(saludo)}, ${escapeHtml(nombreCorto)}</h1>
       </div>
     </div>
 
@@ -594,7 +600,7 @@ export async function loadDashboard() {
                   : '<i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i>'
                 }
                 <div>
-                  <div class="item-row-name">${p.nombre}</div>
+                  <div class="item-row-name">${escapeHtml(p.nombre)}</div>
                   <div class="item-row-detail" style="color:${urgente ? urgColor : ''}">
                     ${urgente ? urgTexto + ' · ' : ''}${fechaTxt}
                   </div>
@@ -710,13 +716,13 @@ async function openRegistrarTraspaso() {
     <div class="form-group">
       <label class="form-label">De qué cuenta</label>
       <select class="form-select" id="tr-origen">
-        ${cuentas.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+        ${cuentas.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nombre)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
       <label class="form-label">A qué cuenta</label>
       <select class="form-select" id="tr-destino">
-        ${cuentas.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+        ${cuentas.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nombre)}</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
@@ -822,7 +828,7 @@ async function loadAjustes() {
     <div class="page-body">
       <div class="card" style="margin-bottom:12px">
         <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Cuenta</div>
-        <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:12px">${email}</div>
+        <div style="font-size:14px;font-weight:500;color:var(--text);margin-bottom:12px">${escapeHtml(email)}</div>
         <button class="btn btn-danger" onclick="cerrarSesion()">Cerrar sesión</button>
       </div>
 
@@ -886,7 +892,7 @@ export function actualizarBotonCategoriaSelector() {
 
   btn.innerHTML = `
     <i data-lucide="${icono}" class="cat-btn-icon"></i>
-    <span class="cat-btn-label">${nombre}</span>
+    <span class="cat-btn-label">${escapeHtml(nombre)}</span>
     <i data-lucide="chevron-down" class="cat-btn-chevron"></i>
   `;
 
@@ -1079,7 +1085,7 @@ export function openModal(title, content) {
   overlay.innerHTML = `
     <div class="bottom-sheet">
       <div class="sheet-handle"></div>
-      <div class="sheet-title">${title}</div>
+      <div class="sheet-title">${escapeHtml(title)}</div>
       ${content}
     </div>
   `;

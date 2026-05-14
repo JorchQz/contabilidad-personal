@@ -1,4 +1,10 @@
 // js/onboarding.js — Flujo completo de onboarding (6 pasos)
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
 import { db } from './supabase.js';
 import { formatMXN, showSnackbar, renderLucideIcons, renderApp } from './app.js';
 import { GASTOS_FIJOS_CATALOGO, GASTOS_VARIABLES_CATALOGO } from './gastos.js';
@@ -150,18 +156,18 @@ function renderStep2nuevo() {
           const selected = onboardingData.tiposIngreso.some(x => x.nombre === item.nombre);
           return `
             <div class="income-option${selected ? ' selected' : ''}"
-                 data-nombre="${item.nombre.replace(/"/g, '&quot;')}"
+                 data-nombre="${escapeHtml(item.nombre)}"
                  data-icono="${item.icono}">
               <span class="income-option-icon" aria-hidden="true" style="display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-right:10px">
                 <i data-lucide="${item.icono}" style="width:18px;height:18px;stroke-width:1.75"></i>
               </span>
-              <span class="income-option-text">${item.nombre}</span>
+              <span class="income-option-text">${escapeHtml(item.nombre)}</span>
             </div>`;
         }).join('')}
 
         ${customItems.map((item, idx) => `
           <div class="income-option selected">
-            <span>${item.nombre}</span>
+            <span>${escapeHtml(item.nombre)}</span>
             <button class="btn-remove" onclick="removeTipoIngresoCustom(${idx})" style="margin-left:auto">✕</button>
           </div>`).join('')}
       </div>
@@ -461,7 +467,7 @@ const INSTITUCIONES = [
 ];
 
 function renderStep4() {
-  const primerNombre = (window._regNombre || '').split(' ')[0];
+  const primerNombre = escapeHtml((window._regNombre || '').split(' ')[0]);
   const headerTitle = primerNombre ? `¿Dónde tienes tu dinero, ${primerNombre}?` : '¿Dónde tienes tu dinero?';
   setHeader(headerTitle, 'Registra tus cuentas activas — efectivo, débito, lo que uses.');
   renderStep4Body();
@@ -490,7 +496,7 @@ function renderStep4Body() {
         <div class="item-row">
           <div class="item-row-emoji"><i data-lucide="${c.icono || 'credit-card'}" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <div class="item-row-info">
-            <div class="item-row-name">${c.nombre}</div>
+            <div class="item-row-name">${escapeHtml(c.nombre)}</div>
             <div class="item-row-detail">${TIPO_LABELS[c.tipo] || 'Cuenta'} · Saldo: ${formatMXN(c.saldo_inicial)}</div>
           </div>
           ${c.tipo !== 'efectivo' ? `<button class="item-row-delete" onclick="removeCuenta(${i})"><i data-lucide="x" style="width:18px;height:18px;stroke-width:1.75"></i></button>` : ''}
@@ -735,7 +741,7 @@ function renderStep5Body(showForm = false) {
         <div class="item-row">
           <div class="item-row-emoji"><i data-lucide="trending-down" style="width:18px;height:18px;stroke-width:1.75"></i></div>
           <div class="item-row-info">
-            <div class="item-row-name">${d.acreedor}</div>
+            <div class="item-row-name">${escapeHtml(d.acreedor)}</div>
             <div class="item-row-detail">${d.tipo_deuda === 'tabla' ? 'con tabla' : (d.tipo_pago || 'sin fecha fija')}${d.monto_pago ? ` · ${formatMXN(d.monto_pago)}/pago` : ''}</div>
           </div>
           <div class="item-row-amount">${formatMXN(d.monto_actual)}</div>
@@ -889,7 +895,7 @@ function renderStep6() {
 
 function renderStep6Body(showForm = false) {
   const cuentasOptions = onboardingData.cuentas.map(c =>
-    `<option value="${c.nombre}">${c.nombre}</option>`
+    `<option value="${escapeHtml(c.nombre)}">${escapeHtml(c.nombre)}</option>`
   ).join('');
 
   document.getElementById('onboarding-body').innerHTML = `
@@ -900,7 +906,7 @@ function renderStep6Body(showForm = false) {
             <i data-lucide="${m.icono || 'target'}" style="width:20px;height:20px;stroke-width:1.75;color:var(--accent)"></i>
           </div>
           <div class="item-row-info">
-            <div class="item-row-name">${m.nombre}</div>
+            <div class="item-row-name">${escapeHtml(m.nombre)}</div>
             <div class="item-row-detail">
               ${formatMXN(m.monto_objetivo)}
               ${m.frecuencia_ahorro && m.frecuencia_ahorro !== 'libre' ? ` · ${m.frecuencia_ahorro}` : ''}
@@ -1194,7 +1200,7 @@ function renderStep6resumen() {
       <strong style="display:block;margin-bottom:10px">Cuentas</strong>
       ${onboardingData.cuentas.length === 0 ? '<p class="form-hint">Ninguna</p>' : onboardingData.cuentas.map(c => `
         <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light)">
-          <span>${c.nombre}</span>
+          <span>${escapeHtml(c.nombre)}</span>
           <span style="color:var(--text-secondary)">${formatMXN(c.saldo_inicial || 0)}</span>
         </div>
       `).join('')}
@@ -1205,7 +1211,7 @@ function renderStep6resumen() {
       <strong style="display:block;margin-bottom:10px">Deudas</strong>
       ${onboardingData.deudas.length === 0 ? '<p class="form-hint">Ninguna</p>' : onboardingData.deudas.map(d => `
         <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light)">
-          <span>${d.acreedor}</span>
+          <span>${escapeHtml(d.acreedor)}</span>
           <span style="color:var(--text-secondary)">${formatMXN(d.monto_actual || 0)}</span>
         </div>
       `).join('')}
@@ -1216,7 +1222,7 @@ function renderStep6resumen() {
       <strong style="display:block;margin-bottom:10px">Metas</strong>
       ${onboardingData.metas.length === 0 ? '<p class="form-hint">Ninguna</p>' : onboardingData.metas.map(m => `
         <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-light)">
-          <span>${m.nombre}</span>
+          <span>${escapeHtml(m.nombre)}</span>
           <span style="color:var(--text-secondary)">${formatMXN(m.monto_objetivo || 0)}</span>
         </div>
       `).join('')}
@@ -1582,7 +1588,7 @@ window.filtrarBancos = function(q) {
   if (qRaw) {
     html += `<div class="banco-result-item accent" onclick="seleccionarBancoCustom()">
       <i data-lucide="plus" style="width:16px;height:16px;pointer-events:none"></i>
-      <span>+ Crear cuenta "${qRaw}"</span>
+      <span>+ Crear cuenta "${escapeHtml(qRaw)}"</span>
     </div>`;
   }
 
