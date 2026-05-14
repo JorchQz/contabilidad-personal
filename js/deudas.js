@@ -15,8 +15,8 @@ let currentEditDeudaId = null;
 
 const TIPO_CONFIG = {
   simple:   { label: 'Préstamo',      icono: 'landmark',    color: 'var(--accent)' },
-  variable: { label: 'Tarjeta',       icono: 'credit-card', color: '#f59e0b' },
-  tabla:    { label: 'Hipoteca/Auto', icono: 'home',        color: '#10b981' },
+  variable: { label: 'Tarjeta',       icono: 'credit-card', color: 'var(--yellow)' },
+  tabla:    { label: 'Hipoteca/Auto', icono: 'home',        color: 'var(--green)' },
   flexible: { label: 'Informal',      icono: 'users',       color: 'var(--text-secondary)' },
 };
 
@@ -32,10 +32,10 @@ function diasHastaProximoPago(diaPago, frecuencia) {
 function badgeVencimiento(dias) {
   if (dias === null || dias > 7) return '';
   const [bg, color, border] = dias <= 0
-    ? ['rgba(240,93,110,0.15)', 'var(--red)', 'rgba(240,93,110,0.35)']
+    ? ['var(--red-soft)', 'var(--red)', 'var(--red-border)']
     : dias <= 3
-    ? ['rgba(245,158,11,0.15)', '#d97706', 'rgba(245,158,11,0.35)']
-    : ['rgba(16,185,129,0.12)', '#059669', 'rgba(16,185,129,0.3)'];
+    ? ['var(--yellow-soft)', 'var(--yellow)', 'var(--yellow-border)']
+    : ['var(--green-soft)', 'var(--green)', 'var(--green-border)'];
   const texto = dias < 0 ? 'Vencido' : dias === 0 ? 'Vence hoy' : `Vence en ${dias} día${dias === 1 ? '' : 's'}`;
   return `<span style="display:inline-flex;align-items:center;background:${bg};color:${color};border:1px solid ${border};border-radius:9999px;padding:2px 8px;font-size:11px;font-weight:600">${texto}</span>`;
 }
@@ -95,7 +95,7 @@ export async function loadDeudas() {
                 data-tipo="${escapeHtml(d.tipo_deuda)}"
                 data-ultimo="${d.monto_ultimo_pago ? Number(d.monto_ultimo_pago) : ''}"
                 onclick="openPagarDeuda(this.dataset.id, this.dataset.acreedor, Number(this.dataset.monto), this.dataset.tipo, this.dataset.ultimo ? Number(this.dataset.ultimo) : null)"
-                style="background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
+                style="background:var(--accent-soft);border:1px solid var(--border);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font);width:100%">
                 Registrar pago
               </button>
             </div>
@@ -112,7 +112,7 @@ export async function loadDeudas() {
             data-tipo="${escapeHtml(d.tipo_deuda)}"
             data-ultimo="${d.monto_ultimo_pago ? Number(d.monto_ultimo_pago) : ''}"
             onclick="openPagarDeuda(this.dataset.id, this.dataset.acreedor, Number(this.dataset.monto), this.dataset.tipo, this.dataset.ultimo ? Number(this.dataset.ultimo) : null)"
-            style="margin-top:12px;background:var(--accent-soft);border:1px solid rgba(124,108,252,0.2);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body);width:100%">
+            style="margin-top:12px;background:var(--accent-soft);border:1px solid var(--border);border-radius:var(--radius-xs);padding:8px 14px;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font);width:100%">
             Registrar pago
           </button>
         `;
@@ -130,7 +130,7 @@ export async function loadDeudas() {
               <span class="deuda-acreedor" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(d.acreedor)}</span>
             </div>
             <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-              ${sinTablaConfigurada ? `<span title="Sin tabla de pagos cargada" style="display:inline-flex;align-items:center;gap:3px;background:rgba(245,158,11,0.15);color:#d97706;border:1px solid rgba(245,158,11,0.35);border-radius:9999px;padding:2px 7px;font-size:11px;font-weight:600"><i data-lucide="alert-triangle" style="width:11px;height:11px;stroke-width:2.5"></i> Sin tabla</span>` : ''}
+              ${sinTablaConfigurada ? `<span title="Sin tabla de pagos cargada" style="display:inline-flex;align-items:center;gap:3px;background:var(--yellow-soft);color:var(--yellow);border:1px solid var(--yellow-border);border-radius:9999px;padding:2px 7px;font-size:11px;font-weight:600"><i data-lucide="alert-triangle" style="width:11px;height:11px;stroke-width:2.5"></i> Sin tabla</span>` : ''}
               <span class="deuda-badge ${d.tipo_deuda}">${config.label}</span>
               <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" onclick="openMenuDeuda('${d.id}')">
                 <i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i>
@@ -192,7 +192,7 @@ function renderCamposFechaEditarDeuda() {
   if (frecuencia === 'mensual') {
     const edDiaPagoVal = document.getElementById('ed-dia-pago')?.value || '1';
     const opts = Array.from({length: 31}, (_, i) => i + 1)
-      .map(d => `<option value="${d}" ${parseInt(edDiaPagoVal) === d ? 'selected' : ''}>${d}</option>`).join('');
+      .map(d => `<option value="${d}" ${parseInt(edDiaPagoVal, 10) === d ? 'selected' : ''}>${d}</option>`).join('');
     campos.innerHTML = `
       <label class="form-label">Día del mes que pagas</label>
       <select class="form-select" id="ed-dia-pago">${opts}</select>
@@ -392,12 +392,12 @@ async function openPagarDeuda(deudaId, acreedor, montoActual, tipoDeuda, montoUl
     : '';
 
   openModal(`Pagar: ${acreedor}`, `
-    <div class="card" style="margin-bottom:16px;background:var(--red-soft);border-color:rgba(240,93,110,0.2)">
+    <div class="card" style="margin-bottom:16px;background:var(--red-soft);border-color:var(--red-border)">
       <div style="display:flex;align-items:center;gap:8px">
         <i data-lucide="${config.icono}" style="width:16px;height:16px;color:${config.color};stroke-width:1.75;flex-shrink:0"></i>
         <div>
           <div style="font-size:12px;color:var(--text-secondary)">${config.label} — deuda actual</div>
-          <div style="font-family:var(--font-display);font-size:15px;font-weight:700;color:var(--red)">${formatMXN(montoActual)}</div>
+          <div style="font-family:var(--font);font-size:15px;font-weight:700;color:var(--red)">${formatMXN(montoActual)}</div>
         </div>
       </div>
     </div>
@@ -508,10 +508,10 @@ function openAgregarDeuda() {
     <div style="display:flex;flex-direction:column;gap:10px">
 
       <button onclick="selectTipoDeuda('variable')"
-        style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg-elevated);border:1.5px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-body);text-align:left">
+        style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg-elevated);border:1.5px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font);text-align:left">
         <div style="display:flex;align-items:center;gap:12px">
-          <div style="width:40px;height:40px;background:rgba(245,158,11,0.12);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <i data-lucide="credit-card" style="width:20px;height:20px;color:#f59e0b;stroke-width:1.75;pointer-events:none"></i>
+          <div style="width:40px;height:40px;background:var(--yellow-soft);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i data-lucide="credit-card" style="width:20px;height:20px;color:var(--yellow);stroke-width:1.75;pointer-events:none"></i>
           </div>
           <div>
             <div style="font-weight:600;font-size:14px">Tarjeta de crédito</div>
@@ -522,9 +522,9 @@ function openAgregarDeuda() {
       </button>
 
       <button onclick="selectTipoDeuda('simple')"
-        style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg-elevated);border:1.5px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-body);text-align:left">
+        style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg-elevated);border:1.5px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font);text-align:left">
         <div style="display:flex;align-items:center;gap:12px">
-          <div style="width:40px;height:40px;background:rgba(124,108,252,0.1);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <div style="width:40px;height:40px;background:var(--accent-soft);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
             <i data-lucide="landmark" style="width:20px;height:20px;color:var(--accent);stroke-width:1.75;pointer-events:none"></i>
           </div>
           <div>
@@ -536,10 +536,10 @@ function openAgregarDeuda() {
       </button>
 
       <button onclick="selectTipoDeuda('tabla')"
-        style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg-elevated);border:1.5px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-body);text-align:left">
+        style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg-elevated);border:1.5px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font);text-align:left">
         <div style="display:flex;align-items:center;gap:12px">
-          <div style="width:40px;height:40px;background:rgba(16,185,129,0.1);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <i data-lucide="home" style="width:20px;height:20px;color:#10b981;stroke-width:1.75;pointer-events:none"></i>
+          <div style="width:40px;height:40px;background:var(--green-soft);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i data-lucide="home" style="width:20px;height:20px;color:var(--green);stroke-width:1.75;pointer-events:none"></i>
           </div>
           <div>
             <div style="font-weight:600;font-size:14px">Hipoteca / Crédito automotriz</div>
@@ -550,9 +550,9 @@ function openAgregarDeuda() {
       </button>
 
       <button onclick="selectTipoDeuda('flexible')"
-        style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg-elevated);border:1.5px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-body);text-align:left">
+        style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg-elevated);border:1.5px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font);text-align:left">
         <div style="display:flex;align-items:center;gap:12px">
-          <div style="width:40px;height:40px;background:rgba(99,102,241,0.08);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <div style="width:40px;height:40px;background:var(--accent-soft);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
             <i data-lucide="users" style="width:20px;height:20px;color:var(--text-secondary);stroke-width:1.75;pointer-events:none"></i>
           </div>
           <div>
@@ -581,9 +581,9 @@ function openFormularioNuevaDeuda(tipo) {
     const opts = Array.from({length: 31}, (_, i) => i + 1)
       .map(d => `<option value="${d}" ${d === 1 ? 'selected' : ''}>${d}</option>`).join('');
     formContent = `
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:10px 12px;background:rgba(245,158,11,0.08);border-radius:var(--radius-sm);border:1px solid rgba(245,158,11,0.2)">
-        <i data-lucide="credit-card" style="width:16px;height:16px;color:#f59e0b;stroke-width:1.75;flex-shrink:0"></i>
-        <span style="font-size:13px;color:#92400e;font-weight:500">Tarjeta de crédito</span>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:10px 12px;background:var(--yellow-soft);border-radius:var(--radius-sm);border:1px solid var(--yellow-border)">
+        <i data-lucide="credit-card" style="width:16px;height:16px;color:var(--yellow);stroke-width:1.75;flex-shrink:0"></i>
+        <span style="font-size:13px;color:var(--yellow);font-weight:500">Tarjeta de crédito</span>
       </div>
       <div class="form-group">
         <label class="form-label">¿Cuál tarjeta?</label>
@@ -611,7 +611,7 @@ function openFormularioNuevaDeuda(tipo) {
   } else if (tipo === 'simple') {
     // Préstamo personal
     formContent = `
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:10px 12px;background:rgba(124,108,252,0.08);border-radius:var(--radius-sm);border:1px solid rgba(124,108,252,0.2)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:10px 12px;background:var(--accent-soft);border-radius:var(--radius-sm);border:1px solid var(--border)">
         <i data-lucide="landmark" style="width:16px;height:16px;color:var(--accent);stroke-width:1.75;flex-shrink:0"></i>
         <span style="font-size:13px;color:var(--accent);font-weight:500">Préstamo personal</span>
       </div>
@@ -645,9 +645,9 @@ function openFormularioNuevaDeuda(tipo) {
   } else if (tipo === 'tabla') {
     // Hipoteca / Auto
     formContent = `
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:10px 12px;background:rgba(16,185,129,0.08);border-radius:var(--radius-sm);border:1px solid rgba(16,185,129,0.2)">
-        <i data-lucide="home" style="width:16px;height:16px;color:#10b981;stroke-width:1.75;flex-shrink:0"></i>
-        <span style="font-size:13px;color:#065f46;font-weight:500">Hipoteca / Crédito automotriz</span>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:10px 12px;background:var(--green-soft);border-radius:var(--radius-sm);border:1px solid var(--green-border)">
+        <i data-lucide="home" style="width:16px;height:16px;color:var(--green);stroke-width:1.75;flex-shrink:0"></i>
+        <span style="font-size:13px;color:var(--green);font-weight:500">Hipoteca / Crédito automotriz</span>
       </div>
       <div class="form-group">
         <label class="form-label">¿A quién le debes?</label>
@@ -669,7 +669,7 @@ function openFormularioNuevaDeuda(tipo) {
   } else {
     // Deuda informal
     formContent = `
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:10px 12px;background:rgba(99,102,241,0.06);border-radius:var(--radius-sm);border:1px solid rgba(99,102,241,0.15)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:10px 12px;background:var(--accent-soft);border-radius:var(--radius-sm);border:1px solid var(--border)">
         <i data-lucide="users" style="width:16px;height:16px;color:var(--text-secondary);stroke-width:1.75;flex-shrink:0"></i>
         <span style="font-size:13px;color:var(--text-secondary);font-weight:500">Deuda informal</span>
       </div>
@@ -830,7 +830,7 @@ function agregarFilaPago() {
   const fecha  = document.getElementById('pp-fecha')?.value  || '';
   const monto  = document.getElementById('pp-monto')?.value  || '';
   if (!numero || !fecha || !monto) { showSnackbar('Completa los 3 campos de la cuota', 'error'); return; }
-  filasPagesProgramados.push({ numero: parseInt(numero), fecha_vencimiento: fecha, monto_esperado: parseFloat(monto) });
+  filasPagesProgramados.push({ numero: parseInt(numero, 10), fecha_vencimiento: fecha, monto_esperado: parseFloat(monto) });
   document.getElementById('pp-numero').value = '';
   document.getElementById('pp-fecha').value  = '';
   document.getElementById('pp-monto').value  = '';

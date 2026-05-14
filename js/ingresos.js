@@ -155,14 +155,14 @@ export async function loadIngresos() {
   document.getElementById('page-ingresos').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Ingresos</h1>
-      <button onclick="openRegistrarIngreso()" style="background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius-sm);padding:8px 14px;color:var(--green);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Nuevo</button>
+      <button onclick="openRegistrarIngreso()" style="background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius-sm);padding:8px 14px;color:var(--green);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font)">+ Nuevo</button>
     </div>
     <div class="page-body">
       ${resumenHtml}
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px">
           <div style="font-weight:700;font-size:14px">Ingresos programados</div>
-          <button onclick="openAgregarIngresoProgramado()" style="background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius-sm);padding:8px 12px;color:var(--green);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-body)">+ Agregar</button>
+          <button onclick="openAgregarIngresoProgramado()" style="background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius-sm);padding:8px 12px;color:var(--green);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">+ Agregar</button>
         </div>
         ${programadosHTML}
       </div>

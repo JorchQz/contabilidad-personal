@@ -604,7 +604,7 @@ function renderStep5Body(showForm = false) {
 
   const _tipoBtn = (tipo, icono, color, titulo, ejemplos) => `
     <button onclick="selectTipoDeudaOnboarding('${tipo}')"
-      style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg-elevated);border:2px solid ${tipoDeuda === tipo ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-body);text-align:left;transition:all 180ms ease;margin-bottom:8px">
+      style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg-elevated);border:2px solid ${tipoDeuda === tipo ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font);text-align:left;transition:all 180ms ease;margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:10px">
         <i data-lucide="${icono}" style="width:18px;height:18px;color:${color};stroke-width:1.75;flex-shrink:0"></i>
         <div>
@@ -1073,7 +1073,7 @@ function renderGastosDiariosBody(customFormOpen = false) {
           const itemKey = item.replace(/'/g, "\\'");
           return `<button type="button"
             onclick="toggleGdSubcategoria('${catKey}','${icoKey}','${itemKey}')"
-            style="padding:7px 14px;border-radius:9999px;font-size:13px;font-family:var(--font-body);cursor:pointer;transition:all 150ms ease;
+            style="padding:7px 14px;border-radius:9999px;font-size:13px;font-family:var(--font);cursor:pointer;transition:all 150ms ease;
               background:${active ? 'var(--accent)' : 'var(--bg-elevated)'};
               color:${active ? '#fff' : 'var(--text)'};
               border:1.5px solid ${active ? 'var(--accent)' : 'var(--border)'}">
@@ -1085,7 +1085,7 @@ function renderGastosDiariosBody(customFormOpen = false) {
     return `
       <div style="background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:8px">
         <button type="button" onclick="toggleGdCategoria('${catKey}')"
-          style="width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;background:none;border:none;cursor:pointer;font-family:var(--font-body);text-align:left">
+          style="width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;background:none;border:none;cursor:pointer;font-family:var(--font);text-align:left">
           <i data-lucide="${grupo.icono}" style="width:20px;height:20px;stroke-width:1.75;color:${isOpen || count > 0 ? 'var(--accent)' : 'var(--text-muted)'};flex-shrink:0"></i>
           <span style="font-weight:600;font-size:14px;flex:1">${grupo.categoria}</span>
           ${count > 0 ? `<span style="background:var(--accent);color:#fff;border-radius:9999px;min-width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;padding:0 5px">${count}</span>` : ''}

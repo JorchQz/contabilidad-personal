@@ -158,7 +158,7 @@ export async function loadCuentas() {
         <div class="card" style="margin-top:8px;background:var(--bg-elevated)">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <span style="font-size:12px;color:var(--text-secondary)">Total disponible</span>
-            <span style="font-size:15px;font-weight:700;font-family:var(--font-display);color:${totalGeneralCuentas < 0 ? 'var(--red)' : 'inherit'}">${formatMXN(totalGeneralCuentas)}</span>
+            <span style="font-size:15px;font-weight:700;font-family:var(--font);color:${totalGeneralCuentas < 0 ? 'var(--red)' : 'inherit'}">${formatMXN(totalGeneralCuentas)}</span>
           </div>
         </div>
       `}
