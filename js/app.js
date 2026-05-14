@@ -384,7 +384,7 @@ export async function loadDashboard() {
     db.from('ingresos').select('monto').eq('usuario_id', uid),
     db.from('gastos').select('monto').eq('usuario_id', uid),
     db.from('deudas').select('monto_actual').eq('usuario_id', uid).eq('activa', true),
-    db.from('cuentas').select('id, nombre, tipo, saldo_inicial').eq('usuario_id', uid).eq('activa', true),
+    db.from('cuentas').select('id, nombre, tipo, saldo_inicial, es_disponible, es_pasivo').eq('usuario_id', uid).eq('activa', true),
     db.from('ingresos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
     db.from('gastos').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
     db.from('pagos_deuda').select('cuenta_id, monto').eq('usuario_id', uid).not('cuenta_id', 'is', null),
@@ -399,7 +399,7 @@ export async function loadDashboard() {
   const proximaFechaCobro = pagosPendientes.proxima_fecha_cobro;
   const totalPendientePeriodo = pagosPendientes.total_periodo || 0;
 
-  const { totalGeneralCuentas } = calcularCuentasConSaldo(
+  const { cuentasConSaldo, totalGeneralCuentas } = calcularCuentasConSaldo(
     cuentas || [],
     ingresosPorCuenta || [],
     gastosPorCuenta || [],
@@ -411,7 +411,9 @@ export async function loadDashboard() {
   const totalIngresos = (ingresos || []).reduce((s, i) => s + Number(i.monto), 0);
   const totalGastos = (gastos || []).reduce((s, g) => s + Number(g.monto), 0);
   const totalDeuda = (deudas || []).reduce((s, d) => s + Number(d.monto_actual), 0);
-  const disponible = totalGeneralCuentas;
+  const disponible = cuentasConSaldo
+    .filter(c => c.es_disponible === true && c.es_pasivo === false)
+    .reduce((s, c) => s + c.saldoCalculado, 0);
 
   const horaActual = new Date().getHours();
   const saludo = horaActual >= 5 && horaActual < 12 ? 'Buenos días'

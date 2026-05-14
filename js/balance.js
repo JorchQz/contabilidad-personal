@@ -15,26 +15,29 @@ export async function getSaldoDisponibleTotal(usuarioId) {
     { data: traspasosSalida, error: errorTraspasosSalida },
     { data: traspasosEntrada, error: errorTraspasosEntrada }
   ] = await Promise.all([
-    db.from('cuentas').select('saldo_inicial').eq('usuario_id', usuarioId).eq('activa', true).eq('es_pasivo', false),
+    db.from('cuentas').select('id, saldo_inicial').eq('usuario_id', usuarioId).eq('activa', true).eq('es_pasivo', false),
     db.from('ingresos').select('monto').eq('usuario_id', usuarioId),
     db.from('gastos').select('monto').eq('usuario_id', usuarioId),
     db.from('pagos_deuda').select('monto').eq('usuario_id', usuarioId),
-    db.from('transferencias').select('monto').eq('usuario_id', usuarioId),
-    db.from('transferencias').select('monto').eq('usuario_id', usuarioId)
+    db.from('transferencias').select('cuenta_origen_id, monto').eq('usuario_id', usuarioId),
+    db.from('transferencias').select('cuenta_destino_id, monto').eq('usuario_id', usuarioId)
   ]);
 
-  if (errorCuentas || errorIngresos || errorGastos || errorPagosDeuda) {
+  if (errorCuentas || errorIngresos || errorGastos || errorPagosDeuda || errorTraspasosSalida || errorTraspasosEntrada) {
     return { error: true, saldoDisponible: null };
   }
 
-  const totalSaldoInicial  = (cuentas       || []).reduce((acc, c) => acc + Number(c.saldo_inicial || 0), 0);
-  const totalIngresos      = (ingresos      || []).reduce((acc, m) => acc + Number(m.monto || 0), 0);
-  const totalGastos        = (gastos        || []).reduce((acc, m) => acc + Number(m.monto || 0), 0);
-  const totalPagosDeuda    = (pagosDeuda    || []).reduce((acc, m) => acc + Number(m.monto || 0), 0);
+  const cuentaIds = new Set((cuentas || []).map(c => c.id));
+  const totalSaldoInicial     = (cuentas          || []).reduce((acc, c) => acc + Number(c.saldo_inicial || 0), 0);
+  const totalIngresos         = (ingresos         || []).reduce((acc, m) => acc + Number(m.monto || 0), 0);
+  const totalGastos           = (gastos           || []).reduce((acc, m) => acc + Number(m.monto || 0), 0);
+  const totalPagosDeuda       = (pagosDeuda       || []).reduce((acc, m) => acc + Number(m.monto || 0), 0);
+  const totalTraspasosSalida  = (traspasosSalida  || []).filter(t => cuentaIds.has(t.cuenta_origen_id)).reduce((acc, t) => acc + Number(t.monto || 0), 0);
+  const totalTraspasosEntrada = (traspasosEntrada || []).filter(t => cuentaIds.has(t.cuenta_destino_id)).reduce((acc, t) => acc + Number(t.monto || 0), 0);
 
   return {
     error: false,
-    saldoDisponible: totalSaldoInicial + totalIngresos - totalGastos - totalPagosDeuda
+    saldoDisponible: totalSaldoInicial + totalIngresos - totalGastos - totalPagosDeuda - totalTraspasosSalida + totalTraspasosEntrada
   };
 }
 
