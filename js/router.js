@@ -2,15 +2,32 @@
 
 const PAGES = ['dashboard', 'gastos', 'ingresos', 'deudas', 'metas', 'presupuestos', 'fijos', 'cuentas', 'ajustes'];
 
+const PAGE_LOADERS = {
+  dashboard:    'loadDashboard',
+  gastos:       'loadGastos',
+  ingresos:     'loadIngresos',
+  cuentas:      'loadCuentas',
+  deudas:       'loadDeudas',
+  metas:        'loadMetas',
+  presupuestos: 'loadPresupuestos',
+  fijos:        'loadFijos',
+  ajustes:      'loadAjustes',
+};
+
 export function showPage(pageId) {
+  if (typeof window.closeModal === 'function') window.closeModal();
+
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.classList.remove('active');
+    n.removeAttribute('aria-current');
+  });
 
   const page = document.getElementById(`page-${pageId}`);
   const nav = document.querySelector(`[data-page="${pageId}"]`);
 
   if (page) page.classList.add('active');
-  if (nav) nav.classList.add('active');
+  if (nav) { nav.classList.add('active'); nav.setAttribute('aria-current', 'page'); }
 
   const bottomNav = document.querySelector('.bottom-nav');
   if (bottomNav && nav) {
@@ -22,14 +39,17 @@ export function showPage(pageId) {
 
   if (window.lucide) lucide.createIcons();
   if (typeof window.updateFab === 'function') window.updateFab(pageId);
-  if (pageId === 'presupuestos' && typeof window.loadPresupuestos === 'function') window.loadPresupuestos();
+
+  const loaderName = PAGE_LOADERS[pageId];
+  if (loaderName && typeof window[loaderName] === 'function') window[loaderName]();
+
   window.scrollTo(0, 0);
 }
 
 export function renderNav() {
   const navItems = [
     { id: 'dashboard', icon: `<i data-lucide="layout-dashboard"></i>`, label: 'Inicio' },
-    { id: 'gastos', icon: `<i data-lucide="clock"></i>`, label: 'Gastos' },
+    { id: 'gastos', icon: `<i data-lucide="receipt"></i>`, label: 'Gastos' },
     { id: 'ingresos', icon: `<i data-lucide="trending-up"></i>`, label: 'Ingresos' },
     { id: 'deudas', icon: `<i data-lucide="credit-card"></i>`, label: 'Deudas' },
     { id: 'metas', icon: `<i data-lucide="target"></i>`, label: 'Metas' },
@@ -76,6 +96,8 @@ export function initSwipeNavigation() {
     const target = e.target;
     if (target.closest('.bottom-nav')) return;
     if (target.closest('.category-grid')) return;
+    if (target.closest('.modal-overlay')) return;
+    if (target.closest('input, textarea, select')) return;
 
     const currentPage = document.querySelector('.page.active')?.id?.replace('page-', '');
     const currentIndex = PAGES.indexOf(currentPage);

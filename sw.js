@@ -1,34 +1,25 @@
-const CACHE_NAME = 'jm-finance-v2';
+const CACHE_NAME = 'jm-finance-v4';
 
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/css/main.css',
-  '/js/app.js',
-  '/js/router.js',
-  '/js/supabase.js',
-  '/js/auth.js',
-  '/js/onboarding.js',
-  '/js/balance.js',
-  '/js/cuentas.js',
-  '/js/gastos.js',
-  '/js/ingresos.js',
-  '/js/deudas.js',
-  '/js/metas.js',
-  '/js/presupuestos.js',
-  '/js/graficas.js',
-  '/js/lucide.min.js',
-  'https://cdn.jsdelivr.net/npm/chart.js',
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
-  'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap'
+const PRECACHE_URLS = [
+  './',
+  './index.html',
+  './css/main.css',
+  './js/app.js',
+  './manifest.json',
+];
+
+const CDN_PREFIXES = [
+  'https://cdn.jsdelivr.net',
+  'https://fonts.googleapis.com',
+  'https://fonts.gstatic.com',
+  'https://unpkg.com',
 ];
 
 const SUPABASE_ORIGIN = 'https://rzanhkfmwvbngbpjefec.supabase.co';
 
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE_NAME).then(c => c.addAll(PRECACHE_URLS))
   );
   self.skipWaiting();
 });
@@ -44,11 +35,43 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   const { request } = event;
+  if (request.method !== 'GET') return;
+
   const url = new URL(request.url);
 
+  // Supabase: nunca interceptar
   if (url.origin === SUPABASE_ORIGIN) return;
 
+  // CDN externos: cache-first (cambian raramente)
+  if (CDN_PREFIXES.some(p => request.url.startsWith(p))) {
+    event.respondWith(
+      caches.match(request).then(cached => {
+        if (cached) return cached;
+        return fetch(request).then(response => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(c => c.put(request, clone));
+          }
+          return response;
+        });
+      })
+    );
+    return;
+  }
+
+  // Archivos locales: network-first con timeout 3s → fallback a caché
+  const networkWithTimeout = Promise.race([
+    fetch(request).then(response => {
+      if (response.ok) {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(c => c.put(request, clone));
+      }
+      return response;
+    }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+  ]);
+
   event.respondWith(
-    caches.match(request).then(cached => cached || fetch(request))
+    networkWithTimeout.catch(() => caches.match(request))
   );
 });

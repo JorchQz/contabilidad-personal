@@ -11,22 +11,26 @@ export async function getSaldoDisponibleTotal(usuarioId) {
     { data: cuentas, error: errorCuentas },
     { data: ingresos, error: errorIngresos },
     { data: gastos, error: errorGastos },
-    { data: pagosDeuda, error: errorPagosDeuda }
+    { data: pagosDeuda, error: errorPagosDeuda },
+    { data: traspasosSalida, error: errorTraspasosSalida },
+    { data: traspasosEntrada, error: errorTraspasosEntrada }
   ] = await Promise.all([
-    db.from('cuentas').select('saldo_inicial').eq('usuario_id', usuarioId).eq('activa', true),
+    db.from('cuentas').select('saldo_inicial').eq('usuario_id', usuarioId).eq('activa', true).eq('es_pasivo', false),
     db.from('ingresos').select('monto').eq('usuario_id', usuarioId),
     db.from('gastos').select('monto').eq('usuario_id', usuarioId),
-    db.from('pagos_deuda').select('monto').eq('usuario_id', usuarioId)
+    db.from('pagos_deuda').select('monto').eq('usuario_id', usuarioId),
+    db.from('transferencias').select('monto').eq('usuario_id', usuarioId),
+    db.from('transferencias').select('monto').eq('usuario_id', usuarioId)
   ]);
 
   if (errorCuentas || errorIngresos || errorGastos || errorPagosDeuda) {
     return { error: true, saldoDisponible: null };
   }
 
-  const totalSaldoInicial = (cuentas || []).reduce((acc, cuenta) => acc + Number(cuenta.saldo_inicial || 0), 0);
-  const totalIngresos = (ingresos || []).reduce((acc, movimiento) => acc + Number(movimiento.monto || 0), 0);
-  const totalGastos = (gastos || []).reduce((acc, movimiento) => acc + Number(movimiento.monto || 0), 0);
-  const totalPagosDeuda = (pagosDeuda || []).reduce((acc, movimiento) => acc + Number(movimiento.monto || 0), 0);
+  const totalSaldoInicial  = (cuentas       || []).reduce((acc, c) => acc + Number(c.saldo_inicial || 0), 0);
+  const totalIngresos      = (ingresos      || []).reduce((acc, m) => acc + Number(m.monto || 0), 0);
+  const totalGastos        = (gastos        || []).reduce((acc, m) => acc + Number(m.monto || 0), 0);
+  const totalPagosDeuda    = (pagosDeuda    || []).reduce((acc, m) => acc + Number(m.monto || 0), 0);
 
   return {
     error: false,
@@ -254,12 +258,8 @@ function getProximaFechaCobro(ingresoProgramado, fechaBase) {
   }
 
   if (ingresoProgramado.frecuencia === 'quincenal') {
-    const year = base.getFullYear();
-    const month = base.getMonth();
-    const day = base.getDate();
-    if (day < 1) return new Date(year, month, 1);
-    if (day < 16) return new Date(year, month, 16);
-    return new Date(year, month + 1, 1);
+    const diaPago = ingresoProgramado.dia_pago || 1;
+    return getNextQuincenalDate(diaPago, base);
   }
 
   if (ingresoProgramado.frecuencia === 'mensual') {
@@ -340,16 +340,17 @@ export async function getPagosPendientes() {
     .from('ingresos_programados')
     .select('*')
     .eq('usuario_id', usuarioId)
-    .eq('activo', true)
-    .order('created_at', { ascending: true })
-    .limit(1);
+    .eq('activo', true);
 
-  const ingresoBase = ingresosProgramados?.[0] || null;
-  const proximaFechaCobro = getProximaFechaCobro(ingresoBase, hoy);
+  const fechasCobro = (ingresosProgramados || [])
+    .map(ip => getProximaFechaCobro(ip, hoy))
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+  const proximaFechaCobro = fechasCobro[0] || null;
 
   const fechaLimite = proximaFechaCobro || (() => {
     const d = new Date(hoy);
-    d.setDate(d.getDate() + 7);
+    d.setDate(d.getDate() + 15);
     return d;
   })();
 
@@ -357,8 +358,8 @@ export async function getPagosPendientes() {
     { data: gastosFijos },
     { data: deudas }
   ] = await Promise.all([
-    db.from('gastos_fijos').select('*').eq('usuario_id', usuarioId).eq('activo', true),
-    db.from('deudas').select('*').eq('usuario_id', usuarioId).eq('activa', true)
+    db.from('gastos_fijos').select('id,descripcion,monto,monto_estimado,frecuencia,dia_pago,dia_semana,proximo_pago,ultimo_pago,fecha_flexible').eq('usuario_id', usuarioId).eq('activo', true),
+    db.from('deudas').select('id,acreedor,monto_actual,monto_pago,tipo_pago,tipo_deuda,dia_pago,dia_semana,activa').eq('usuario_id', usuarioId).eq('activa', true)
   ]);
 
   for (const gf of (gastosFijos || [])) {
@@ -369,13 +370,13 @@ export async function getPagosPendientes() {
       const ultimoPago = normalizeDate(new Date(gf.ultimo_pago + 'T00:00:00'));
       if (isDateInRange(ultimoPago, hoy, fechaLimite)) continue;
     }
-    const esVariable = gf.monto_variable === true || gf.monto == null;
+    const esVariable = gf.fecha_flexible === true || gf.monto == null;
     pendientes.push({
       item_id: `fijo-${gf.id}`,
       gasto_fijo_id: gf.id,
       nombre: gf.descripcion,
       monto: Number(gf.monto || 0),
-      monto_variable: esVariable,
+      fecha_flexible: esVariable,
       fecha_esperada: fechaEsperada,
       tipo: 'fijo',
       urgente: true
@@ -412,8 +413,28 @@ export async function getPagosPendientes() {
       continue;
     }
 
+    // Deudas sin fecha fija (libre/flexible): siempre visibles como recordatorio
+    if (d.tipo_pago === 'libre' || !d.tipo_pago) {
+      pendientes.push({
+        item_id: `deuda-${d.id}`,
+        deuda_id: d.id,
+        tipo_deuda: d.tipo_deuda || 'flexible',
+        monto_actual: Number(d.monto_actual || 0),
+        monto_ultimo_pago: Number(d.monto_ultimo_pago || 0),
+        nombre: d.acreedor,
+        monto: Number(d.monto_pago || 0),
+        fecha_esperada: fechaLimite,
+        sin_fecha: true,
+        tipo: 'deuda',
+        urgente: false
+      });
+      continue;
+    }
+
     let fechaEsperada = null;
-    if (d.tipo_pago === 'semanal' && Number.isInteger(d.dia_semana)) {
+    if (d.tipo_pago === 'unico' && d.dia_pago) {
+      fechaEsperada = getNextMonthlyDate(d.dia_pago, hoy);
+    } else if (d.tipo_pago === 'semanal' && Number.isInteger(d.dia_semana)) {
       fechaEsperada = getNextWeeklyDate(d.dia_semana, hoy);
     } else if (d.tipo_pago === 'mensual' && d.dia_pago) {
       fechaEsperada = getNextMonthlyDate(d.dia_pago, hoy);
@@ -444,6 +465,73 @@ export async function getPagosPendientes() {
 
   pendientes.sort((a, b) => a.fecha_esperada - b.fecha_esperada);
   pendientes.proxima_fecha_cobro = proximaFechaCobro;
-  pendientes.total_periodo = pendientes.reduce((acc, p) => acc + Number(p.monto || 0), 0);
+  pendientes.total_periodo = pendientes.reduce((acc, p) => {
+    const m = Number(p.monto);
+    return acc + (isFinite(m) ? m : 0);
+  }, 0);
   return pendientes;
+}
+
+// ---- AMORTIZACIÓN FRANCESA ----
+
+/**
+ * Genera la tabla de amortización completa para un préstamo de cuota fija.
+ * @param {number} capital        Saldo actual (no el original si ya se han hecho pagos)
+ * @param {number} tasaMensual    Tasa mensual en % (ej: 2 para 2%)
+ * @param {number} numPagos       Número de pagos restantes
+ * @returns {Array} Filas con { num, cuota, interes, capital, iva, total, saldo }
+ */
+export function generarTablaAmortizacion(capital, tasaMensual, numPagos) {
+  if (!capital || capital <= 0 || !numPagos || numPagos <= 0) return [];
+  const r = (tasaMensual || 0) / 100;
+  let cuota;
+  if (r <= 0) {
+    cuota = capital / numPagos;
+  } else {
+    cuota = capital * (r * Math.pow(1 + r, numPagos)) / (Math.pow(1 + r, numPagos) - 1);
+  }
+  if (!isFinite(cuota) || cuota <= 0) return [];
+
+  let saldo = capital;
+  const tabla = [];
+  for (let i = 1; i <= numPagos; i++) {
+    const interes     = saldo * r;
+    const abonoCapital = Math.min(cuota - interes, saldo);
+    const iva         = interes * 0.16;
+    saldo = Math.max(0, saldo - abonoCapital);
+    tabla.push({
+      num:     i,
+      cuota:   parseFloat(cuota.toFixed(2)),
+      interes: parseFloat(interes.toFixed(2)),
+      capital: parseFloat(abonoCapital.toFixed(2)),
+      iva:     parseFloat(iva.toFixed(2)),
+      total:   parseFloat((abonoCapital + interes + iva).toFixed(2)),
+      saldo:   parseFloat(saldo.toFixed(2))
+    });
+    if (saldo === 0) break;
+  }
+  return tabla;
+}
+
+/**
+ * Calcula el desglose de UN pago (el próximo) dado el saldo actual.
+ * Devuelve null si no hay datos suficientes para amortización.
+ * @param {number} saldoActual
+ * @param {number} tasaMensual   En % (ej: 2)
+ * @param {number} numPagosRestantes
+ * @returns {{ capital, interes, iva, total, cuota } | null}
+ */
+export function calcularDesgloseAmortizacion(saldoActual, tasaMensual, numPagosRestantes) {
+  if (!saldoActual || saldoActual <= 0) return null;
+  if (!tasaMensual || tasaMensual <= 0 || !numPagosRestantes || numPagosRestantes <= 0) return null;
+  const tabla = generarTablaAmortizacion(saldoActual, tasaMensual, numPagosRestantes);
+  if (!tabla.length) return null;
+  const fila = tabla[0];
+  return {
+    capital:  fila.capital,
+    interes:  fila.interes,
+    iva:      fila.iva,
+    total:    fila.total,
+    cuota:    fila.cuota
+  };
 }

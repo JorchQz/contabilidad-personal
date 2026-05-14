@@ -2,15 +2,19 @@
   "name": "JM Finance",
   "short_name": "JM Finance",
   "description": "Control de gastos personales",
+  "id": "jm-finance",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#0a0a0f",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#0f1117",
   "theme_color": "#3b82f6",
   "orientation": "portrait",
+  "categories": ["finance"],
   "icons": [
     {
-      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48Y2lyY2xlIGN4PSIyNTYiIGN5PSIyNTYiIHI9IjI1NiIgZmlsbD0iIzNiODJmNiIvPjx0ZXh0IHg9IjI1NiIgeT0iMjU2IiBkeT0iMC4zNWVtIiBmb250LWZhbWlseT0iQXJpYWwsc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxODAiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiNmZmZmZmYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkpNPC90ZXh0Pjwvc3ZnPg==",
-      "sizes": "192x192",
+      "src": "./icons/icon.svg",
+      "sizes": "any",
       "type": "image/svg+xml"
     },
     {
