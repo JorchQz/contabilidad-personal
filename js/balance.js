@@ -466,6 +466,32 @@ export async function getPagosPendientes() {
     });
   }
 
+  // ── Gastos diferidos (MSI) ──
+  const { data: gastosDiferidos } = await db
+    .from('gastos_diferidos')
+    .select('id, descripcion, monto_cuota, num_meses, cuotas_pagadas, fecha_primer_cargo')
+    .eq('usuario_id', usuarioId)
+    .eq('activo', true);
+
+  for (const gd of (gastosDiferidos || [])) {
+    const cuotasPendientes = gd.num_meses - (gd.cuotas_pagadas || 0);
+    if (cuotasPendientes <= 0) continue;
+    const fechaPrimer = new Date(gd.fecha_primer_cargo + 'T00:00:00');
+    const fechaProxima = new Date(fechaPrimer);
+    fechaProxima.setMonth(fechaProxima.getMonth() + (gd.cuotas_pagadas || 0));
+    const fechaNorm = normalizeDate(fechaProxima);
+    if (!isDateInRange(fechaNorm, hoy, fechaLimite)) continue;
+    pendientes.push({
+      item_id: `diferido-${gd.id}`,
+      diferido_id: gd.id,
+      nombre: `${gd.descripcion} (MSI)`,
+      monto: Number(gd.monto_cuota),
+      fecha_esperada: fechaNorm,
+      tipo: 'diferido',
+      urgente: true
+    });
+  }
+
   pendientes.sort((a, b) => a.fecha_esperada - b.fecha_esperada);
   pendientes.proxima_fecha_cobro = proximaFechaCobro;
   pendientes.total_periodo = pendientes.reduce((acc, p) => {

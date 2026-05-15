@@ -617,7 +617,9 @@ export async function loadDashboard() {
             <div class="pago-pendiente-extra" onclick="event.stopPropagation()">
               ${p.tipo === 'deuda'
                 ? `<button class="btn btn-primary" onclick="abrirPagoPendienteDeuda('${p.deuda_id}')">Registrar pago</button>`
-                : `<button class="btn btn-primary" onclick="openMarcarPagoFijo('${p.gasto_fijo_id}')">Marcar como pagado</button>`
+                : p.tipo === 'diferido'
+                  ? `<button class="btn btn-primary" onclick="marcarCuotaDiferido('${p.diferido_id}')">Marcar cuota pagada</button>`
+                  : `<button class="btn btn-primary" onclick="openMarcarPagoFijo('${p.gasto_fijo_id}')">Marcar como pagado</button>`
               }
             </div>
           </div>

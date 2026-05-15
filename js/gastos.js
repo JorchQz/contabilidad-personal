@@ -1474,8 +1474,35 @@ async function guardarDiferido() {
 
 function openMenuDiferido(diferidoId) {
   openActionSheet('Opciones', [
+    { label: 'Marcar cuota pagada', onClick: `marcarCuotaDiferido('${diferidoId}')` },
     { label: 'Eliminar', onClick: `eliminarDiferido('${diferidoId}')`, danger: true }
   ]);
+}
+
+async function marcarCuotaDiferido(diferidoId) {
+  const uid = await getUsuarioId();
+  const { data: gd, error: errFetch } = await db
+    .from('gastos_diferidos')
+    .select('cuotas_pagadas, num_meses, descripcion')
+    .eq('id', diferidoId)
+    .eq('usuario_id', uid)
+    .maybeSingle();
+
+  if (errFetch || !gd) { showSnackbar('No se pudo obtener la compra', 'error'); return; }
+
+  const nuevasCuotas = (gd.cuotas_pagadas || 0) + 1;
+  const completado = nuevasCuotas >= gd.num_meses;
+
+  const { error } = await db
+    .from('gastos_diferidos')
+    .update({ cuotas_pagadas: nuevasCuotas, activo: !completado })
+    .eq('id', diferidoId)
+    .eq('usuario_id', uid);
+
+  if (error) { showSnackbar('No se pudo actualizar', 'error'); return; }
+
+  showSnackbar(completado ? `${gd.descripcion} completado` : 'Cuota marcada como pagada', 'success');
+  await loadFijos();
 }
 
 async function eliminarDiferido(diferidoId) {
@@ -1505,3 +1532,4 @@ window.openAgregarDiferido = openAgregarDiferido;
 window.guardarDiferido = guardarDiferido;
 window.openMenuDiferido = openMenuDiferido;
 window.eliminarDiferido = eliminarDiferido;
+window.marcarCuotaDiferido = marcarCuotaDiferido;

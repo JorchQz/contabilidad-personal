@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jm-finance-v5';
+const CACHE_NAME = 'jm-finance-v6';
 
 const PRECACHE_URLS = [
   './',
