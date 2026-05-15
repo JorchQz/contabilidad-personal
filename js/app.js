@@ -825,6 +825,37 @@ async function guardarTraspaso() {
 async function loadAjustes() {
   const { data: { user } } = await db.auth.getUser();
   const email = user?.email || '';
+  const estadoNot = await getEstadoNotificaciones();
+
+  const notCard = (() => {
+    if (estadoNot === 'no-soportado') return '';
+    if (estadoNot === 'bloqueado') return `
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <i data-lucide="bell-off" style="width:18px;height:18px;color:var(--text-muted)"></i>
+          <div>
+            <div style="font-size:14px;font-weight:500">Notificaciones bloqueadas</div>
+            <div style="font-size:12px;color:var(--text-muted)">Actívalas desde la configuración de tu navegador</div>
+          </div>
+        </div>
+      </div>`;
+    const activo = estadoNot === 'activo';
+    return `
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <i data-lucide="${activo ? 'bell' : 'bell-off'}" style="width:18px;height:18px;color:${activo ? 'var(--accent)' : 'var(--text-muted)'}"></i>
+            <div>
+              <div style="font-size:14px;font-weight:500">Notificaciones de pagos</div>
+              <div style="font-size:12px;color:var(--text-muted)">${activo ? 'Recibirás alertas el día de cada pago' : 'Toca para activar'}</div>
+            </div>
+          </div>
+          <div class="toggle-switch ${activo ? 'active' : ''}" id="notif-switch" onclick="toggleNotificaciones()" style="cursor:pointer;flex-shrink:0">
+            <div class="toggle-knob"></div>
+          </div>
+        </div>
+      </div>`;
+  })();
 
   document.getElementById('page-ajustes').innerHTML = `
     <div class="page-header">
@@ -839,15 +870,17 @@ async function loadAjustes() {
 
       <div class="theme-toggle" onclick="toggleTheme()" style="margin-bottom:12px">
         <div class="theme-toggle-label">
-          <span id="theme-label"><i class="bx bx-moon" style="font-size:16px;vertical-align:middle;margin-right:4px"></i> Modo oscuro</span>
+          <span id="theme-label"><i data-lucide="moon" style="width:16px;height:16px;vertical-align:middle;margin-right:4px"></i> Modo oscuro</span>
         </div>
         <div class="toggle-switch" id="theme-switch">
           <div class="toggle-knob"></div>
         </div>
       </div>
 
+      ${notCard}
+
       <div class="card" style="margin-bottom:12px">
-        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Version</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Versión</div>
         <div style="font-weight:600">JM Finance v1.0</div>
       </div>
 
@@ -866,6 +899,19 @@ async function loadAjustes() {
   updateThemeToggleUI();
   renderLucideIcons();
 }
+
+async function toggleNotificaciones() {
+  const estado = await getEstadoNotificaciones();
+  if (estado === 'activo') {
+    await desuscribirNotificaciones();
+    showSnackbar('Notificaciones desactivadas', 'info');
+  } else {
+    const ok = await suscribirNotificaciones();
+    showSnackbar(ok ? 'Notificaciones activadas' : 'No se pudo activar las notificaciones', ok ? 'success' : 'error');
+  }
+  await loadAjustes();
+}
+window.toggleNotificaciones = toggleNotificaciones;
 
 async function resetApp() {
   if (!window.confirm('¿Cerrar sesión y reiniciar la app?')) return;
@@ -1115,6 +1161,63 @@ export function closeModal() {
 }
 
 // ---- SERVICE WORKER ----
+// ---- PUSH NOTIFICATIONS ----
+const VAPID_PUBLIC_KEY = 'REEMPLAZAR_CON_CLAVE_PUBLICA';
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+export async function suscribirNotificaciones() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') return false;
+
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+
+    const uid = await getUsuarioId();
+    const { p256dh, auth } = sub.toJSON().keys;
+    await db.from('push_subscriptions').upsert(
+      { usuario_id: uid, endpoint: sub.endpoint, p256dh, auth },
+      { onConflict: 'usuario_id,endpoint' }
+    );
+    return true;
+  } catch (e) {
+    console.error('Push subscription failed:', e);
+    return false;
+  }
+}
+
+export async function desuscribirNotificaciones() {
+  if (!('serviceWorker' in navigator)) return;
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return;
+  await sub.unsubscribe();
+  const uid = await getUsuarioId();
+  await db.from('push_subscriptions').delete().eq('usuario_id', uid).eq('endpoint', sub.endpoint);
+}
+
+export async function getEstadoNotificaciones() {
+  if (!('Notification' in window) || !('PushManager' in window)) return 'no-soportado';
+  if (Notification.permission === 'denied') return 'bloqueado';
+  if (Notification.permission !== 'granted') return 'sin-permiso';
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  return sub ? 'activo' : 'sin-suscripcion';
+}
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js');

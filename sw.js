@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jm-finance-v6';
+const CACHE_NAME = 'jm-finance-v7';
 
 const PRECACHE_URLS = [
   './',
@@ -46,6 +46,33 @@ self.addEventListener('activate', event => {
     )
   );
   self.clients.claim();
+});
+
+self.addEventListener('push', event => {
+  let data = { title: 'JM Finance', body: 'Tienes pagos pendientes hoy.' };
+  try { data = event.data.json(); } catch (_) {}
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: './icons/icon-192.png',
+      badge: './icons/icon-192.png',
+      tag: data.tag || 'jm-finance-pago',
+      data: { url: data.url || '/' },
+      requireInteraction: false,
+    })
+  );
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const target = event.notification.data?.url || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      const existing = list.find(c => c.url.includes(self.location.origin));
+      if (existing) return existing.focus();
+      return clients.openWindow(target);
+    })
+  );
 });
 
 self.addEventListener('fetch', event => {
