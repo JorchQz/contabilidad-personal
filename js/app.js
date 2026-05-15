@@ -1162,7 +1162,7 @@ export function closeModal() {
 
 // ---- SERVICE WORKER ----
 // ---- PUSH NOTIFICATIONS ----
-const VAPID_PUBLIC_KEY = 'REEMPLAZAR_CON_CLAVE_PUBLICA';
+const VAPID_PUBLIC_KEY = 'BOKGuAa_BNvqDtDFXyfQfU3TgY3RRWdiL5_G_BDa2M8r3YoL-vU6P400tN7d6cX2u03hk4pp3fT_-sylya1YKOE';
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
