@@ -206,7 +206,8 @@ async function guardarPresupuesto(categoriaId) {
   await loadPresupuestos();
 }
 
-async function _doEliminarPresupuesto(presupuestoId) {
+async function eliminarPresupuesto(presupuestoId) {
+  if (!confirm('¿Eliminar este presupuesto? No se puede deshacer.')) return;
   const uid = await getUsuarioId();
   const { error } = await db.from('presupuestos').delete().eq('id', presupuestoId).eq('usuario_id', uid);
   if (error) { showSnackbar('No se pudo eliminar el presupuesto', 'error'); return; }
@@ -214,11 +215,6 @@ async function _doEliminarPresupuesto(presupuestoId) {
   showSnackbar('Presupuesto eliminado', 'success');
   await loadPresupuestos();
 }
-
-function eliminarPresupuesto(presupuestoId) {
-  openConfirmModal('¿Eliminar este presupuesto? No se puede deshacer.', `_doEliminarPresupuesto('${presupuestoId}')`);
-}
-window._doEliminarPresupuesto = _doEliminarPresupuesto;
 
 window.openPresupuestoModal = openPresupuestoModal;
 window.guardarPresupuesto = guardarPresupuesto;

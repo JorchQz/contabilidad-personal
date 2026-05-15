@@ -19,9 +19,9 @@ import {
   getCurrentCatId,
   loadDashboard,
 } from './app.js';
-import { getPagosPendientes } from './balance.js';
 import { loadCuentas } from './cuentas.js';
 import { loadDeudas } from './deudas.js';
+import { distribuirIngreso } from './distribucion.js';
 
 let currentIngresoTipo = 'otro';
 
@@ -621,64 +621,8 @@ async function guardarIngreso() {
 
   closeModal();
 
-  const pagosPendientes = await getPagosPendientes();
-
-  const totalComprometido = pagosPendientes.reduce((acc, pago) => acc + Number(pago.monto || 0), 0);
-  const libre = monto - totalComprometido;
-
-  const libreHtml = libre > 0
-    ? `<div style="background:var(--green-soft);border:1.5px solid var(--green-border);border-radius:var(--radius-sm);padding:12px 14px;text-align:center;margin-bottom:16px">
-        <div style="font-size:13px;color:var(--green);font-weight:600"><i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Tienes ${formatMXN(Math.round(libre))} libres este período</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Puedes ahorrar o guardarlo para imprevistos</div>
-      </div>`
-    : libre < 0
-      ? `<div style="background:var(--red-soft);border:1.5px solid var(--red-border);border-radius:var(--radius-sm);padding:12px 14px;text-align:center;margin-bottom:16px">
-          <div style="font-size:13px;color:var(--red);font-weight:600"><i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Tus compromisos superan este ingreso por ${formatMXN(Math.abs(Math.round(libre)))}</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Revisa tus gastos fijos o busca reducir algún compromiso</div>
-        </div>`
-      : '';
-
-  openModal('¿A dónde va tu dinero?', `
-    <div class="card" style="margin-bottom:12px;background:var(--bg-elevated)">
-      <div style="font-size:12px;color:var(--text-secondary)">Ingreso registrado</div>
-      <div style="font-size:20px;font-weight:800;color:var(--green)">${formatMXN(monto)}</div>
-    </div>
-
-    ${pagosPendientes.length > 0 ? `
-      <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px">Compromisos pendientes</div>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;max-height:220px;overflow:auto">
-        ${pagosPendientes.map(pago => `
-          <div class="item-row" style="margin-bottom:0">
-            <div class="item-row-emoji">${pago.tipo === 'fijo' ? '<i data-lucide="pin" style="width:18px;height:18px;stroke-width:1.75"></i>' : '<i data-lucide="trending-down" style="width:18px;height:18px;stroke-width:1.75"></i>'}</div>
-            <div class="item-row-info">
-              <div class="item-row-name">${pago.nombre}</div>
-              <div class="item-row-detail">${pago.tipo === 'fijo' ? 'Gasto fijo' : 'Deuda'}${pago.urgente ? ' · <i data-lucide="alert-triangle" style="width:12px;height:12px;vertical-align:middle"></i> Urgente' : ''}</div>
-            </div>
-            <div class="item-row-amount">${pago.monto_variable && !pago.monto ? 'Variable' : formatMXN(pago.monto)}</div>
-          </div>
-        `).join('')}
-      </div>
-    ` : `<p class="form-hint" style="margin-bottom:12px">Sin compromisos pendientes en este momento.</p>`}
-
-    <div class="card" style="margin-bottom:12px;background:var(--bg-elevated)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <span style="font-size:13px;color:var(--text-secondary)">Ingreso recibido</span>
-        <strong style="font-size:14px;font-weight:700;color:var(--green)">${formatMXN(monto)}</strong>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <span style="font-size:13px;color:var(--text-secondary)">Compromisos</span>
-        <strong style="font-size:14px;font-weight:700;color:var(--red)">- ${formatMXN(totalComprometido)}</strong>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border)">
-        <span style="font-size:13px;color:var(--text-secondary)">Dinero libre</span>
-        <strong style="font-size:16px;font-weight:800;color:${libre >= 0 ? 'var(--green)' : 'var(--red)'}">${formatMXN(Math.round(libre))}</strong>
-      </div>
-    </div>
-
-    ${libreHtml}
-    <button class="btn btn-primary" onclick="onEntendidoDineroComprometido()">Entendido</button>
-  `);
-
+  const distribucion = await distribuirIngreso(monto, usuario_id);
+  renderDistribucionModal(monto, distribucion);
   renderLucideIcons();
 
   showSnackbar(mensajeExito, 'success');
@@ -687,6 +631,116 @@ async function guardarIngreso() {
     await loadDashboard();
     await loadDeudas();
   }
+}
+
+function renderDistribucionModal(monto, resultado) {
+  const { asignaciones = [], libre = 0, deficit = 0, sugerenciaAbonoExtra = null } = resultado || {};
+
+  const GRUPOS = {
+    fijo_urgente:  { label: 'Gastos urgentes',       icono: 'pin',          color: 'var(--red)' },
+    deuda_urgente: { label: 'Cuotas de deuda',        icono: 'trending-down', color: 'var(--yellow)' },
+    sinking_fund:  { label: 'Para el próximo período', icono: 'calendar',     color: 'var(--accent)' },
+    meta:          { label: 'Metas de ahorro',         icono: 'target',       color: 'var(--green)' },
+  };
+
+  const porGrupo = {};
+  for (const a of asignaciones) {
+    if (!porGrupo[a.tipo]) porGrupo[a.tipo] = [];
+    porGrupo[a.tipo].push(a);
+  }
+
+  const totalAsignado = asignaciones.reduce((s, a) => s + a.asignado, 0);
+
+  const gruposHtml = Object.entries(GRUPOS)
+    .filter(([tipo]) => porGrupo[tipo]?.length)
+    .map(([tipo, cfg]) => {
+      const items = porGrupo[tipo];
+      return `
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;font-weight:700;color:${cfg.color};text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+            <i data-lucide="${cfg.icono}" style="width:12px;height:12px;stroke-width:2.5"></i>${cfg.label}
+          </div>
+          ${items.map(a => {
+            const cubierto = a.cubierto;
+            return `
+              <div class="item-row" style="margin-bottom:4px;opacity:${cubierto ? '1' : '0.6'}">
+                <div class="item-row-emoji" style="color:${cubierto ? cfg.color : 'var(--text-muted)'}">
+                  <i data-lucide="${cubierto ? 'check-circle-2' : 'alert-circle'}" style="width:18px;height:18px;stroke-width:1.75"></i>
+                </div>
+                <div class="item-row-info">
+                  <div class="item-row-name">${escapeHtml(a.nombre)}</div>
+                  ${!cubierto ? `<div class="item-row-detail" style="color:var(--red)">Falta ${formatMXN(a.monto - a.asignado)}</div>` : ''}
+                </div>
+                <div class="item-row-amount" style="color:${cubierto ? 'inherit' : 'var(--red)'}">
+                  ${formatMXN(a.asignado)}${!cubierto ? ` / ${formatMXN(a.monto)}` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }).join('');
+
+  const sinCompromisos = asignaciones.length === 0
+    ? `<p class="form-hint" style="margin-bottom:12px;text-align:center">Sin compromisos pendientes — todo queda libre.</p>`
+    : '';
+
+  const deficitHtml = deficit > 0
+    ? `<div style="background:var(--red-soft);border:1px solid var(--red-border);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:12px">
+        <div style="font-size:13px;color:var(--red);font-weight:600;display:flex;align-items:center;gap:6px">
+          <i data-lucide="alert-triangle" style="width:14px;height:14px"></i>Tus compromisos superan este ingreso por ${formatMXN(deficit)}
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Revisa tus gastos fijos o busca reducir algún compromiso</div>
+      </div>`
+    : '';
+
+  const sobrante = libre > 0
+    ? `<div style="background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:12px">
+        <div style="font-size:13px;color:var(--green);font-weight:600;display:flex;align-items:center;gap:6px">
+          <i data-lucide="check-circle-2" style="width:14px;height:14px"></i>Tienes ${formatMXN(libre)} libres este período
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Puedes ahorrar o guardarlo para imprevistos</div>
+      </div>`
+    : '';
+
+  const sugerenciaHtml = sugerenciaAbonoExtra
+    ? `<div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:4px;display:flex;align-items:center;gap:6px">
+          <i data-lucide="lightbulb" style="width:13px;height:13px"></i>Sugerencia
+        </div>
+        <div style="font-size:13px;color:var(--text)">
+          Abona ${formatMXN(sugerenciaAbonoExtra.monto)} extra a <strong>${escapeHtml(sugerenciaAbonoExtra.acreedor)}</strong> y evita ~${formatMXN(sugerenciaAbonoExtra.interesEvitado)} de interés este mes.
+        </div>
+      </div>`
+    : '';
+
+  openModal('¿A dónde va tu dinero?', `
+    <div class="card" style="margin-bottom:12px;background:var(--bg-elevated)">
+      <div style="font-size:12px;color:var(--text-secondary)">Ingreso registrado</div>
+      <div style="font-size:20px;font-weight:800;color:var(--green);font-family:var(--font)">${formatMXN(monto)}</div>
+    </div>
+
+    ${sinCompromisos}
+    <div style="max-height:260px;overflow:auto;margin-bottom:12px">${gruposHtml}</div>
+
+    <div class="card" style="margin-bottom:12px;background:var(--bg-elevated)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:13px;color:var(--text-secondary)">Ingreso recibido</span>
+        <strong style="font-size:14px;color:var(--green)">${formatMXN(monto)}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:13px;color:var(--text-secondary)">Asignado a compromisos</span>
+        <strong style="font-size:14px;color:var(--red)">- ${formatMXN(totalAsignado)}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border)">
+        <span style="font-size:13px;color:var(--text-secondary)">Libre</span>
+        <strong style="font-size:16px;font-weight:800;font-family:var(--font);color:${libre >= 0 ? 'var(--green)' : 'var(--red)'}">${formatMXN(libre)}</strong>
+      </div>
+    </div>
+
+    ${deficitHtml}${sobrante}${sugerenciaHtml}
+    <button class="btn btn-primary" onclick="onEntendidoDineroComprometido()">Entendido</button>
+  `);
 }
 
 async function onEntendidoDineroComprometido() {
