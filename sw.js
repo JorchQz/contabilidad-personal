@@ -1,12 +1,29 @@
-const CACHE_NAME = 'jm-finance-v4';
+const CACHE_NAME = 'jm-finance-v5';
 
 const PRECACHE_URLS = [
   './',
   './index.html',
+  './manifest.json',
   './css/main.css',
   './js/app.js',
-  './manifest.json',
+  './js/router.js',
+  './js/auth.js',
+  './js/supabase.js',
+  './js/balance.js',
+  './js/cuentas.js',
+  './js/deudas.js',
+  './js/metas.js',
+  './js/gastos.js',
+  './js/ingresos.js',
+  './js/onboarding.js',
+  './js/presupuestos.js',
+  './js/graficas.js',
+  './js/export.js',
+  './js/distribucion.js',
+  './js/lucide.min.js',
 ];
+
+const SUPABASE_ORIGIN = 'https://rzanhkfmwvbngbpjefec.supabase.co';
 
 const CDN_PREFIXES = [
   'https://cdn.jsdelivr.net',
@@ -14,8 +31,6 @@ const CDN_PREFIXES = [
   'https://fonts.gstatic.com',
   'https://unpkg.com',
 ];
-
-const SUPABASE_ORIGIN = 'https://rzanhkfmwvbngbpjefec.supabase.co';
 
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -39,10 +54,10 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(request.url);
 
-  // Supabase: nunca interceptar
+  // Supabase: nunca interceptar — siempre necesita red
   if (url.origin === SUPABASE_ORIGIN) return;
 
-  // CDN externos: cache-first (cambian raramente)
+  // CDN: cache-first (cambian raramente, se actualiza tras precache upgrade)
   if (CDN_PREFIXES.some(p => request.url.startsWith(p))) {
     event.respondWith(
       caches.match(request).then(cached => {
@@ -59,19 +74,18 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Archivos locales: network-first con timeout 3s → fallback a caché
-  const networkWithTimeout = Promise.race([
-    fetch(request).then(response => {
-      if (response.ok) {
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then(c => c.put(request, clone));
-      }
-      return response;
-    }),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
-  ]);
-
+  // Archivos locales (app shell): cache-first — ya están precacheados
+  // Si no están en caché (ej. URL desconocida), intenta red y guarda
   event.respondWith(
-    networkWithTimeout.catch(() => caches.match(request))
+    caches.match(request).then(cached => {
+      if (cached) return cached;
+      return fetch(request).then(response => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(c => c.put(request, clone));
+        }
+        return response;
+      }).catch(() => caches.match('./index.html'));
+    })
   );
 });

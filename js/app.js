@@ -1064,6 +1064,9 @@ export async function renderApp() {
   await loadIngresos();
   await loadAjustes();
   if (typeof updateFab === 'function') updateFab('dashboard');
+
+  // Mostrar banner de instalación si el prompt ya fue capturado antes de renderApp
+  if (_deferredInstallPrompt) showInstallBanner();
 }
 
 // ---- MODAL BASE ----
@@ -1112,6 +1115,59 @@ export function closeModal() {
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js');
+  });
+}
+
+// ---- BANNER DE INSTALACIÓN PWA ----
+let _deferredInstallPrompt = null;
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _deferredInstallPrompt = e;
+
+  // Solo mostrar si el app shell ya tiene páginas (usuario autenticado)
+  const dashboardPage = document.getElementById('page-dashboard');
+  if (!dashboardPage) return;
+
+  showInstallBanner();
+});
+
+function showInstallBanner() {
+  if (document.getElementById('pwa-install-banner')) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'pwa-install-banner';
+  banner.style.cssText = `
+    position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+    background:var(--bg-elevated);border:1px solid var(--border);
+    border-radius:var(--radius);padding:12px 16px;
+    display:flex;align-items:center;gap:12px;
+    box-shadow:0 4px 24px rgba(0,0,0,0.3);z-index:9999;
+    max-width:340px;width:calc(100% - 32px);
+  `;
+  banner.innerHTML = `
+    <i data-lucide="download" style="width:20px;height:20px;flex-shrink:0;color:var(--accent)"></i>
+    <span style="font-size:13px;color:var(--text);flex:1">Instala JM Finance en tu dispositivo</span>
+    <button id="pwa-install-btn" style="background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Instalar</button>
+    <button id="pwa-install-close" style="background:none;border:none;cursor:pointer;padding:4px;color:var(--text-muted);display:flex;align-items:center">
+      <i data-lucide="x" style="width:16px;height:16px"></i>
+    </button>
+  `;
+
+  document.body.appendChild(banner);
+  renderLucideIcons();
+
+  document.getElementById('pwa-install-btn').addEventListener('click', async () => {
+    if (!_deferredInstallPrompt) return;
+    _deferredInstallPrompt.prompt();
+    const { outcome } = await _deferredInstallPrompt.userChoice;
+    _deferredInstallPrompt = null;
+    banner.remove();
+    if (outcome === 'accepted') showSnackbar('App instalada correctamente', 'success');
+  });
+
+  document.getElementById('pwa-install-close').addEventListener('click', () => {
+    banner.remove();
   });
 }
 

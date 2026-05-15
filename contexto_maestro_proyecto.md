@@ -276,35 +276,26 @@ El código fue refactorizado a módulos ES. Estructura real de `js/`:
 | Dark/Light mode | ✅ Funcional |
 | Navegación tabs + swipe + FAB | ✅ Funcional |
 
-### Bugs críticos confirmados por auditoría (pendientes de fix) 🔴
+### Bugs corregidos (sesión 2026-05-14) ✅
 
-| Severidad | Área | Problema |
-|-----------|------|---------|
-| CRITICO | Seguridad | XSS en gastos.js: `descripcion` sin escapeHtml en edición |
-| CRITICO | Seguridad | XSS: cat.nombre/emoji raw en chips del picker |
-| CRITICO | Seguridad | XSS: c.nombre/d.acreedor/m.nombre raw en `<option>` |
-| CRITICO | Seguridad | onboarding.js: nombre usuario raw en innerHTML del header |
-| CRITICO | Seguridad | onboarding.js: query buscador bancos raw en dropdown |
-| CRITICO | Seguridad | `Infinity` pasa validaciones de monto en 5 funciones |
-| ALTO | Finanzas | `getSaldoDisponibleTotal()` ignora traspasos — balance incorrecto |
-| ALTO | Finanzas | "Disponible ahora" suma cuentas de crédito como activos |
-| ALTO | Finanzas | Proyección de liquidación absurda para deudas tipo `unico` |
-| MEDIO | UI/UX | 13 variables CSS inexistentes (`--font-body`, `--text-primary`, etc.) |
-| MEDIO | UI/UX | Colores legacy hardcodeados en deudas.js (`rgba(124,108,252,...)`) |
-| MEDIO | Lógica | `parseInt` sin base 10 en deudas.js:249 |
+Todos los bugs críticos de la auditoría anterior fueron corregidos:
+- XSS en todos los módulos (49 vectores): escapeHtml + data-* attributes
+- `getSaldoDisponibleTotal()` ignoraba traspasos — corregido en balance.js
+- "Disponible ahora" sumaba crédito como activo — corregido en app.js
+- 13 variables CSS inexistentes — reemplazadas por tokens válidos
+- Colores legacy hardcodeados en deudas.js — reemplazados por vars CSS
+- `parseInt` sin base 10 — corregido
 
 ### Pendiente / No implementado ❌
 
 | Módulo | Detalle |
 |--------|---------|
-| Edición de gastos variables | Solo delete, sin edit post-creación |
-| Edición de deudas | Sin modal de edición post-creación |
-| Edición de metas | Sin edición post-creación |
-| `pagos_programados` | Tabla en BD, sin UI activa |
 | Notificaciones push | Sin service worker activo |
 | Sincronización offline | Sin service worker activo |
 | Multi-moneda | Solo MXN |
 | Real-time Supabase | Sin suscripciones activas |
+
+**Nota:** Edición de gastos, deudas, metas y UI de pagos_programados ya están implementados — el plan anterior estaba desactualizado.
 
 ### Observaciones arquitectónicas
 
