@@ -253,9 +253,10 @@ export async function loadFijos() {
   const hoy = new Date();
   const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
 
-  const [{ data: fijos, error }, { data: ingresosRes }] = await Promise.all([
+  const [{ data: fijos, error }, { data: ingresosRes }, { data: diferidos }] = await Promise.all([
     db.from('gastos_fijos').select('*, categorias(emoji)').eq('usuario_id', uid).eq('activo', true).order('descripcion', { ascending: true }),
     db.from('ingresos').select('monto').eq('usuario_id', uid).gte('fecha', inicioMes),
+    db.from('gastos_diferidos').select('*').eq('usuario_id', uid).eq('activo', true).order('fecha_primer_cargo', { ascending: true }),
   ]);
 
   if (error) {
@@ -348,6 +349,52 @@ export async function loadFijos() {
     </div>
   `;
 
+  // ---- Compras a meses (MSI) ----
+  const diferidosHtml = (() => {
+    if (!diferidos || diferidos.length === 0) return '';
+    const rows = diferidos.map(d => {
+      const restantes = d.num_meses - (d.cuotas_pagadas || 0);
+      const pct = d.num_meses > 0 ? Math.round(((d.cuotas_pagadas || 0) / d.num_meses) * 100) : 0;
+      const proximoCargo = (() => {
+        if (!d.fecha_primer_cargo) return '';
+        const base = new Date(d.fecha_primer_cargo + 'T12:00:00');
+        base.setMonth(base.getMonth() + (d.cuotas_pagadas || 0));
+        return base.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
+      })();
+      return `
+        <div class="item-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-bottom:6px;padding:12px 14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+              <div class="item-row-emoji"><i data-lucide="credit-card" style="width:18px;height:18px;stroke-width:1.75"></i></div>
+              <div class="item-row-info" style="flex:1;min-width:0">
+                <div class="item-row-name">${escapeHtml(d.descripcion)}</div>
+                <div class="item-row-detail">${restantes} cuota${restantes !== 1 ? 's' : ''} restante${restantes !== 1 ? 's' : ''}${proximoCargo ? ' · próx. ' + proximoCargo : ''}</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+              <div class="item-row-amount" style="color:var(--red)">${formatMXN(d.monto_cuota)}/mes</div>
+              <button class="item-row-delete" style="background:none;border:none;cursor:pointer;padding:8px;border-radius:var(--radius-xs);color:var(--text-muted);display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px" data-action="menu-diferido" data-id="${escapeHtml(d.id)}"><i data-lucide="more-vertical" style="width:16px;height:16px;pointer-events:none"></i></button>
+            </div>
+          </div>
+          <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:3px;transition:width 0.4s ease"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted)">
+            <span>${d.cuotas_pagadas || 0} / ${d.num_meses} pagadas</span>
+            <span>Total: ${formatMXN(d.monto_total)}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div style="margin-top:16px">
+        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);margin-bottom:8px">Compras a meses</div>
+        ${rows}
+      </div>
+    `;
+  })();
+
   document.getElementById('page-fijos').innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Gastos fijos</h1>
@@ -356,8 +403,14 @@ export async function loadFijos() {
       ${resumenHtml}
       ${alertaHtml}
       ${listaHtml}
+      ${diferidosHtml}
     </div>
   `;
+
+  document.getElementById('page-fijos').addEventListener('click', e => {
+    const btn = e.target.closest('[data-action="menu-diferido"]');
+    if (btn) openMenuDiferido(btn.dataset.id);
+  }, { once: true });
 
   renderLucideIcons();
 }
@@ -1331,6 +1384,109 @@ async function guardarGasto() {
   loadGastos();
 }
 
+// ---- GASTOS DIFERIDOS (MSI) ----
+
+async function openAgregarDiferido() {
+  const uid = await getUsuarioId();
+  const { data: cuentas } = await db.from('cuentas').select('id, nombre').eq('usuario_id', uid).eq('activa', true).neq('tipo', 'credito').order('nombre', { ascending: true });
+
+  const opcionesMeses = [3, 6, 9, 12, 18, 24].map(n => `<option value="${n}">${n} meses</option>`).join('');
+  const opcionesCuentas = (cuentas || []).map(c =>
+    `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nombre)}</option>`
+  ).join('');
+
+  openModal('Nueva compra a meses', `
+    <div class="form-group">
+      <label class="form-label">Descripción</label>
+      <input class="form-input" id="dif-descripcion" type="text" placeholder="Ej. iPhone 15 Pro" maxlength="120" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Monto total</label>
+      <div class="input-money-wrap"><span class="currency-prefix">$</span>
+      <input class="form-input" id="dif-monto" type="number" min="0.01" step="0.01" placeholder="0.00" /></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Número de meses</label>
+      <select class="form-input" id="dif-meses">${opcionesMeses}</select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tasa mensual (% — 0 si es sin intereses)</label>
+      <input class="form-input" id="dif-tasa" type="number" min="0" max="30" step="0.01" placeholder="0.00" value="0" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Fecha primer cargo</label>
+      <input class="form-input" id="dif-fecha" type="date" value="${new Date().toISOString().split('T')[0]}" />
+    </div>
+    ${opcionesCuentas ? `
+    <div class="form-group">
+      <label class="form-label">Cuenta / tarjeta</label>
+      <select class="form-input" id="dif-cuenta"><option value="">Sin especificar</option>${opcionesCuentas}</select>
+    </div>` : ''}
+    <button class="btn btn-primary" onclick="guardarDiferido()">Guardar</button>
+  `);
+}
+
+async function guardarDiferido() {
+  const descripcion = document.getElementById('dif-descripcion')?.value?.trim();
+  const montoRaw = parseFloat(document.getElementById('dif-monto')?.value);
+  const num_meses = parseInt(document.getElementById('dif-meses')?.value, 10);
+  const tasaRaw = parseFloat(document.getElementById('dif-tasa')?.value || '0');
+  const fecha_primer_cargo = document.getElementById('dif-fecha')?.value;
+  const cuentaEl = document.getElementById('dif-cuenta');
+  const cuenta_id = cuentaEl?.value || null;
+
+  if (!descripcion) { showSnackbar('Escribe una descripción', 'error'); return; }
+  if (!montoRaw || montoRaw <= 0 || !isFinite(montoRaw)) { showSnackbar('Ingresa un monto válido', 'error'); return; }
+  if (montoRaw > 999_999_999) { showSnackbar('Monto excede el límite permitido', 'error'); return; }
+  if (!num_meses || num_meses < 1) { showSnackbar('Selecciona número de meses', 'error'); return; }
+  if (!fecha_primer_cargo) { showSnackbar('Selecciona la fecha del primer cargo', 'error'); return; }
+
+  const tasa_mensual = (!isNaN(tasaRaw) && isFinite(tasaRaw) && tasaRaw >= 0) ? tasaRaw : 0;
+
+  // Cuota con interés compuesto (fórmula estándar MSI)
+  let monto_cuota;
+  if (tasa_mensual > 0) {
+    const r = tasa_mensual / 100;
+    monto_cuota = Math.round((montoRaw * r * Math.pow(1 + r, num_meses)) / (Math.pow(1 + r, num_meses) - 1) * 100) / 100;
+  } else {
+    monto_cuota = Math.round((montoRaw / num_meses) * 100) / 100;
+  }
+
+  const uid = await getUsuarioId();
+  const { error } = await db.from('gastos_diferidos').insert({
+    usuario_id: uid,
+    descripcion,
+    monto_total: montoRaw,
+    num_meses,
+    monto_cuota,
+    tasa_mensual,
+    fecha_primer_cargo,
+    cuenta_id: cuenta_id || null,
+    cuotas_pagadas: 0,
+    activo: true,
+  });
+
+  if (error) { showSnackbar('No se pudo guardar la compra', 'error'); return; }
+  closeModal();
+  showSnackbar('Compra a meses registrada', 'success');
+  await loadFijos();
+}
+
+function openMenuDiferido(diferidoId) {
+  openActionSheet('Opciones', [
+    { label: 'Eliminar', onClick: `eliminarDiferido('${diferidoId}')`, danger: true }
+  ]);
+}
+
+async function eliminarDiferido(diferidoId) {
+  if (!confirm('¿Eliminar esta compra a meses? No se puede deshacer.')) return;
+  const uid = await getUsuarioId();
+  const { error } = await db.from('gastos_diferidos').update({ activo: false }).eq('id', diferidoId).eq('usuario_id', uid);
+  if (error) { showSnackbar('No se pudo eliminar', 'error'); return; }
+  showSnackbar('Compra eliminada', 'success');
+  await loadFijos();
+}
+
 // Funciones invocadas desde atributos onclick en HTML generado dinámicamente
 window.openMenuGasto = openMenuGasto;
 window.eliminarGasto = eliminarGasto;
@@ -1345,3 +1501,7 @@ window.guardarGasto = guardarGasto;
 window.actualizarSaldoHint = actualizarSaldoHint;
 window.renderCamposFechaFijo = renderCamposFechaFijo;
 window.toggleGastoPickerGrupo = toggleGastoPickerGrupo;
+window.openAgregarDiferido = openAgregarDiferido;
+window.guardarDiferido = guardarDiferido;
+window.openMenuDiferido = openMenuDiferido;
+window.eliminarDiferido = eliminarDiferido;

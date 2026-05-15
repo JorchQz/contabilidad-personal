@@ -169,7 +169,8 @@ const fabConfig = {
   ],
   presupuestos: null,
   fijos: [
-    { icon: 'plus', label: 'Nuevo fijo', action: 'openAgregarGastoFijo()' }
+    { icon: 'plus', label: 'Nuevo fijo', action: 'openAgregarGastoFijo()' },
+    { icon: 'credit-card', label: 'Compra a meses', action: 'openAgregarDiferido()' }
   ],
   cuentas: [
     { icon: 'wallet', label: 'Nueva cuenta', action: 'openAgregarCuenta()' },
